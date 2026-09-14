@@ -101,6 +101,35 @@ def checks(ns):
         sels=[a for n,a in m.calls if n=='SendMessageW' and a[1]==0xb1]
         assert sels and sels[0][0]==2 and sels[0][2:]==[200,200], sels
     check('preview navigation survives volatile API clobbers',navigate)
+    if 'detect_preferred_eol' in ns['em'].labels:
+        def document_metadata_helpers():
+            m=Machine(ns)
+            scratch=m.base+ns['bsyms']['widebuf']
+            for text, expected in [('plain',0), ('a\r\nb\n',0),
+                                   ('a\nb\r\n',1), ('a\rb\n',2)]:
+                encoded=text.encode('utf-16le')
+                m.u.mem_write(scratch,encoded+b'\0\0')
+                m.run('detect_preferred_eol',rcx=scratch,rdx=len(text))
+                actual=m.u.reg_read(x.UC_X86_REG_RAX)&0xffffffff
+                assert actual==expected,(repr(text),expected,actual)
+            model=m.base+ns['bsyms']['document_model']
+            canonical='a\r\nb\r\n'
+            m.u.mem_write(model,canonical.encode('utf-16le')+b'\0\0')
+            m.put('document_len',len(canonical))
+            for state, expected in [(0,canonical),(1,'a\nb\n'),(2,'a\rb\r')]:
+                m.put('eol_state',state)
+                m.run('serialize_preferred_eol')
+                length=m.u.reg_read(x.UC_X86_REG_RAX)&0xffffffff
+                raw=bytes(m.u.mem_read(scratch,length*2))
+                assert raw.decode('utf-16le')==expected,(state,raw)
+            m.u.mem_write(m.base+ns['bsyms']['document_revision'],
+                          struct.pack('<Q',0xffffffffffffffff))
+            m.run('advance_document_revision')
+            wrapped=int.from_bytes(m.u.mem_read(
+                m.base+ns['bsyms']['document_revision'],8),'little')
+            assert wrapped==1,wrapped
+        check('document metadata helpers execute emitted x64 correctly',
+              document_metadata_helpers)
     def scrollbar():
         m=Machine(ns); m.run('sync_outline_scrollbar')
         h=m.get('outline_scroll_thumb_h'); track=m.get('outline_scroll_track_h')

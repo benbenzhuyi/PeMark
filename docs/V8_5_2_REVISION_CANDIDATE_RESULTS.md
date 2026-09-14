@@ -98,6 +98,9 @@ normal close exit code:                  = 0
 - Open commits encoding and preferred EOL with the document. Noninteractive
   delete-and-recreate tests prove byte-identical Save round-trips for UTF-8,
   UTF-8 BOM, UTF-16LE BOM, CRLF, LF, CR, and BOM-only empty files.
+- Unicorn executes the emitted EOL detection/serialization helpers directly and
+  verifies revision wraparound skips the reserved zero value. The check runs in
+  the CI entrypoint rather than relying only on source inspection.
 - Candidate size: 77,824 bytes.
 - Emitted text: 28,713 bytes, 1,647 bytes above V8.5.1.
 - Candidate SHA-256:
@@ -105,6 +108,9 @@ normal close exit code:                  = 0
 
 ## Remaining before promotion
 
+- Complete Phase E dynamic arenas: remove the active 2048-outline and 131072-style
+  caps, test 2600 headings and allocation failures, and demonstrate stable memory
+  across repeated Open/parse/Close cycles. Until then this remains a document
+  safety candidate rather than the V8.5.2 release.
 - Add startup or Open-time recovery discovery only if later usability evidence
   justifies directory scanning beyond the current Save-time policy.
-- Independently inspect helper bytes and every revision call site.

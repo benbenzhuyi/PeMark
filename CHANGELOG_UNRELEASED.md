@@ -68,6 +68,8 @@
 - Added committed encoding and preferred-EOL metadata. Open distinguishes UTF-8,
   UTF-8 BOM and UTF-16LE BOM, records CRLF/LF/CR from the first terminator, and
   Save preserves those byte-level choices, including BOM-only empty documents.
+- Added emitted-x64 execution checks for EOL detection/serialization and revision
+  wraparound to the actual CI regression entrypoint.
 - Preserved all V8.5.1 machine-code and Windows GUI regression results.
 - Kept the V8.5.1 current/release generator and binary unchanged.
 
