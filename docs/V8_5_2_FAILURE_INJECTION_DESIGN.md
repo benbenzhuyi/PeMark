@@ -1,6 +1,6 @@
 # V8.5.2 Failure Injection Design
 
-Status: WriteFile, flush and atomic-replace injection implemented; remaining API/allocation modes are design gates
+Status: transactional save API injection implemented; read/allocation modes remain design gates
 
 ## Principle
 
@@ -48,6 +48,8 @@ Covered modes:
 - seven-byte success followed by failure on the second call.
 - failure while flushing the completed sibling staging file;
 - failure at the atomic replacement commit point.
+- failure to create the sibling staging file;
+- failed first close status followed by a cleanup close retry.
 
 The tests verify call counts, memory text, dirty revisions, pending destructive
 action, resulting disk bytes, staging cleanup and release-candidate hash

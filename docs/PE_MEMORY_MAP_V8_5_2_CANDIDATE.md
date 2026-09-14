@@ -2,9 +2,9 @@
 
 布局（V8.5.0-pre 扩展）：text @ 0x1000（预算 0xf000 字节）、rdata @ 0x10000、idata @ 0x13000、BSS @ 0x14000（virtual-only 尾部）。
 
-本次构建：text 实际 27852 字节（余量 33588 字节）；BSS 符号 166 个，最终虚拟 BSS 121106432 字节。
+本次构建：text 实际 27866 字节（余量 33574 字节）；BSS 符号 168 个，最终虚拟 BSS 121106432 字节。
 
-SHA-256：`6b8571318d174098a98c8ef67b0f0e5359e4331c1ab5d9ae06bf301dd04bb105`
+SHA-256：`d8f50c606aa818672bc25e35ac9885d833e4c5d82dbae81a619cafa46275aaea`
 
 | Symbol | RVA | Size |
 |---|---:|---:|
@@ -174,3 +174,5 @@ SHA-256：`6b8571318d174098a98c8ef67b0f0e5359e4331c1ab5d9ae06bf301dd04bb105`
 | `inject_flush_call_count` | `0x739274C` | 4 |
 | `inject_replace_call_count` | `0x7392750` | 4 |
 | `save_stage_path` | `0x7392760` | 1024 |
+| `inject_create_call_count` | `0x7392B60` | 4 |
+| `inject_close_call_count` | `0x7392B64` | 4 |

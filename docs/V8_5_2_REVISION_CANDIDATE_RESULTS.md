@@ -76,7 +76,8 @@ normal close exit code:                  = 0
   zero-progress and excessive-count failure branches.
 - Build-time-only I/O variants passed for short-write completion,
   zero-success rejection, first-call failure, partial-then-failure, flush
-  failure and atomic-replace failure. Test
+  failure, atomic-replace failure, staging-create failure and close-status
+  failure with cleanup retry. Test
   executables are visibly titled, emitted only under ignored `bin/test/`, and
   leave the release candidate hash unchanged.
 - Save now writes a sibling `.pemark.tmp` with `CREATE_NEW`, loops to completion,
@@ -85,9 +86,9 @@ normal close exit code:                  = 0
   preserve the old target, old path, dirty revisions and any preexisting staging
   artifact; newly owned staging files are removed.
 - Candidate size: 77,824 bytes.
-- Emitted text: 27,852 bytes, 786 bytes above V8.5.1.
+- Emitted text: 27,866 bytes, 800 bytes above V8.5.1.
 - Candidate SHA-256:
-  `6b8571318d174098a98c8ef67b0f0e5359e4331c1ab5d9ae06bf301dd04bb105`.
+  `d8f50c606aa818672bc25e35ac9885d833e4c5d82dbae81a619cafa46275aaea`.
 
 ## Remaining before promotion
 
@@ -95,6 +96,6 @@ normal close exit code:                  = 0
   covered through the real controller and disk bytes; Save As picker Cancel and
   commit ordering are covered, while its injected write-failure path belongs to
   the next failure-injection layer.
-- Add explicit CreateFile/CloseHandle failure injection and decide the product
-  recovery policy for staging artifacts left by abrupt process or machine loss.
+- Decide the product recovery policy for staging artifacts left by abrupt
+  process or machine loss.
 - Independently inspect helper bytes and every revision call site.

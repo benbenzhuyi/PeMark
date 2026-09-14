@@ -111,9 +111,14 @@ def main():
         expected_failure(ns, exe, root / "flush.md", "inject_flush_call_count", 1)
         ns, exe = build_variant("replace_failure")
         expected_failure(ns, exe, root / "replace.md", "inject_replace_call_count", 1)
+        ns, exe = build_variant("create_failure")
+        expected_failure(ns, exe, root / "create.md", "inject_create_call_count", 1)
+        ns, exe = build_variant("close_failure")
+        expected_failure(ns, exe, root / "close.md", "inject_close_call_count", 2)
     assert hashlib.sha256(EXE.read_bytes()).hexdigest() == release_hash
     print("PASS atomic WriteFile injection: short->complete; zero-success rejected; "
           "first failure; partial-then-failure; flush failure; replace failure; "
+          "create failure; close failure with cleanup retry; "
           "original target and preexisting staging artifact preserved; "
           "staging files cleaned; release candidate unchanged")
     return 0

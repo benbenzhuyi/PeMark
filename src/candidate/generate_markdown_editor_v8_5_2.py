@@ -6,7 +6,7 @@ except NameError:
     WRITE_INJECTION_MODE = 'release'
 _WRITE_INJECTION_MODES = {'release', 'short_then_complete', 'zero_success',
                           'fail_first', 'late_failure', 'flush_failure',
-                          'replace_failure'}
+                          'replace_failure', 'create_failure', 'close_failure'}
 if WRITE_INJECTION_MODE not in _WRITE_INJECTION_MODES:
     raise ValueError('unknown WRITE_INJECTION_MODE: %r' % WRITE_INJECTION_MODE)
 INJECTED_BUILD = WRITE_INJECTION_MODE != 'release'
@@ -383,6 +383,8 @@ bss_alloc('inject_write_call_count', 4, 4)     # test builds only; zero in relea
 bss_alloc('inject_flush_call_count', 4, 4)
 bss_alloc('inject_replace_call_count', 4, 4)
 bss_alloc('save_stage_path', 512*2, 16)         # append-only candidate state
+bss_alloc('inject_create_call_count', 4, 4)
+bss_alloc('inject_close_call_count', 4, 4)
 BSS_VSIZE = align(bss_off, 0x1000)
 
 # ---------------- IDATA ----------------
@@ -1092,7 +1094,10 @@ for _ch in '.pemark.tmp':
 em.mov_word_index2_zero('rcx','r15')
 # Only the sibling staging file is truncated. The destination remains untouched
 # until MoveFileExW is the single commit point.
-em.lea_rip('rcx',bsyms['save_stage_path']); em.mov_r32_imm('rdx',0x40000000); em.xor32('r8'); em.xor32('r9'); em.mov_mrsp_imm32(0x20,1); em.mov_mrsp_imm32(0x28,0x80); em.mov_mrsp_imm32(0x30,0,qword=True); em.call_iat('CreateFileW'); em.cmp_rax_neg1(); em.jcc(0x84,'err_save'); em.mov_r64_r64('r12','rax')
+em.lea_rip('rcx',bsyms['save_stage_path']); em.mov_r32_imm('rdx',0x40000000); em.xor32('r8'); em.xor32('r9'); em.mov_mrsp_imm32(0x20,1); em.mov_mrsp_imm32(0x28,0x80); em.mov_mrsp_imm32(0x30,0,qword=True)
+if WRITE_INJECTION_MODE == 'create_failure': em.call_label('injected_CreateFileW')
+else: em.call_iat('CreateFileW')
+em.cmp_rax_neg1(); em.jcc(0x84,'err_save'); em.mov_r64_r64('r12','rax')
 # Complete-write loop. WriteFile success may legally report fewer bytes than
 # requested. Advance by io_count until no bytes remain; zero progress or an
 # impossible count above remaining is a hard failure.
@@ -1109,7 +1114,10 @@ em.mov_r64_r64('rcx','r12')
 if WRITE_INJECTION_MODE == 'flush_failure': em.call_label('injected_FlushFileBuffers')
 else: em.call_iat('FlushFileBuffers')
 em.test32('rax'); em.jcc(0x84,'save_fail_close')
-em.mov_r64_r64('rcx','r12'); em.call_iat('CloseHandle'); em.test32('rax'); em.jcc(0x84,'save_fail_delete')
+em.mov_r64_r64('rcx','r12')
+if WRITE_INJECTION_MODE == 'close_failure': em.call_label('injected_CloseHandle')
+else: em.call_iat('CloseHandle')
+em.test32('rax'); em.jcc(0x84,'save_close_retry')
 # Recover the frozen destination pointer after r14 was reused by the write loop.
 em.mov_r32_ripmem('rax',bsyms['save_target_is_temp']); em.test32('rax'); em.jcc(0x84,'save_replace_current'); em.lea_rip('rdx',bsyms['temp_path']); em.jmp('save_replace_ready')
 em.label('save_replace_current'); em.lea_rip('rdx',bsyms['current_path'])
@@ -1121,6 +1129,10 @@ em.mov_r32_ripmem('rax',bsyms['save_target_is_temp']); em.test32('rax'); em.jcc(
 em.label('save_path_committed'); em.mov_ripmem_imm32(bsyms['save_target_is_temp'],0); em.mov_ripmem_imm32(bsyms['encoding_state'],0); em.call_label('mark_document_saved'); em.call_label('update_preview'); em.call_label('update_status'); em.jmp('destructive_continue')
 
 em.label('save_fail_close'); em.mov_r64_r64('rcx','r12'); em.call_iat('CloseHandle')
+em.jmp('save_fail_delete')
+em.label('save_close_retry'); em.mov_r64_r64('rcx','r12')
+if WRITE_INJECTION_MODE == 'close_failure': em.call_label('injected_CloseHandle')
+else: em.call_iat('CloseHandle')
 em.label('save_fail_delete'); em.lea_rip('rcx',bsyms['save_stage_path']); em.call_iat('DeleteFileW')
 em.label('err_save'); em.mov_ripmem_imm32(bsyms['pending_destructive_action'],0); em.mov_ripmem_imm32(bsyms['save_target_is_temp'],0); em.mov_r64_r64('rcx','rbx'); em.lea_rip('rdx',rsyms['err_save']); em.lea_rip('r8',rsyms['err_title']); em.mov_r32_imm('r9',0x10); em.call_iat('MessageBoxW'); em.jmp('msg_loop')
 
@@ -1917,6 +1929,15 @@ if WRITE_INJECTION_MODE == 'flush_failure':
 if WRITE_INJECTION_MODE == 'replace_failure':
     em.label('injected_MoveFileExW')
     em.mov_r32_ripmem('rax',bsyms['inject_replace_call_count']); em.add_r32_imm8('rax',1); em.mov_ripmem_r32(bsyms['inject_replace_call_count'],'rax'); em.xor32('rax'); em.emit(0xC3)
+
+if WRITE_INJECTION_MODE == 'create_failure':
+    em.label('injected_CreateFileW')
+    em.mov_r32_ripmem('rax',bsyms['inject_create_call_count']); em.add_r32_imm8('rax',1); em.mov_ripmem_r32(bsyms['inject_create_call_count'],'rax'); em.mov_r32_imm('rax',0xFFFFFFFF); em.emit(0x48,0x98); em.emit(0xC3)
+
+if WRITE_INJECTION_MODE == 'close_failure':
+    em.label('injected_CloseHandle')
+    em.mov_r32_ripmem('rax',bsyms['inject_close_call_count']); em.add_r32_imm8('rax',1); em.mov_ripmem_r32(bsyms['inject_close_call_count'],'rax'); em.cmp_r32_imm('rax',1); em.jcc(0x85,'injected_close_real'); em.xor32('rax'); em.emit(0xC3)
+    em.label('injected_close_real'); em.emit(0x48,0x83,0xEC,0x28); em.call_iat('CloseHandle'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
 
 em.label('commit_clean_document')
 em.emit(0x48,0x83,0xEC,0x28)
@@ -3212,7 +3233,8 @@ assert bss_sizes['document_revision'] == 8 and bss_sizes['saved_revision'] == 8,
 _dirty0 = em.labels['is_document_dirty']
 _dirty1 = min(em.labels[name] for name in
               ('injected_WriteFile', 'injected_FlushFileBuffers',
-               'injected_MoveFileExW', 'commit_clean_document')
+               'injected_MoveFileExW', 'injected_CreateFileW',
+               'injected_CloseHandle', 'commit_clean_document')
               if name in em.labels)
 _dirty_code = bytes(_code[_dirty0:_dirty1])
 assert _dirty_code.count(b'\xC3') == 2 and bytes.fromhex('4c39d0') in _dirty_code, \
@@ -3266,6 +3288,8 @@ assert "em.add_r64_r64('r14','rax'); em.sub_r32_r32('r15','rax'); em.jmp('save_w
 assert ('injected_WriteFile' in em.labels) == WRITE_CALL_INJECTED
 assert ('injected_FlushFileBuffers' in em.labels) == (WRITE_INJECTION_MODE == 'flush_failure')
 assert ('injected_MoveFileExW' in em.labels) == (WRITE_INJECTION_MODE == 'replace_failure')
+assert ('injected_CreateFileW' in em.labels) == (WRITE_INJECTION_MODE == 'create_failure')
+assert ('injected_CloseHandle' in em.labels) == (WRITE_INJECTION_MODE == 'close_failure')
 # (M) Entry point begins with the fixed Win64 stack frame used by the main flow.
 _e0 = em.labels['entry_first_run']
 assert _e0 == 0 and _code.startswith(bytes.fromhex('4881ec88000000')), \

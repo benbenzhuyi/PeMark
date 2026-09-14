@@ -50,6 +50,9 @@
   All pre-commit failures now preserve the old target, dirty model and prior
   path while cleaning newly owned staging files. A preexisting staging artifact
   is preserved and causes a safe save failure.
+- Added staging-create and close-status fault injection. A failed close is
+  retried on the cleanup path before deleting the staging file, so the tested
+  failure leaves no live handle or orphaned artifact.
 - Preserved all V8.5.1 machine-code and Windows GUI regression results.
 - Kept the V8.5.1 current/release generator and binary unchanged.
 
