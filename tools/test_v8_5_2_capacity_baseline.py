@@ -56,7 +56,9 @@ def main():
     headings = [line for line in text.splitlines()
                 if line.startswith("#") and " Heading " in line]
     assert len(headings) == 2600
-    expected_last_offset = text.index("### Heading 2048")
+    canonical = text.replace("\r\n", "\n").replace("\r", "\n").replace(
+        "\n", "\r\n")
+    expected_last_offset = canonical.index("### Heading 2048")
     ns, exe = build_test_candidate()
     app = App(ns, exe)
     try:
@@ -76,7 +78,7 @@ def main():
         result = {"schema": 1, "candidate_sha256": hashlib.sha256(
                       EXE.read_bytes()).hexdigest(),
                   "fixture": str(FIXTURE.relative_to(ROOT)).replace("\\", "/"),
-                  "fixture_sha256": hashlib.sha256(raw).hexdigest(),
+                  "working_tree_fixture_sha256": hashlib.sha256(raw).hexdigest(),
                   "fixture_headings": len(headings),
                   "outline_capacity": 2048,
                   "observed_outline_count": actual,
