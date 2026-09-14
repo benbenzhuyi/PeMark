@@ -15,7 +15,7 @@ GEN = ROOT / "src/candidate/generate_markdown_editor_v8_5_2.py"
 EXE = ROOT / "bin/candidate/pemark_x64_v8_5_2_candidate.exe"
 WM_COMMAND, WM_SETTEXT, WM_GETTEXT, WM_CLOSE = 0x0111, 0x000C, 0x000D, 0x0010
 BM_CLICK, EN_CHANGE = 0x00F5, 0x0300
-CMD_NEW, CMD_OPEN = 1001, 1002
+CMD_NEW, CMD_OPEN, CMD_SAVEAS = 1001, 1002, 1004
 u32, k32, psapi = c.windll.user32, c.windll.kernel32, c.windll.psapi
 
 u32.SendMessageW.argtypes = [w.HWND, w.UINT, w.WPARAM, w.LPARAM]
@@ -37,7 +37,6 @@ k32.CloseHandle.restype = w.BOOL
 psapi.EnumProcessModules.argtypes = [w.HANDLE, c.POINTER(w.HMODULE),
                                      w.DWORD, c.POINTER(w.DWORD)]
 psapi.EnumProcessModules.restype = w.BOOL
-
 
 def enum_windows(pid, class_name=None, title=None):
     found = []
@@ -129,6 +128,13 @@ class App:
             c.c_void_p(self.base + self.bsyms["current_path"]), source,
             len(data), c.byref(count)) and count.value == len(data)
 
+    def read_path(self):
+        raw, count = c.create_string_buffer(1024), c.c_size_t()
+        assert k32.ReadProcessMemory(self.handle,
+            c.c_void_p(self.base + self.bsyms["current_path"]), raw, 1024,
+            c.byref(count)) and count.value == 1024
+        return raw.raw.decode("utf-16le").split("\0", 1)[0]
+
     def set_text_dirty(self, text):
         value = c.create_unicode_buffer(text)
         u32.SendMessageW(self.edit, WM_SETTEXT, 0,
@@ -179,7 +185,6 @@ class App:
             time.sleep(.03)
         raise AssertionError(f"button {button_id} not found in dialog: {title}; "
                              f"seen control IDs={seen}, exit={self.proc.poll()}")
-
 
 def scenario_clean_close(ns):
     app = App(ns)
@@ -280,6 +285,22 @@ def scenario_save_failure_cancels_close(ns, invalid_target):
         app.close_handle()
 
 
+def scenario_saveas_cancel_preserves_path(ns, old_path):
+    app = App(ns)
+    try:
+        app.write_path(old_path)
+        before = app.set_text_dirty("save as transaction\r\n")
+        app.post_command(CMD_SAVEAS)
+        app.click_dialog("Save Markdown file as", 2)
+        time.sleep(.1)
+        assert app.read_path() == str(old_path) and app.revisions() == before
+
+        app.post_close(); app.click_dialog("PeMark", 7)
+        assert app.proc.wait(timeout=5) == 0
+    finally:
+        app.close_handle()
+
+
 def main():
     ns = load_generator(GEN)
     scenario_clean_close(ns)
@@ -291,9 +312,11 @@ def main():
         scenario_save_then_close_or_new(ns, root / "close-save.md", WM_CLOSE)
         scenario_save_then_close_or_new(ns, root / "new-save.md", CMD_NEW)
         scenario_save_failure_cancels_close(ns, root / "missing" / "fail.md")
+        scenario_saveas_cancel_preserves_path(ns, root / "old.md")
     print("PASS destructive matrix: clean close; Close Cancel/Discard/Save; "
           "New Cancel/Discard/Save; Open decision Cancel and picker Cancel; "
-          "failed Save preserves dirty document and cancels Close")
+          "failed Save preserves dirty document and cancels Close; Save As "
+          "cancel preserves the original path")
     return 0
 
 

@@ -30,6 +30,11 @@
 - Added a Windows decision-matrix test covering clean close, Cancel/Discard/Save
   for dirty Close and New, Open cancellation, successful saved bytes, and failed
   Save preservation.
+- Made Save As transactional with respect to document identity: the selected
+  path remains a candidate until the write succeeds and its handle closes.
+  Cancellation or failure therefore retains the previous `current_path`.
+- Added a real Save As cancellation check and build-time assertions for the
+  required close-handle, path-commit and saved-revision ordering.
 - Preserved all V8.5.1 machine-code and Windows GUI regression results.
 - Kept the V8.5.1 current/release generator and binary unchanged.
 

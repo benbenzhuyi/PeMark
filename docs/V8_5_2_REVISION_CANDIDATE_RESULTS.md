@@ -20,6 +20,9 @@ Scope: first bounded production change; candidate channel only
   continues only after the existing save path reaches its commit point.
 - Save failure and file-dialog cancellation clear the pending transition and
   keep the current document alive.
+- Save As keeps the selected path in `temp_path`, writes that candidate, and
+  copies it to `current_path` only after successful `WriteFile` and
+  `CloseHandle`. Cancel and failure retain the previous path.
 
 No title marker, encoding change, save-byte algorithm change, allocator change,
 import change or PE section change is included.
@@ -62,14 +65,18 @@ normal close exit code:                  = 0
   Cancel/Discard/Save; dirty New Cancel/Discard/Save; dirty Open decision
   Cancel and picker Cancel; and failed Save during Close. It checks text,
   revisions, pending action, exit code and successful-save bytes.
+- Save As cancellation was exercised through the real file picker, and
+  build-time ordering assertions require `close handle -> commit path -> mark
+  saved` on its success path.
 - Candidate size: 77,824 bytes.
-- Emitted text: 27,194 bytes, 128 bytes above V8.5.1.
+- Emitted text: 27,523 bytes, 457 bytes above V8.5.1.
 - Candidate SHA-256:
-  `19199bd3b352f9d4f003c3264b5084dd009557bd218feb7e8fc4d6d8013d34c5`.
+  `3541747e96de9f438857ea4f5e19bb0b03d217241f73723a89c73c1b711afe88`.
 
 ## Remaining before promotion
 
-- Add end-to-end Open and Save dialog automation when the document-safety work
-  reaches successful Open fixtures and Save As path replacement. Existing-path
-  Save is now covered through the real controller and disk bytes.
+- Add end-to-end successful Open fixture automation. Existing-path Save is
+  covered through the real controller and disk bytes; Save As picker Cancel and
+  commit ordering are covered, while its injected write-failure path belongs to
+  the next failure-injection layer.
 - Independently inspect helper bytes and every revision call site.

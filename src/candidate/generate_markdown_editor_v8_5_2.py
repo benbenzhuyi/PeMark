@@ -364,6 +364,7 @@ bss_alloc('bytebuf', BYTE_CAP+16, 16)
 bss_alloc('document_revision', 8, 8)
 bss_alloc('saved_revision', 8, 8)
 bss_alloc('pending_destructive_action', 4, 4)  # 0 none, 1 New, 2 Open, 3 Close
+bss_alloc('save_target_is_temp', 4, 4)         # Save As commits temp_path only after write
 BSS_VSIZE = align(bss_off, 0x1000)
 
 # ---------------- IDATA ----------------
@@ -1043,13 +1044,13 @@ em.label('err_decode')
 em.mov_r64_r64('rcx','rbx'); em.lea_rip('rdx',rsyms['err_decode']); em.lea_rip('r8',rsyms['err_title']); em.mov_r32_imm('r9',0x10); em.call_iat('MessageBoxW'); em.jmp('msg_loop')
 
 em.label('cmd_save')
-em.lea_rip('rax',bsyms['current_path']); em.cmp_word_ptr_reg_zero('rax'); em.jcc(0x84,'cmd_saveas'); em.jmp('do_save')
+em.mov_ripmem_imm32(bsyms['save_target_is_temp'],0); em.lea_rip('rax',bsyms['current_path']); em.cmp_word_ptr_reg_zero('rax'); em.jcc(0x84,'cmd_saveas'); em.jmp('do_save')
 
 em.label('cmd_saveas')
 em.lea_rip('rcx',bsyms['temp_path']); em.lea_rip('rdx',bsyms['current_path']); em.call_iat('lstrcpyW')
 em.emit(*[]); emit_ofn('save_title',0x00080802)
 em.mov_r64_r64('rcx','r12'); em.call_iat('GetSaveFileNameW'); em.test32('rax'); em.jcc(0x84,'destructive_cancel')
-em.lea_rip('rcx',bsyms['current_path']); em.lea_rip('rdx',bsyms['temp_path']); em.call_iat('lstrcpyW')
+em.mov_ripmem_imm32(bsyms['save_target_is_temp'],1)
 
 em.label('do_save')
 # Persist only the canonical Document Model. Synchronize once in case a queued EN_CHANGE is pending.
@@ -1059,14 +1060,17 @@ em.test32('r13'); em.jcc(0x84,'save_zero_bytes')
 em.mov_r32_imm('rcx',65001); em.xor32('rdx'); em.lea_rip('r8',bsyms['document_model']); em.mov_r32_r32('r9','r13'); em.lea_rip('rax',bsyms['bytebuf']); em.mov_mrsp_reg64(0x20,'rax'); em.mov_mrsp_imm32(0x28,BYTE_CAP); em.mov_mrsp_imm32(0x30,0,qword=True); em.mov_mrsp_imm32(0x38,0,qword=True); em.call_iat('WideCharToMultiByte'); em.test32('rax'); em.jcc(0x84,'err_save'); em.mov_r32_r32('r13','rax'); em.jmp('save_create')
 em.label('save_zero_bytes'); em.xor32('r13')
 em.label('save_create')
-# CreateFile current write
-em.lea_rip('rcx',bsyms['current_path']); em.mov_r32_imm('rdx',0x40000000); em.xor32('r8'); em.xor32('r9'); em.mov_mrsp_imm32(0x20,2); em.mov_mrsp_imm32(0x28,0x80); em.mov_mrsp_imm32(0x30,0,qword=True); em.call_iat('CreateFileW'); em.cmp_rax_neg1(); em.jcc(0x84,'err_save'); em.mov_r64_r64('r12','rax')
+# Existing Save writes current_path; Save As writes temp_path until disk commit.
+em.mov_r32_ripmem('rax',bsyms['save_target_is_temp']); em.test32('rax'); em.jcc(0x84,'save_use_current_path'); em.lea_rip('rcx',bsyms['temp_path']); em.jmp('save_path_ready')
+em.label('save_use_current_path'); em.lea_rip('rcx',bsyms['current_path'])
+em.label('save_path_ready'); em.mov_r32_imm('rdx',0x40000000); em.xor32('r8'); em.xor32('r9'); em.mov_mrsp_imm32(0x20,2); em.mov_mrsp_imm32(0x28,0x80); em.mov_mrsp_imm32(0x30,0,qword=True); em.call_iat('CreateFileW'); em.cmp_rax_neg1(); em.jcc(0x84,'err_save'); em.mov_r64_r64('r12','rax')
 # WriteFile
 em.mov_r64_r64('rcx','r12'); em.lea_rip('rdx',bsyms['bytebuf']); em.mov_r32_r32('r8','r13'); em.lea_rip('r9',bsyms['io_count']); em.mov_mrsp_imm32(0x20,0,qword=True); em.call_iat('WriteFile'); em.test32('rax'); em.jcc(0x84,'save_fail_close')
-em.mov_r64_r64('rcx','r12'); em.call_iat('CloseHandle'); em.mov_ripmem_imm32(bsyms['encoding_state'],0); em.call_label('mark_document_saved'); em.call_label('update_preview'); em.call_label('update_status'); em.jmp('destructive_continue')
+em.mov_r64_r64('rcx','r12'); em.call_iat('CloseHandle'); em.mov_r32_ripmem('rax',bsyms['save_target_is_temp']); em.test32('rax'); em.jcc(0x84,'save_path_committed'); em.lea_rip('rcx',bsyms['current_path']); em.lea_rip('rdx',bsyms['temp_path']); em.call_iat('lstrcpyW')
+em.label('save_path_committed'); em.mov_ripmem_imm32(bsyms['save_target_is_temp'],0); em.mov_ripmem_imm32(bsyms['encoding_state'],0); em.call_label('mark_document_saved'); em.call_label('update_preview'); em.call_label('update_status'); em.jmp('destructive_continue')
 
 em.label('save_fail_close'); em.mov_r64_r64('rcx','r12'); em.call_iat('CloseHandle')
-em.label('err_save'); em.mov_ripmem_imm32(bsyms['pending_destructive_action'],0); em.mov_r64_r64('rcx','rbx'); em.lea_rip('rdx',rsyms['err_save']); em.lea_rip('r8',rsyms['err_title']); em.mov_r32_imm('r9',0x10); em.call_iat('MessageBoxW'); em.jmp('msg_loop')
+em.label('err_save'); em.mov_ripmem_imm32(bsyms['pending_destructive_action'],0); em.mov_ripmem_imm32(bsyms['save_target_is_temp'],0); em.mov_r64_r64('rcx','rbx'); em.lea_rip('rdx',rsyms['err_save']); em.lea_rip('r8',rsyms['err_title']); em.mov_r32_imm('r9',0x10); em.call_iat('MessageBoxW'); em.jmp('msg_loop')
 
 # All destructive document transitions enter here. pending action: 1 New,
 # 2 Open, 3 Close. Dirty Save retains the action until a successful save commit;
@@ -1077,7 +1081,7 @@ em.call_label('is_document_dirty'); em.test32('rax'); em.jcc(0x84,'destructive_c
 em.mov_r64_r64('rcx','rbx'); em.lea_rip('rdx',rsyms['unsaved_prompt']); em.lea_rip('r8',rsyms['err_title']); em.mov_r32_imm('r9',0x33); em.call_iat('MessageBoxW')
 em.cmp_r32_imm('rax',6); em.jcc(0x84,'cmd_save')       # IDYES: save then continue
 em.cmp_r32_imm('rax',7); em.jcc(0x84,'destructive_continue') # IDNO: discard
-em.label('destructive_cancel'); em.mov_ripmem_imm32(bsyms['pending_destructive_action'],0); em.jmp('msg_loop')
+em.label('destructive_cancel'); em.mov_ripmem_imm32(bsyms['pending_destructive_action'],0); em.mov_ripmem_imm32(bsyms['save_target_is_temp'],0); em.jmp('msg_loop')
 em.label('destructive_continue')
 em.mov_r32_ripmem('r10',bsyms['pending_destructive_action']); em.mov_ripmem_imm32(bsyms['pending_destructive_action'],0)
 em.cmp_r32_imm('r10',1); em.jcc(0x84,'cmd_new_commit')
@@ -3149,12 +3153,26 @@ assert "em.label('cmd_open'); em.mov_ripmem_imm32(bsyms['pending_destructive_act
 assert "em.label('cmd_exit'); em.jmp('request_close')" in _production_source
 assert "em.cmp_r32_imm('rdx',0x0010); em.jcc(0x84,'wp_close')" in _production_source
 assert "em.label('destructive_close'); em.mov_r64_r64('rcx','rbx'); em.call_iat('DestroyWindow')" in _production_source
-# (K) Entry point begins with the fixed Win64 stack frame used by the main flow.
+# (K) Save As path transaction: selection remains in temp_path; current_path is
+# copied only after WriteFile succeeds and the handle is closed.
+_saveas_src = _production_source[_production_source.index("em.label('cmd_saveas')"):
+                                 _production_source.index("em.label('do_save')")]
+assert "mov_ripmem_imm32(bsyms['save_target_is_temp'],1)" in _saveas_src
+assert "lea_rip('rcx',bsyms['current_path']); em.lea_rip('rdx',bsyms['temp_path']); em.call_iat('lstrcpyW')" not in _saveas_src, \
+    'Save As 禁止在磁盘提交前覆盖 current_path'
+_save_commit_src = _production_source[_production_source.index("em.label('save_create')"):
+                                      _production_source.index("em.label('save_fail_close')")]
+_close_pos = _save_commit_src.rindex("call_iat('CloseHandle')")
+_path_pos = _save_commit_src.index("em.lea_rip('rcx',bsyms['current_path']); em.lea_rip('rdx',bsyms['temp_path']); em.call_iat('lstrcpyW')")
+_saved_pos = _save_commit_src.index("call_label('mark_document_saved')")
+assert _close_pos < _path_pos < _saved_pos, \
+    'Save As 必须按 close handle -> commit path -> mark saved 的顺序提交'
+# (L) Entry point begins with the fixed Win64 stack frame used by the main flow.
 _e0 = em.labels['entry_first_run']
 assert _e0 == 0 and _code.startswith(bytes.fromhex('4881ec88000000')), \
     'entry point must begin with sub rsp,0x88'
 
-# (L) dispatch 终结断言（退出崩溃根因的防回退门禁）：dispatch_status_done
+# (M) dispatch 终结断言（退出崩溃根因的防回退门禁）：dispatch_status_done
 #     块检查 IsWindow 后必须以 JNE msg_loop + 无条件 jmp exit 终结，绝不
 #     允许执行流直落进下一个 label。本断言要永久拦截的错误模式：dispatch
 #     尾部 fall through 进 ret 结尾的子程序（无压栈返回地址的 ret = 野返回
