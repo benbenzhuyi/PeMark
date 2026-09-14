@@ -85,10 +85,13 @@ normal close exit code:                  = 0
   `MoveFileExW(REPLACE_EXISTING | WRITE_THROUGH)`. All tested pre-commit failures
   preserve the old target, old path, dirty revisions and any preexisting staging
   artifact; newly owned staging files are removed.
+- A staging collision now has a dedicated recovery message and cancels the
+  pending destructive transition. The normative ownership, discovery and
+  manual recovery behavior is recorded in `V8_5_2_RECOVERY_POLICY.md`.
 - Candidate size: 77,824 bytes.
-- Emitted text: 27,866 bytes, 800 bytes above V8.5.1.
+- Emitted text: 27,950 bytes, 884 bytes above V8.5.1.
 - Candidate SHA-256:
-  `d8f50c606aa818672bc25e35ac9885d833e4c5d82dbae81a619cafa46275aaea`.
+  `a8bb59d8b801e32c0511d4fdeea8658e9665611a0cdd8c5acc4c700749b2c550`.
 
 ## Remaining before promotion
 
@@ -96,6 +99,6 @@ normal close exit code:                  = 0
   covered through the real controller and disk bytes; Save As picker Cancel and
   commit ordering are covered, while its injected write-failure path belongs to
   the next failure-injection layer.
-- Decide the product recovery policy for staging artifacts left by abrupt
-  process or machine loss.
+- Add startup or Open-time recovery discovery only if later usability evidence
+  justifies directory scanning beyond the current Save-time policy.
 - Independently inspect helper bytes and every revision call site.

@@ -184,6 +184,7 @@ wstr('md_link_post','](https://)')
 wstr('err_title','PeMark')
 wstr('err_open','Could not open or read the selected file.')
 wstr('err_save','Could not save the file.')
+wstr('err_recovery_exists','A PeMark recovery file already exists beside this document (.pemark.tmp). Inspect, rename, or remove it before saving again.')
 wstr('err_large','The file is too large for this build (limit: 4 MiB).')
 wstr('err_decode','The file could not be decoded as UTF-8/ANSI text.')
 wstr('unsaved_prompt','Save changes before continuing?')
@@ -391,7 +392,7 @@ BSS_VSIZE = align(bss_off, 0x1000)
 imports = {
     'KERNEL32.dll': [
         'ExitProcess','CreateFileW','ReadFile','WriteFile','FlushFileBuffers','CloseHandle',
-        'MoveFileExW','DeleteFileW','GetFileSize',
+        'MoveFileExW','DeleteFileW','GetLastError','GetFileSize',
         'MultiByteToWideChar','WideCharToMultiByte','lstrcpyW','lstrlenW','GetModuleHandleW','CompareStringOrdinal','LoadLibraryW','GetProcAddress','MulDiv'
     ],
     'USER32.dll': [
@@ -1097,7 +1098,7 @@ em.mov_word_index2_zero('rcx','r15')
 em.lea_rip('rcx',bsyms['save_stage_path']); em.mov_r32_imm('rdx',0x40000000); em.xor32('r8'); em.xor32('r9'); em.mov_mrsp_imm32(0x20,1); em.mov_mrsp_imm32(0x28,0x80); em.mov_mrsp_imm32(0x30,0,qword=True)
 if WRITE_INJECTION_MODE == 'create_failure': em.call_label('injected_CreateFileW')
 else: em.call_iat('CreateFileW')
-em.cmp_rax_neg1(); em.jcc(0x84,'err_save'); em.mov_r64_r64('r12','rax')
+em.cmp_rax_neg1(); em.jcc(0x84,'save_create_failed'); em.mov_r64_r64('r12','rax')
 # Complete-write loop. WriteFile success may legally report fewer bytes than
 # requested. Advance by io_count until no bytes remain; zero progress or an
 # impossible count above remaining is a hard failure.
@@ -1135,6 +1136,9 @@ if WRITE_INJECTION_MODE == 'close_failure': em.call_label('injected_CloseHandle'
 else: em.call_iat('CloseHandle')
 em.label('save_fail_delete'); em.lea_rip('rcx',bsyms['save_stage_path']); em.call_iat('DeleteFileW')
 em.label('err_save'); em.mov_ripmem_imm32(bsyms['pending_destructive_action'],0); em.mov_ripmem_imm32(bsyms['save_target_is_temp'],0); em.mov_r64_r64('rcx','rbx'); em.lea_rip('rdx',rsyms['err_save']); em.lea_rip('r8',rsyms['err_title']); em.mov_r32_imm('r9',0x10); em.call_iat('MessageBoxW'); em.jmp('msg_loop')
+
+em.label('save_create_failed'); em.call_iat('GetLastError'); em.cmp_r32_imm('rax',80); em.jcc(0x84,'err_recovery_exists'); em.cmp_r32_imm('rax',183); em.jcc(0x85,'err_save')
+em.label('err_recovery_exists'); em.mov_ripmem_imm32(bsyms['pending_destructive_action'],0); em.mov_ripmem_imm32(bsyms['save_target_is_temp'],0); em.mov_r64_r64('rcx','rbx'); em.lea_rip('rdx',rsyms['err_recovery_exists']); em.lea_rip('r8',rsyms['err_title']); em.mov_r32_imm('r9',0x30); em.call_iat('MessageBoxW'); em.jmp('msg_loop')
 
 # All destructive document transitions enter here. pending action: 1 New,
 # 2 Open, 3 Close. Dirty Save retains the action until a successful save commit;
@@ -3290,6 +3294,12 @@ assert ('injected_FlushFileBuffers' in em.labels) == (WRITE_INJECTION_MODE == 'f
 assert ('injected_MoveFileExW' in em.labels) == (WRITE_INJECTION_MODE == 'replace_failure')
 assert ('injected_CreateFileW' in em.labels) == (WRITE_INJECTION_MODE == 'create_failure')
 assert ('injected_CloseHandle' in em.labels) == (WRITE_INJECTION_MODE == 'close_failure')
+_recovery_src = _production_source[_production_source.index("em.label('save_create_failed')"):
+                                   _production_source.index("em.label('destructive_request')")]
+assert "em.label('save_create_failed'); em.call_iat('GetLastError')" in _recovery_src
+assert "em.cmp_r32_imm('rax',80)" in _recovery_src and "em.cmp_r32_imm('rax',183)" in _recovery_src
+assert "lea_rip('rdx',rsyms['err_recovery_exists'])" in _recovery_src, \
+    'staging collision 必须保留恢复文件并显示专用可行动提示'
 # (M) Entry point begins with the fixed Win64 stack frame used by the main flow.
 _e0 = em.labels['entry_first_run']
 assert _e0 == 0 and _code.startswith(bytes.fromhex('4881ec88000000')), \

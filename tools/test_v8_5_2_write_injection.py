@@ -82,7 +82,7 @@ def staging_collision_preserved(ns, exe, target):
         app.write_path(target)
         before = app.set_text_dirty("collision must not truncate either file\r\n")
         app.post_close(); app.click_dialog("PeMark", 6)
-        app.click_dialog("PeMark", 2, body_contains="Could not save")
+        app.click_dialog("PeMark", 2, body_contains="recovery file already exists")
         assert app.proc.poll() is None
         assert app.revisions() == before
         assert target.read_bytes() == b"ORIGINAL-TARGET"

@@ -53,6 +53,9 @@
 - Added staging-create and close-status fault injection. A failed close is
   retried on the cleanup path before deleting the staging file, so the tested
   failure leaves no live handle or orphaned artifact.
+- Defined the V8.5.2 recovery policy for interrupted-save artifacts. A
+  preexisting `.pemark.tmp` is discovered through `CREATE_NEW`, preserved, and
+  reported with an actionable message instead of the generic save error.
 - Preserved all V8.5.1 machine-code and Windows GUI regression results.
 - Kept the V8.5.1 current/release generator and binary unchanged.
 
