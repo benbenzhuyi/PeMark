@@ -74,6 +74,8 @@ migration follow as separate bounded changes.
 
 - Open defers view, path, encoding and revision changes until one success point.
 - Empty files bypass a zero-length `ReadFile` call.
+- Nonempty files use a checked complete-read loop; short reads advance, while
+  API failure, zero progress and counts above the remainder fail transactionally.
 - UTF-8 uses `MB_ERR_INVALID_CHARS`; ACP fallback has been removed.
 - UTF-8 BOM and UTF-16LE BOM remain explicit, and odd UTF-16 byte counts or
   decoded embedded NULs fail transactionally.

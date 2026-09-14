@@ -1,6 +1,6 @@
 # V8.5.2 Failure Injection Design
 
-Status: transactional save API injection implemented; read/allocation modes remain design gates
+Status: transactional save and ReadFile injection implemented; allocation modes remain design gates
 
 ## Principle
 
@@ -64,6 +64,14 @@ preserved and causes a safe failure instead of being truncated.
 - growth commit failure;
 - scratch allocation failure after active model exists;
 - parser-derived arena failure independently for render/map/style/outline.
+
+## Implemented ReadFile slice
+
+The noninteractive Open test build can cap each successful read to seven bytes,
+return successful zero progress, fail the first call, or fail after one partial
+read. Each failure keeps the prior model, path, revisions and view mode intact;
+short reads continue until the size snapshot is satisfied. These hooks and the
+picker-bypass command exist only in visibly marked binaries under `bin/test/`.
 
 ## Assertions after every injected point
 

@@ -8,6 +8,15 @@ try:
     OPEN_TEST_BUILD
 except NameError:
     OPEN_TEST_BUILD = False
+try:
+    OPEN_READ_INJECTION_MODE
+except NameError:
+    OPEN_READ_INJECTION_MODE = 'release'
+_OPEN_READ_INJECTION_MODES = {'release', 'short_then_complete', 'zero_success',
+                              'fail_first', 'late_failure'}
+if OPEN_READ_INJECTION_MODE not in _OPEN_READ_INJECTION_MODES:
+    raise ValueError('unknown OPEN_READ_INJECTION_MODE: %r' % OPEN_READ_INJECTION_MODE)
+OPEN_TEST_BUILD = OPEN_TEST_BUILD or OPEN_READ_INJECTION_MODE != 'release'
 _WRITE_INJECTION_MODES = {'release', 'short_then_complete', 'zero_success',
                           'fail_first', 'late_failure', 'flush_failure',
                           'replace_failure', 'create_failure', 'close_failure'}
@@ -53,9 +62,15 @@ def astr(name,s): return add_bytes(name, s.encode('ascii')+b'\0', 1)
 wstr('class_static','STATIC')
 wstr('class_edit','EDIT')
 wstr('class_main','DirectPE_Notepad_Main')
-wstr('title', ('PeMark x64 V8.5.2 OPEN-TRANSACTION TEST' if OPEN_TEST_BUILD
-               else 'PeMark x64 V8.5.2 WRITE-INJECTION [%s]' % WRITE_INJECTION_MODE)
-     if INJECTED_BUILD else 'PeMark x64 V8.5.2 Candidate — Direct-PE Markdown Editor')
+if OPEN_READ_INJECTION_MODE != 'release':
+    _window_title = 'PeMark x64 V8.5.2 OPEN-READ TEST [%s]' % OPEN_READ_INJECTION_MODE
+elif OPEN_TEST_BUILD:
+    _window_title = 'PeMark x64 V8.5.2 OPEN-TRANSACTION TEST'
+elif WRITE_INJECTION_MODE != 'release':
+    _window_title = 'PeMark x64 V8.5.2 WRITE-INJECTION [%s]' % WRITE_INJECTION_MODE
+else:
+    _window_title = 'PeMark x64 V8.5.2 Candidate — Direct-PE Markdown Editor'
+wstr('title', _window_title)
 wstr('empty','')
 wstr('menu_file','&File')
 wstr('menu_edit','&Edit')
@@ -393,6 +408,8 @@ bss_alloc('inject_create_call_count', 4, 4)
 bss_alloc('inject_close_call_count', 4, 4)
 if OPEN_TEST_BUILD:
     bss_alloc('open_decode_error_count', 4, 4)
+    bss_alloc('open_read_error_count', 4, 4)
+    bss_alloc('inject_read_call_count', 4, 4)
 BSS_VSIZE = align(bss_off, 0x1000)
 
 # ---------------- IDATA ----------------
@@ -1020,10 +1037,17 @@ em.mov_r64_r64('rcx','r12'); em.lea_rip('rdx',bsyms['size_high']); em.call_iat('
 em.lea_rip('rax',bsyms['size_high']); em.mov_eax_ptr('rax'); em.test32('rax'); em.jcc(0x85,'too_large_close')
 em.cmp_r32_imm('r13',MAX_FILE_BYTES); em.jcc(0x87,'too_large_close')
 em.test32('r13'); em.jcc(0x85,'read_nonempty'); em.mov_r64_r64('rcx','r12'); em.call_iat('CloseHandle'); em.jmp('decode_empty')
-# ReadFile
+# Complete-read loop. The size snapshot in r13 remains authoritative; r14/r15
+# own the next buffer position and remaining byte count.
 em.label('read_nonempty')
-em.mov_r64_r64('rcx','r12'); em.lea_rip('rdx',bsyms['bytebuf']); em.mov_r32_r32('r8','r13'); em.lea_rip('r9',bsyms['io_count']); em.mov_mrsp_imm32(0x20,0,qword=True); em.call_iat('ReadFile'); em.test32('rax'); em.jcc(0x84,'read_fail_close')
-em.mov_r32_ripmem('r13',bsyms['io_count'])
+em.lea_rip('r14',bsyms['bytebuf']); em.mov_r32_r32('r15','r13')
+em.label('open_read_loop'); em.test32('r15'); em.jcc(0x84,'open_read_complete')
+em.mov_r64_r64('rcx','r12'); em.mov_r64_r64('rdx','r14'); em.mov_r32_r32('r8','r15'); em.lea_rip('r9',bsyms['io_count']); em.mov_mrsp_imm32(0x20,0,qword=True)
+if OPEN_READ_INJECTION_MODE != 'release': em.call_label('injected_ReadFile')
+else: em.call_iat('ReadFile')
+em.test32('rax'); em.jcc(0x84,'read_fail_close'); em.mov_r32_ripmem('rax',bsyms['io_count']); em.test32('rax'); em.jcc(0x84,'read_fail_close'); em.cmp_r32_r32('rax','r15'); em.jcc(0x87,'read_fail_close')
+em.add_r64_r64('r14','rax'); em.sub_r32_r32('r15','rax'); em.jmp('open_read_loop')
+em.label('open_read_complete')
 em.mov_r64_r64('rcx','r12'); em.call_iat('CloseHandle')
 # NUL terminate raw buffer at actual byte count returned by ReadFile
 em.lea_rip('rdx',bsyms['bytebuf']); em.mov_r32_r32('rax','r13'); em.add_r64_r64('rdx','rax'); em.mov_word_ptr_reg_zero('rdx')
@@ -1070,7 +1094,11 @@ em.mov_r64_r64('rcx','r12'); em.call_iat('CloseHandle');
 em.mov_r64_r64('rcx','rbx'); em.lea_rip('rdx',rsyms['err_large']); em.lea_rip('r8',rsyms['err_title']); em.mov_r32_imm('r9',0x10); em.call_iat('MessageBoxW'); em.jmp('msg_loop')
 
 em.label('read_fail_close')
-em.mov_r64_r64('rcx','r12'); em.call_iat('CloseHandle'); em.jmp('err_open')
+em.mov_r64_r64('rcx','r12'); em.call_iat('CloseHandle')
+if OPEN_TEST_BUILD:
+    em.mov_r32_ripmem('rax',bsyms['open_read_error_count']); em.add_r32_imm8('rax',1); em.mov_ripmem_r32(bsyms['open_read_error_count'],'rax'); em.jmp('msg_loop')
+else:
+    em.jmp('err_open')
 
 em.label('err_open')
 em.mov_r64_r64('rcx','rbx'); em.lea_rip('rdx',rsyms['err_open']); em.lea_rip('r8',rsyms['err_title']); em.mov_r32_imm('r9',0x10); em.call_iat('MessageBoxW'); em.jmp('msg_loop')
@@ -1935,6 +1963,19 @@ em.label('validate_wide_no_nul'); em.xor32('r8')
 em.label('validate_wide_loop'); em.cmp_r32_r32('r8','rdx'); em.jcc(0x83,'validate_wide_ok'); em.movzx_r32_word_index2('rax','rcx','r8'); em.test32('rax'); em.jcc(0x84,'validate_wide_bad'); em.add_r32_imm8('r8',1); em.jmp('validate_wide_loop')
 em.label('validate_wide_ok'); em.mov_r32_imm('rax',1); em.emit(0xC3)
 em.label('validate_wide_bad'); em.xor32('rax'); em.emit(0xC3)
+
+if OPEN_READ_INJECTION_MODE != 'release':
+    em.label('injected_ReadFile')
+    em.mov_r32_ripmem('rax',bsyms['inject_read_call_count']); em.add_r32_imm8('rax',1); em.mov_ripmem_r32(bsyms['inject_read_call_count'],'rax')
+    if OPEN_READ_INJECTION_MODE == 'zero_success':
+        em.xor32('rax'); em.mov_ptr_r32('r9','rax'); em.add_r32_imm8('rax',1); em.emit(0xC3)
+    elif OPEN_READ_INJECTION_MODE == 'fail_first':
+        em.xor32('rax'); em.mov_ptr_r32('r9','rax'); em.emit(0xC3)
+    elif OPEN_READ_INJECTION_MODE == 'late_failure':
+        em.cmp_r32_imm('rax',1); em.jcc(0x84,'injected_read_short'); em.xor32('rax'); em.mov_ptr_r32('r9','rax'); em.emit(0xC3)
+    if OPEN_READ_INJECTION_MODE in {'short_then_complete', 'late_failure'}:
+        em.label('injected_read_short'); em.cmp_r32_imm('r8',7); em.jcc(0x86,'injected_read_real'); em.mov_r32_imm('r8',7)
+        em.label('injected_read_real'); em.emit(0x48,0x83,0xEC,0x28); em.mov_mrsp_imm32(0x20,0,qword=True); em.call_iat('ReadFile'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
 
 if WRITE_CALL_INJECTED:
     em.label('injected_WriteFile')
@@ -3328,6 +3369,12 @@ assert _open_src.count("em.label('open_commit')") == 1 and \
 assert "call_label('validate_wide_no_nul')" in _open_src
 assert ((1901, 'cmd_open_selected') in _command_routes) == OPEN_TEST_BUILD, \
     'Open picker bypass command must exist only in the explicit test build'
+_read_src = _open_src[_open_src.index("em.label('open_read_loop')"):
+                      _open_src.index("em.label('open_read_complete')")]
+assert "mov_r32_ripmem('rax',bsyms['io_count']); em.test32('rax'); em.jcc(0x84,'read_fail_close')" in _read_src
+assert "em.cmp_r32_r32('rax','r15'); em.jcc(0x87,'read_fail_close')" in _read_src
+assert "em.add_r64_r64('r14','rax'); em.sub_r32_r32('r15','rax'); em.jmp('open_read_loop')" in _read_src
+assert ('injected_ReadFile' in em.labels) == (OPEN_READ_INJECTION_MODE != 'release')
 # (M) Entry point begins with the fixed Win64 stack frame used by the main flow.
 _e0 = em.labels['entry_first_run']
 assert _e0 == 0 and _code.startswith(bytes.fromhex('4881ec88000000')), \
@@ -3424,7 +3471,9 @@ hdr[p:p+40] = shdr; p += 40
 
 _build_channel = os.path.basename(os.path.dirname(os.path.abspath(__file__)))
 _output_channel = 'test' if INJECTED_BUILD else _build_channel
-_output_name = ('pemark_x64_v8_5_2_open_transaction_test.exe' if OPEN_TEST_BUILD
+_output_name = (('pemark_x64_v8_5_2_open_read_%s.exe' % OPEN_READ_INJECTION_MODE)
+                if OPEN_READ_INJECTION_MODE != 'release' else
+                'pemark_x64_v8_5_2_open_transaction_test.exe' if OPEN_TEST_BUILD
                 else ('pemark_x64_v8_5_2_write_%s.exe' % WRITE_INJECTION_MODE
                       if INJECTED_BUILD else 'pemark_x64_v8_5_2_candidate.exe'))
 out = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'bin',

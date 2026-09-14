@@ -92,15 +92,18 @@ normal close exit code:                  = 0
   Strict UTF-8, UTF-8 BOM and UTF-16LE BOM pass through a noninteractive Windows
   test build; malformed UTF-8, embedded NUL and odd-byte UTF-16 retain the old
   model, path, revisions and Preview mode.
+- The Open path now loops until the file-size snapshot is completely read.
+  Seven-byte short reads complete successfully; zero progress, first-call
+  failure and partial-then-failure preserve the full prior transaction.
 - Candidate size: 77,824 bytes.
-- Emitted text: 27,977 bytes, 911 bytes above V8.5.1.
+- Emitted text: 28,019 bytes, 953 bytes above V8.5.1.
 - Candidate SHA-256:
-  `93e88de14d2194b2c0d63f30136718ac1241e33717cdb65e99f84c1f91109af6`.
+  `775df8a501b267eb7d03cd6648a002ab9e698a5f05bfebed556ec7e3f64e25a0`.
 
 ## Remaining before promotion
 
-- Replace the one-shot `ReadFile` with a checked complete-read loop and add
-  partial/zero/failure injection before calling Open transaction complete.
+- Add encoding/EOL metadata preservation so supported inputs have an explicit
+  byte-level round-trip policy instead of always saving as BOM-less UTF-8 CRLF.
 - Add startup or Open-time recovery discovery only if later usability evidence
   justifies directory scanning beyond the current Save-time policy.
 - Independently inspect helper bytes and every revision call site.

@@ -62,6 +62,9 @@
 - Consolidated Open success into one commit point. Failed decoding leaves the
   prior model, path, revisions and view mode unchanged. Added a noninteractive,
   build-time-only Open test command isolated to `bin/test/`.
+- Replaced Open's one-shot read with a complete-read loop. Test-only wrappers
+  verify repeated seven-byte reads, zero-progress rejection, first-call failure
+  and partial-then-failure without changing the active document transaction.
 - Preserved all V8.5.1 machine-code and Windows GUI regression results.
 - Kept the V8.5.1 current/release generator and binary unchanged.
 
