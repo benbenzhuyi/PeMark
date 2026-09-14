@@ -15,9 +15,14 @@ Scope: first bounded production change; candidate channel only
 - Added the read-only `is_document_dirty` leaf helper. It derives dirty state
   exclusively from the full 64-bit revision equality and normalizes its return
   value to zero or one; no independent dirty flag exists.
+- Routed New, Open, menu Exit and external `WM_CLOSE` through one destructive
+  transition controller. Dirty transitions offer Save/Discard/Cancel; a Save
+  continues only after the existing save path reaches its commit point.
+- Save failure and file-dialog cancellation clear the pending transition and
+  keep the current document alive.
 
-No close prompt, title marker, encoding change, save-byte change, allocator
-change, import change or PE section change is included.
+No title marker, encoding change, save-byte algorithm change, allocator change,
+import change or PE section change is included.
 
 ## Ownership gate
 
@@ -53,14 +58,18 @@ normal close exit code:                  = 0
 - The full revision sequence passed 10/10 consecutive Windows runs.
 - Clean/dirty helper results were checked at every transition; a forced
   `suppress_edit_change=1` notification left both revisions unchanged.
+- The destructive matrix passed for clean Close; dirty Close
+  Cancel/Discard/Save; dirty New Cancel/Discard/Save; dirty Open decision
+  Cancel and picker Cancel; and failed Save during Close. It checks text,
+  revisions, pending action, exit code and successful-save bytes.
 - Candidate size: 77,824 bytes.
 - Emitted text: 27,194 bytes, 128 bytes above V8.5.1.
 - Candidate SHA-256:
-  `2254fcc31548f207b4e58e6ec91b9e7b2eec97aa67398bcd9442f575ac843a81`.
+  `19199bd3b352f9d4f003c3264b5084dd009557bd218feb7e8fc4d6d8013d34c5`.
 
 ## Remaining before promotion
 
 - Add end-to-end Open and Save dialog automation when the document-safety work
-  starts; the candidate currently verifies their emitted commit helpers without
-  adding production test commands.
+  reaches successful Open fixtures and Save As path replacement. Existing-path
+  Save is now covered through the real controller and disk bytes.
 - Independently inspect helper bytes and every revision call site.

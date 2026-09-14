@@ -172,7 +172,8 @@ wstr('err_open','Could not open or read the selected file.')
 wstr('err_save','Could not save the file.')
 wstr('err_large','The file is too large for this build (limit: 4 MiB).')
 wstr('err_decode','The file could not be decoded as UTF-8/ANSI text.')
-wstr('about','PeMark x64 V8.5.2 Candidate\r\nDirect-PE Markdown Editor\r\n\r\nNative PE32+ and x86-64 machine code generated directly, without a C/C++ compiler, assembler, or linker.\r\n\r\nThis candidate establishes document_revision and saved_revision ownership while preserving V8.5.1 file bytes and visible behavior.')
+wstr('unsaved_prompt','Save changes before continuing?')
+wstr('about','PeMark x64 V8.5.2 Candidate\r\nDirect-PE Markdown Editor\r\n\r\nNative PE32+ and x86-64 machine code generated directly, without a C/C++ compiler, assembler, or linker.\r\n\r\nThis candidate establishes revision-based dirty state and shared unsaved-document protection.')
 
 # ---------------- BSS layout ----------------
 bss_off = 0
@@ -362,6 +363,7 @@ bss_alloc('bytebuf', BYTE_CAP+16, 16)
 # historical symbol address while the candidate state layout is evaluated.
 bss_alloc('document_revision', 8, 8)
 bss_alloc('saved_revision', 8, 8)
+bss_alloc('pending_destructive_action', 4, 4)  # 0 none, 1 New, 2 Open, 3 Close
 BSS_VSIZE = align(bss_off, 0x1000)
 
 # ---------------- IDATA ----------------
@@ -812,6 +814,7 @@ em.cmp_r32_imm('rax',0x8002); em.jcc(0x84,'resize_event') # legacy/private resiz
 em.cmp_r32_imm('rax',0x8003); em.jcc(0x84,'findreplace_event')
 em.cmp_r32_imm('rax',0x8004); em.jcc(0x84,'document_changed_event')
 em.cmp_r32_imm('rax',0x8005); em.jcc(0x84,'outline_select_event')
+em.cmp_r32_imm('rax',0x8006); em.jcc(0x84,'request_close')
 em.cmp_r32_imm('rax',0x0113); em.jcc(0x84,'timer_event')  # WM_TIMER: debounced Preview theme maintenance
 # Splitter hover/drag is handled in the thread pump because mouse messages are
 # delivered to child controls, not the top-level WndProc.
@@ -953,7 +956,8 @@ for cid,label in [(1001,'cmd_new'),(1002,'cmd_open'),(1003,'cmd_save'),(1004,'cm
     em.cmp_r32_imm('rax',cid); em.jcc(0x84,label)
 em.jmp('dispatch')
 
-em.label('cmd_new')
+em.label('cmd_new'); em.mov_ripmem_imm32(bsyms['pending_destructive_action'],1); em.jmp('destructive_request')
+em.label('cmd_new_commit')
 em.xor32('r8'); em.call_label('set_view_mode')
 em.lea_rip('rax',bsyms['document_model']); em.mov_word_ptr_reg_zero('rax'); em.mov_ripmem_imm32(bsyms['document_len'],0); em.call_label('load_model_into_editor')
 em.lea_rip('rax',bsyms['current_path']); em.mov_word_ptr_reg_zero('rax'); em.mov_ripmem_imm32(bsyms['encoding_state'],0); em.call_label('commit_clean_document'); em.call_label('update_preview'); em.call_label('update_status'); em.jmp('msg_loop')
@@ -967,10 +971,11 @@ def emit_ofn(title_sym, flags):
     em.lea_rip('rax',rsyms[title_sym]); em.mov_mr12_reg64(88,'rax'); em.mov_mr12_imm32(96,flags)
     em.lea_rip('rax',rsyms['defext']); em.mov_mr12_reg64(104,'rax')
 
-em.label('cmd_open')
+em.label('cmd_open'); em.mov_ripmem_imm32(bsyms['pending_destructive_action'],2); em.jmp('destructive_request')
+em.label('cmd_open_dialog')
 em.lea_rip('rax',bsyms['temp_path']); em.mov_word_ptr_reg_zero('rax')
 em.emit(*[]) ; emit_ofn('open_title',0x00081804)
-em.mov_r64_r64('rcx','r12'); em.call_iat('GetOpenFileNameW'); em.test32('rax'); em.jcc(0x84,'msg_loop')
+em.mov_r64_r64('rcx','r12'); em.call_iat('GetOpenFileNameW'); em.test32('rax'); em.jcc(0x84,'destructive_cancel')
 # A newly opened document always starts in Source mode. Reconcile logical state,
 # actual window visibility, menu state, and any pending Preview timer BEFORE load.
 em.mov_r64_ripmem('rcx',bsyms['hwnd_main']); em.mov_r32_imm('rdx',0x4D); em.call_iat('KillTimer'); em.mov_ripmem_imm32(bsyms['preview_theme_dirty'],0)
@@ -1043,7 +1048,7 @@ em.lea_rip('rax',bsyms['current_path']); em.cmp_word_ptr_reg_zero('rax'); em.jcc
 em.label('cmd_saveas')
 em.lea_rip('rcx',bsyms['temp_path']); em.lea_rip('rdx',bsyms['current_path']); em.call_iat('lstrcpyW')
 em.emit(*[]); emit_ofn('save_title',0x00080802)
-em.mov_r64_r64('rcx','r12'); em.call_iat('GetSaveFileNameW'); em.test32('rax'); em.jcc(0x84,'msg_loop')
+em.mov_r64_r64('rcx','r12'); em.call_iat('GetSaveFileNameW'); em.test32('rax'); em.jcc(0x84,'destructive_cancel')
 em.lea_rip('rcx',bsyms['current_path']); em.lea_rip('rdx',bsyms['temp_path']); em.call_iat('lstrcpyW')
 
 em.label('do_save')
@@ -1058,10 +1063,28 @@ em.label('save_create')
 em.lea_rip('rcx',bsyms['current_path']); em.mov_r32_imm('rdx',0x40000000); em.xor32('r8'); em.xor32('r9'); em.mov_mrsp_imm32(0x20,2); em.mov_mrsp_imm32(0x28,0x80); em.mov_mrsp_imm32(0x30,0,qword=True); em.call_iat('CreateFileW'); em.cmp_rax_neg1(); em.jcc(0x84,'err_save'); em.mov_r64_r64('r12','rax')
 # WriteFile
 em.mov_r64_r64('rcx','r12'); em.lea_rip('rdx',bsyms['bytebuf']); em.mov_r32_r32('r8','r13'); em.lea_rip('r9',bsyms['io_count']); em.mov_mrsp_imm32(0x20,0,qword=True); em.call_iat('WriteFile'); em.test32('rax'); em.jcc(0x84,'save_fail_close')
-em.mov_r64_r64('rcx','r12'); em.call_iat('CloseHandle'); em.mov_ripmem_imm32(bsyms['encoding_state'],0); em.call_label('mark_document_saved'); em.call_label('update_preview'); em.call_label('update_status'); em.jmp('msg_loop')
+em.mov_r64_r64('rcx','r12'); em.call_iat('CloseHandle'); em.mov_ripmem_imm32(bsyms['encoding_state'],0); em.call_label('mark_document_saved'); em.call_label('update_preview'); em.call_label('update_status'); em.jmp('destructive_continue')
 
 em.label('save_fail_close'); em.mov_r64_r64('rcx','r12'); em.call_iat('CloseHandle')
-em.label('err_save'); em.mov_r64_r64('rcx','rbx'); em.lea_rip('rdx',rsyms['err_save']); em.lea_rip('r8',rsyms['err_title']); em.mov_r32_imm('r9',0x10); em.call_iat('MessageBoxW'); em.jmp('msg_loop')
+em.label('err_save'); em.mov_ripmem_imm32(bsyms['pending_destructive_action'],0); em.mov_r64_r64('rcx','rbx'); em.lea_rip('rdx',rsyms['err_save']); em.lea_rip('r8',rsyms['err_title']); em.mov_r32_imm('r9',0x10); em.call_iat('MessageBoxW'); em.jmp('msg_loop')
+
+# All destructive document transitions enter here. pending action: 1 New,
+# 2 Open, 3 Close. Dirty Save retains the action until a successful save commit;
+# Discard continues immediately; Cancel and save failure clear it.
+em.label('request_close'); em.mov_ripmem_imm32(bsyms['pending_destructive_action'],3); em.jmp('destructive_request')
+em.label('destructive_request')
+em.call_label('is_document_dirty'); em.test32('rax'); em.jcc(0x84,'destructive_continue')
+em.mov_r64_r64('rcx','rbx'); em.lea_rip('rdx',rsyms['unsaved_prompt']); em.lea_rip('r8',rsyms['err_title']); em.mov_r32_imm('r9',0x33); em.call_iat('MessageBoxW')
+em.cmp_r32_imm('rax',6); em.jcc(0x84,'cmd_save')       # IDYES: save then continue
+em.cmp_r32_imm('rax',7); em.jcc(0x84,'destructive_continue') # IDNO: discard
+em.label('destructive_cancel'); em.mov_ripmem_imm32(bsyms['pending_destructive_action'],0); em.jmp('msg_loop')
+em.label('destructive_continue')
+em.mov_r32_ripmem('r10',bsyms['pending_destructive_action']); em.mov_ripmem_imm32(bsyms['pending_destructive_action'],0)
+em.cmp_r32_imm('r10',1); em.jcc(0x84,'cmd_new_commit')
+em.cmp_r32_imm('r10',2); em.jcc(0x84,'cmd_open_dialog')
+em.cmp_r32_imm('r10',3); em.jcc(0x84,'destructive_close')
+em.jmp('msg_loop')
+em.label('destructive_close'); em.mov_r64_r64('rcx','rbx'); em.call_iat('DestroyWindow'); em.jmp('msg_loop')
 
 # Edit commands
 for label,msg in [('cmd_undo',0x00C7),('cmd_cut',0x0300),('cmd_paste',0x0302)]:
@@ -1346,7 +1369,7 @@ em.label('theme_fast_source'); em.call_label('apply_theme'); em.jmp('msg_loop')
 
 em.label('cmd_about'); em.mov_r64_r64('rcx','rbx'); em.lea_rip('rdx',rsyms['about']); em.lea_rip('r8',rsyms['err_title']); em.mov_r32_imm('r9',0x40); em.call_iat('MessageBoxW'); em.jmp('msg_loop')
 
-em.label('cmd_exit'); em.mov_r64_r64('rcx','rbx'); em.mov_r32_imm('rdx',0x0010); em.xor32('r8'); em.xor32('r9'); em.call_iat('PostMessageW'); em.jmp('msg_loop')
+em.label('cmd_exit'); em.jmp('request_close')
 
 em.label('dispatch')
 # Let the modeless common Find/Replace dialog consume Tab/Enter/etc. first.
@@ -2533,6 +2556,7 @@ em.emit(0x48,0x83,0xEC,0x38)
 em.mov_r32_ripmem('r10',bsyms['findmsg_id']); em.cmp_r32_r32('rdx','r10'); em.jcc(0x84,'wp_findreplace')
 em.cmp_r32_imm('rdx',0x0111); em.jcc(0x84,'wp_command')      # WM_COMMAND
 em.cmp_r32_imm('rdx',0x0005); em.jcc(0x84,'wp_size')         # WM_SIZE
+em.cmp_r32_imm('rdx',0x0010); em.jcc(0x84,'wp_close')        # WM_CLOSE -> shared unsaved controller
 em.cmp_r32_imm('rdx',0x0002); em.jcc(0x84,'wp_destroy')      # WM_DESTROY
 em.cmp_r32_imm('rdx',0x0006); em.jcc(0x84,'wp_activation')    # WM_ACTIVATE
 em.cmp_r32_imm('rdx',0x0085); em.jcc(0x84,'wp_ncpaint')       # WM_NCPAINT
@@ -2546,6 +2570,10 @@ em.cmp_r32_imm('rdx',0x0133); em.jcc(0x84,'wp_ctlcolor_edit') # WM_CTLCOLOREDIT
 em.cmp_r32_imm('rdx',0x0134); em.jcc(0x84,'wp_ctlcolor_list') # WM_CTLCOLORLISTBOX
 em.cmp_r32_imm('rdx',0x0138); em.jcc(0x84,'wp_ctlcolor_static') # WM_CTLCOLORSTATIC (corner cover)
 em.label('wp_default'); em.call_iat('DefWindowProcW'); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
+
+em.label('wp_close')
+em.mov_r32_imm('rdx',0x8006); em.xor32('r8'); em.xor32('r9'); em.call_iat('PostMessageW')
+em.xor32('rax'); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
 
 em.label('wp_vscroll')
 # Handle only our independent Outline scrollbar; other controls keep default behavior.
@@ -3111,12 +3139,22 @@ assert _dirty_code.count(b'\xC3') == 2 and bytes.fromhex('4c39d0') in _dirty_cod
     'is_document_dirty 必须比较完整 64-bit revision 并保留 clean/dirty 两个叶出口'
 assert bytes.fromhex('488905') not in _dirty_code and bytes.fromhex('4c8905') not in _dirty_code, \
     'is_document_dirty 必须是只读推导，禁止写入 revision state'
-# (J) Entry point begins with the fixed Win64 stack frame used by the main flow.
+# (J) New/Open/Close must enter one destructive controller. WM_CLOSE is consumed
+# by WndProc and posted to the main loop; only the controller commits Close.
+assert _call_counts.get('is_document_dirty', 0) == 1, \
+    f"dirty 判定必须只由 destructive controller 调用一次，实际 {_call_counts.get('is_document_dirty', 0)}"
+_production_source = '\n'.join(_scan_lines)
+assert "em.label('cmd_new'); em.mov_ripmem_imm32(bsyms['pending_destructive_action'],1); em.jmp('destructive_request')" in _production_source
+assert "em.label('cmd_open'); em.mov_ripmem_imm32(bsyms['pending_destructive_action'],2); em.jmp('destructive_request')" in _production_source
+assert "em.label('cmd_exit'); em.jmp('request_close')" in _production_source
+assert "em.cmp_r32_imm('rdx',0x0010); em.jcc(0x84,'wp_close')" in _production_source
+assert "em.label('destructive_close'); em.mov_r64_r64('rcx','rbx'); em.call_iat('DestroyWindow')" in _production_source
+# (K) Entry point begins with the fixed Win64 stack frame used by the main flow.
 _e0 = em.labels['entry_first_run']
 assert _e0 == 0 and _code.startswith(bytes.fromhex('4881ec88000000')), \
     'entry point must begin with sub rsp,0x88'
 
-# (K) dispatch 终结断言（退出崩溃根因的防回退门禁）：dispatch_status_done
+# (L) dispatch 终结断言（退出崩溃根因的防回退门禁）：dispatch_status_done
 #     块检查 IsWindow 后必须以 JNE msg_loop + 无条件 jmp exit 终结，绝不
 #     允许执行流直落进下一个 label。本断言要永久拦截的错误模式：dispatch
 #     尾部 fall through 进 ret 结尾的子程序（无压栈返回地址的 ret = 野返回

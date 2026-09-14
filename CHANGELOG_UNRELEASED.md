@@ -23,6 +23,13 @@
   derivation point, with normalized clean/dirty results and build assertions.
 - Verified that an internally suppressed `EN_CHANGE` leaves revisions and dirty
   state unchanged; user notifications still advance the document revision.
+- Routed New, Open, menu Exit and external window close through one pending
+  destructive-action controller with Save/Discard/Cancel behavior.
+- Made Save failure and dialog cancellation abort the pending destructive
+  transition while preserving the dirty document.
+- Added a Windows decision-matrix test covering clean close, Cancel/Discard/Save
+  for dirty Close and New, Open cancellation, successful saved bytes, and failed
+  Save preservation.
 - Preserved all V8.5.1 machine-code and Windows GUI regression results.
 - Kept the V8.5.1 current/release generator and binary unchanged.
 

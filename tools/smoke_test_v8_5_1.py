@@ -35,6 +35,7 @@ WM_CLOSE = 0x0010
 WM_SETTEXT = 0x000C
 EN_CHANGE = 0x0300
 WM_GETTEXTLENGTH = 0x000E
+BM_CLICK = 0x00F5
 LB_GETCOUNT = 0x018B
 LB_SETCURSEL = 0x0186
 LBN_SELCHANGE = 1
@@ -60,6 +61,32 @@ def find_main(timeout_ms=8000):
             return h
         time.sleep(0.1)
     return 0
+
+def discard_unsaved_prompt(hwnd, timeout_ms=1500):
+    """V8.5.2+ may protect a dirty close. Click IDNO (Discard) when that
+    owner-modal prompt appears; older baselines close without a prompt."""
+    wanted_pid = wt.DWORD()
+    u32.GetWindowThreadProcessId(hwnd, ctypes.byref(wanted_pid))
+    deadline = time.time() + timeout_ms / 1000
+    while time.time() < deadline:
+        matches = []
+        @ctypes.WINFUNCTYPE(wt.BOOL, wt.HWND, wt.LPARAM)
+        def cb(h, _):
+            pid = wt.DWORD()
+            u32.GetWindowThreadProcessId(h, ctypes.byref(pid))
+            cls = ctypes.create_unicode_buffer(32)
+            u32.GetClassNameW(h, cls, 32)
+            if pid.value == wanted_pid.value and cls.value == '#32770':
+                matches.append(h)
+            return True
+        u32.EnumWindows(cb, 0)
+        if matches:
+            button = u32.GetDlgItem(matches[0], 7)  # IDNO = discard
+            if button:
+                u32.SendMessageW(button, BM_CLICK, 0, 0)
+                return True
+        time.sleep(.05)
+    return False
 
 def child_windows(hwnd):
     """返回 [(hwnd, 类名, 是否可见)]。可见性查 GWL_STYLE(-16) 的
@@ -187,6 +214,7 @@ def main():
 
     # --- 7. 干净退出 ---
     u32.PostMessageW(hwnd, WM_CLOSE, 0, 0)
+    discard_unsaved_prompt(hwnd)
     try:
         rc = proc.wait(timeout=5)
         check('WM_CLOSE 干净退出（退出码 0）', rc == 0, f'exitcode={rc}')

@@ -40,3 +40,6 @@ jobs:
       - name: Exercise V8.5.2 revision ownership when present
         if: ${{ hashFiles('tools/test_v8_5_2_revision.py') != '' }}
         run: python tools/test_v8_5_2_revision.py
+      - name: Exercise V8.5.2 destructive transition matrix when present
+        if: ${{ hashFiles('tools/test_v8_5_2_destructive.py') != '' }}
+        run: python tools/test_v8_5_2_destructive.py
