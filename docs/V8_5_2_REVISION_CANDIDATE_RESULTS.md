@@ -74,6 +74,10 @@ normal close exit code:                  = 0
 - A 512 KiB document saved through the real controller matched the expected
   UTF-8 bytes. Build assertions require the `WriteFile` back edge and both
   zero-progress and excessive-count failure branches.
+- Build-time-only WriteFile variants passed for short-write completion,
+  zero-success rejection, first-call failure and partial-then-failure. Test
+  executables are visibly titled, emitted only under ignored `bin/test/`, and
+  leave the release candidate hash unchanged.
 - Candidate size: 77,824 bytes.
 - Emitted text: 27,572 bytes, 506 bytes above V8.5.1.
 - Candidate SHA-256:
@@ -85,6 +89,7 @@ normal close exit code:                  = 0
   covered through the real controller and disk bytes; Save As picker Cancel and
   commit ordering are covered, while its injected write-failure path belongs to
   the next failure-injection layer.
-- Execute emitted short-success, zero-success and late-failure variants through
-  the build-time-only WriteFile injection wrapper.
+- Replace direct-to-target creation with a sibling temporary file and atomic
+  replacement. Injection now proves that the current failure path can truncate
+  or partially overwrite the old target, so this remains a release blocker.
 - Independently inspect helper bytes and every revision call site.

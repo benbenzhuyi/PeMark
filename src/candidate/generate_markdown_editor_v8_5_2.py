@@ -1,5 +1,15 @@
 import struct, hashlib, os, subprocess, textwrap, glob
 
+try:
+    WRITE_INJECTION_MODE
+except NameError:
+    WRITE_INJECTION_MODE = 'release'
+_WRITE_INJECTION_MODES = {'release', 'short_then_complete', 'zero_success',
+                          'fail_first', 'late_failure'}
+if WRITE_INJECTION_MODE not in _WRITE_INJECTION_MODES:
+    raise ValueError('unknown WRITE_INJECTION_MODE: %r' % WRITE_INJECTION_MODE)
+INJECTED_BUILD = WRITE_INJECTION_MODE != 'release'
+
 IMAGE_BASE = 0x140000000
 TEXT_RVA = 0x1000
 # V8.5.2 candidate：在 V8.5.1 基线上建立 document revision 所有权。
@@ -36,7 +46,8 @@ def astr(name,s): return add_bytes(name, s.encode('ascii')+b'\0', 1)
 wstr('class_static','STATIC')
 wstr('class_edit','EDIT')
 wstr('class_main','DirectPE_Notepad_Main')
-wstr('title','PeMark x64 V8.5.2 Candidate — Direct-PE Markdown Editor')
+wstr('title', ('PeMark x64 V8.5.2 WRITE-INJECTION [%s]' % WRITE_INJECTION_MODE)
+     if INJECTED_BUILD else 'PeMark x64 V8.5.2 Candidate — Direct-PE Markdown Editor')
 wstr('empty','')
 wstr('menu_file','&File')
 wstr('menu_edit','&Edit')
@@ -365,6 +376,7 @@ bss_alloc('document_revision', 8, 8)
 bss_alloc('saved_revision', 8, 8)
 bss_alloc('pending_destructive_action', 4, 4)  # 0 none, 1 New, 2 Open, 3 Close
 bss_alloc('save_target_is_temp', 4, 4)         # Save As commits temp_path only after write
+bss_alloc('inject_write_call_count', 4, 4)     # test builds only; zero in release
 BSS_VSIZE = align(bss_off, 0x1000)
 
 # ---------------- IDATA ----------------
@@ -1069,7 +1081,10 @@ em.label('save_path_ready'); em.mov_r32_imm('rdx',0x40000000); em.xor32('r8'); e
 # impossible count above remaining is a hard failure.
 em.lea_rip('r14',bsyms['bytebuf']); em.mov_r32_r32('r15','r13')
 em.label('save_write_loop'); em.test32('r15'); em.jcc(0x84,'save_write_complete')
-em.mov_r64_r64('rcx','r12'); em.mov_r64_r64('rdx','r14'); em.mov_r32_r32('r8','r15'); em.lea_rip('r9',bsyms['io_count']); em.mov_mrsp_imm32(0x20,0,qword=True); em.call_iat('WriteFile'); em.test32('rax'); em.jcc(0x84,'save_fail_close')
+em.mov_r64_r64('rcx','r12'); em.mov_r64_r64('rdx','r14'); em.mov_r32_r32('r8','r15'); em.lea_rip('r9',bsyms['io_count']); em.mov_mrsp_imm32(0x20,0,qword=True)
+if INJECTED_BUILD: em.call_label('injected_WriteFile')
+else: em.call_iat('WriteFile')
+em.test32('rax'); em.jcc(0x84,'save_fail_close')
 em.mov_r32_ripmem('rax',bsyms['io_count']); em.test32('rax'); em.jcc(0x84,'save_fail_close'); em.cmp_r32_r32('rax','r15'); em.jcc(0x87,'save_fail_close')
 em.add_r64_r64('r14','rax'); em.sub_r32_r32('r15','rax'); em.jmp('save_write_loop')
 em.label('save_write_complete')
@@ -1851,6 +1866,19 @@ em.mov_r64_ripmem('rax',bsyms['document_revision']); em.mov_ripmem_r64(bsyms['sa
 em.label('is_document_dirty')
 em.mov_r64_ripmem('rax',bsyms['document_revision']); em.mov_r64_ripmem('r10',bsyms['saved_revision']); em.cmp_r64_r64('rax','r10'); em.jcc(0x85,'is_document_dirty_true'); em.xor32('rax'); em.emit(0xC3)
 em.label('is_document_dirty_true'); em.xor32('rax'); em.add_r32_imm8('rax',1); em.emit(0xC3)
+
+if INJECTED_BUILD:
+    em.label('injected_WriteFile')
+    em.mov_r32_ripmem('rax',bsyms['inject_write_call_count']); em.add_r32_imm8('rax',1); em.mov_ripmem_r32(bsyms['inject_write_call_count'],'rax')
+    if WRITE_INJECTION_MODE == 'zero_success':
+        em.xor32('rax'); em.mov_ptr_r32('r9','rax'); em.add_r32_imm8('rax',1); em.emit(0xC3)
+    elif WRITE_INJECTION_MODE == 'fail_first':
+        em.xor32('rax'); em.mov_ptr_r32('r9','rax'); em.emit(0xC3)
+    elif WRITE_INJECTION_MODE == 'late_failure':
+        em.cmp_r32_imm('rax',1); em.jcc(0x84,'injected_write_short'); em.xor32('rax'); em.mov_ptr_r32('r9','rax'); em.emit(0xC3)
+    if WRITE_INJECTION_MODE in {'short_then_complete', 'late_failure'}:
+        em.label('injected_write_short'); em.cmp_r32_imm('r8',7); em.jcc(0x86,'injected_write_real'); em.mov_r32_imm('r8',7)
+        em.label('injected_write_real'); em.emit(0x48,0x83,0xEC,0x28); em.mov_mrsp_imm32(0x20,0,qword=True); em.call_iat('WriteFile'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
 
 em.label('commit_clean_document')
 em.emit(0x48,0x83,0xEC,0x28)
@@ -3144,7 +3172,7 @@ assert _call_counts.get('mark_document_saved', 0) == 2, \
 assert bss_sizes['document_revision'] == 8 and bss_sizes['saved_revision'] == 8, \
     'document/saved revision 必须保持 64-bit'
 _dirty0 = em.labels['is_document_dirty']
-_dirty1 = em.labels['commit_clean_document']
+_dirty1 = em.labels.get('injected_WriteFile', em.labels['commit_clean_document'])
 _dirty_code = bytes(_code[_dirty0:_dirty1])
 assert _dirty_code.count(b'\xC3') == 2 and bytes.fromhex('4c39d0') in _dirty_code, \
     'is_document_dirty 必须比较完整 64-bit revision 并保留 clean/dirty 两个叶出口'
@@ -3182,6 +3210,8 @@ assert _write_src.count("call_iat('WriteFile')") == 1
 assert "mov_r32_ripmem('rax',bsyms['io_count']); em.test32('rax'); em.jcc(0x84,'save_fail_close')" in _write_src
 assert "em.cmp_r32_r32('rax','r15'); em.jcc(0x87,'save_fail_close')" in _write_src
 assert "em.add_r64_r64('r14','rax'); em.sub_r32_r32('r15','rax'); em.jmp('save_write_loop')" in _write_src
+assert ('injected_WriteFile' in em.labels) == INJECTED_BUILD, \
+    'WriteFile injection wrapper 必须只存在于显式测试构建'
 # (M) Entry point begins with the fixed Win64 stack frame used by the main flow.
 _e0 = em.labels['entry_first_run']
 assert _e0 == 0 and _code.startswith(bytes.fromhex('4881ec88000000')), \
@@ -3277,7 +3307,11 @@ shdr = name + struct.pack('<IIIIIIHHI', section_vsize, TEXT_RVA, raw_size,
 hdr[p:p+40] = shdr; p += 40
 
 _build_channel = os.path.basename(os.path.dirname(os.path.abspath(__file__)))
-out = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'bin', _build_channel, 'pemark_x64_v8_5_2_candidate.exe'))
+_output_channel = 'test' if INJECTED_BUILD else _build_channel
+_output_name = ('pemark_x64_v8_5_2_write_%s.exe' % WRITE_INJECTION_MODE
+                if INJECTED_BUILD else 'pemark_x64_v8_5_2_candidate.exe')
+out = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'bin',
+                                   _output_channel, _output_name))
 os.makedirs(os.path.dirname(out), exist_ok=True)
 with open(out, 'wb') as f:
     f.write(hdr)
@@ -3295,7 +3329,8 @@ print('sha256', sha)
 # 实际 BSS 分配一致；人工只需维护头部说明文字的变化（布局数字本身
 # 也由下方 f-string 注入，无手写数字）。
 _map_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'docs', 'PE_MEMORY_MAP_V8_5_2_CANDIDATE.md'))
-with open(_map_path, 'w', encoding='utf-8') as _mf:
+if not INJECTED_BUILD:
+ with open(_map_path, 'w', encoding='utf-8') as _mf:
     _mf.write('# PE / BSS 内存映射 — 由生成器自动导出\n\n')
     _mf.write('布局（V8.5.0-pre 扩展）：text @ 0x1000（预算 0x%x 字节）、'
               'rdata @ 0x%x、idata @ 0x%x、BSS @ 0x%x（virtual-only 尾部）。\n\n'
@@ -3309,4 +3344,5 @@ with open(_map_path, 'w', encoding='utf-8') as _mf:
     for _name in sorted(bsyms, key=lambda n: bsyms[n]):
         _mf.write('| `%s` | `0x%X` | %d |\n'
                   % (_name, bsyms[_name], bss_sizes[_name]))
-print('PE_MEMORY_MAP.md regenerated:', _map_path)
+ if not INJECTED_BUILD:
+    print('PE_MEMORY_MAP.md regenerated:', _map_path)

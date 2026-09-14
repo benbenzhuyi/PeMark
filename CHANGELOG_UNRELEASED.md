@@ -39,6 +39,12 @@
   partial success and rejects API failure, zero progress and counts above the
   requested remainder.
 - Added a 512 KiB real-disk save check and build-time loop/back-edge guards.
+- Added generator-controlled, test-only WriteFile wrappers for short success,
+  zero success, first-call failure and partial-then-failure. Their binaries are
+  visibly marked and isolated under ignored `bin/test/`; release bytes remain
+  unchanged.
+- Recorded the remaining direct-write data-loss behavior under injected failure
+  as the concrete blocker for sibling temporary-file atomic replacement.
 - Preserved all V8.5.1 machine-code and Windows GUI regression results.
 - Kept the V8.5.1 current/release generator and binary unchanged.
 

@@ -1,6 +1,6 @@
 # V8.5.2 Failure Injection Design
 
-Status: design gate; no production behavior enabled
+Status: WriteFile injection implemented; remaining API/allocation modes are design gates
 
 ## Principle
 
@@ -33,6 +33,27 @@ result.
 - atomic replace failure before and at commit;
 - CloseHandle failure recorded without overriding the primary operation result.
 
+## Implemented WriteFile slice
+
+`tools/test_v8_5_2_write_injection.py` builds four visibly marked binaries in
+ignored `bin/test/`. The generator accepts the mode only through its build
+namespace; release execution defaults to `release`, emits no wrapper and keeps
+the release candidate byte-identical.
+
+Covered modes:
+
+- seven-byte short successes followed by eventual completion;
+- successful zero-byte progress, which the save loop rejects;
+- failure on the first write call;
+- seven-byte success followed by failure on the second call.
+
+The tests verify call counts, memory text, dirty revisions, pending destructive
+action, resulting disk bytes and release-candidate hash preservation. Until
+atomic replacement is implemented, the failure variants deliberately record
+that direct-to-target creation truncates the old destination and a late failure
+leaves a partial prefix. This is evidence for the next transactional-output
+gate, not accepted final save behavior.
+
 ## Required allocation modes
 
 - reserve failure;
@@ -62,4 +83,3 @@ never point at user documents.
 Injection hooks cannot be enabled by ordinary release UI or environment input.
 They are selected at generation time for a test binary and are visibly marked in
 the title, manifest and output filename.
-

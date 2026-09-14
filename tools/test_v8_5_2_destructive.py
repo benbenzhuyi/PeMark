@@ -81,9 +81,10 @@ def find_edit(main):
 
 
 class App:
-    def __init__(self, ns):
+    def __init__(self, ns, exe=EXE):
         self.ns, self.bsyms = ns, ns["bsyms"]
-        self.proc = subprocess.Popen([str(EXE)], cwd=str(EXE.parent))
+        exe = Path(exe)
+        self.proc = subprocess.Popen([str(exe)], cwd=str(exe.parent))
         assert u32.WaitForInputIdle(w.HANDLE(self.proc._handle), 5000) == 0
         self.main = wait_window(self.proc.pid, "DirectPE_Notepad_Main")
         assert self.main
@@ -102,6 +103,7 @@ class App:
             self.handle = None
         if self.proc.poll() is None:
             self.proc.kill()
+            self.proc.wait(timeout=5)
 
     def revisions(self):
         values = []

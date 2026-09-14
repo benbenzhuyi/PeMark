@@ -16,4 +16,5 @@ tests/results/latest_*
 bin/current/rebuilt_*.exe
 bin/current/pequill_x64_v8_5_1.exe
 bin/stabilization/pequill_x64_v8_5_1.exe
+/bin/test/
 /local-reference/

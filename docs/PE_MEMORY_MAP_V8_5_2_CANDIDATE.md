@@ -2,7 +2,7 @@
 
 布局（V8.5.0-pre 扩展）：text @ 0x1000（预算 0xf000 字节）、rdata @ 0x10000、idata @ 0x13000、BSS @ 0x14000（virtual-only 尾部）。
 
-本次构建：text 实际 27572 字节（余量 33868 字节）；BSS 符号 162 个，最终虚拟 BSS 121106432 字节。
+本次构建：text 实际 27572 字节（余量 33868 字节）；BSS 符号 163 个，最终虚拟 BSS 121106432 字节。
 
 SHA-256：`1aab7d19099cb42437c1a0787aed70060a7e618d6c29ab131b261f542948d381`
 
@@ -170,3 +170,4 @@ SHA-256：`1aab7d19099cb42437c1a0787aed70060a7e618d6c29ab131b261f542948d381`
 | `saved_revision` | `0x7392738` | 8 |
 | `pending_destructive_action` | `0x7392740` | 4 |
 | `save_target_is_temp` | `0x7392744` | 4 |
+| `inject_write_call_count` | `0x7392748` | 4 |
