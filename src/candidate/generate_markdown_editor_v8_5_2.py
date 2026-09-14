@@ -349,8 +349,6 @@ MAX_FILE_BYTES = 4_194_304
 # Saving UTF-16 source as UTF-8 can take up to 4 bytes/code unit; leave headroom.
 BYTE_CAP = 34_500_000
 bss_alloc('document_len', 4, 4)
-bss_alloc('document_revision', 4, 4)
-bss_alloc('saved_revision', 4, 4)
 bss_alloc('suppress_edit_change', 4, 4)
 bss_alloc('render_len', 4, 4)
 # For each visible Preview UTF-16 code unit, remember which source UTF-16 index produced it.
@@ -360,6 +358,10 @@ bss_alloc('document_model', WIDE_CHARS*2, 16)
 bss_alloc('widebuf', WIDE_CHARS*2, 16)
 bss_alloc('previewbuf', WIDE_CHARS*2, 16)
 bss_alloc('bytebuf', BYTE_CAP+16, 16)
+# Append new state after the complete V8.5.1 layout. This preserves every
+# historical symbol address while the candidate state layout is evaluated.
+bss_alloc('document_revision', 8, 8)
+bss_alloc('saved_revision', 8, 8)
 BSS_VSIZE = align(bss_off, 0x1000)
 
 # ---------------- IDATA ----------------
@@ -1806,11 +1808,11 @@ em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.mov_r32_imm('rdx',0x00B1); em.ca
 # Revision ownership helpers are leaf routines. Revision zero is reserved for
 # process initialization; wrap skips zero so equality remains unambiguous.
 em.label('advance_document_revision')
-em.mov_r32_ripmem('rax',bsyms['document_revision']); em.add_r32_imm8('rax',1); em.test32('rax'); em.jcc(0x85,'advance_document_revision_store'); em.add_r32_imm8('rax',1)
-em.label('advance_document_revision_store'); em.mov_ripmem_r32(bsyms['document_revision'],'rax'); em.emit(0xC3)
+em.mov_r64_ripmem('rax',bsyms['document_revision']); em.add_r64_imm8('rax',1); em.test64('rax'); em.jcc(0x85,'advance_document_revision_store'); em.add_r64_imm8('rax',1)
+em.label('advance_document_revision_store'); em.mov_ripmem_r64(bsyms['document_revision'],'rax'); em.emit(0xC3)
 
 em.label('mark_document_saved')
-em.mov_r32_ripmem('rax',bsyms['document_revision']); em.mov_ripmem_r32(bsyms['saved_revision'],'rax'); em.emit(0xC3)
+em.mov_r64_ripmem('rax',bsyms['document_revision']); em.mov_ripmem_r64(bsyms['saved_revision'],'rax'); em.emit(0xC3)
 
 em.label('commit_clean_document')
 em.emit(0x48,0x83,0xEC,0x28)
@@ -3080,9 +3082,9 @@ assert _addret in _commit_exit, \
 _doc_rev_writers = set()
 _saved_rev_writers = set()
 for _i, _ln in enumerate(_scan_lines):
-    if "mov_ripmem_r32(bsyms['document_revision']" in _ln:
+    if "mov_ripmem_r64(bsyms['document_revision']" in _ln:
         _doc_rev_writers.add(_owner(_i))
-    if "mov_ripmem_r32(bsyms['saved_revision']" in _ln:
+    if "mov_ripmem_r64(bsyms['saved_revision']" in _ln:
         _saved_rev_writers.add(_owner(_i))
 assert _doc_rev_writers == {'advance_document_revision_store'}, \
     f'document_revision 唯一写者违规：{_doc_rev_writers}'
@@ -3091,9 +3093,9 @@ assert _saved_rev_writers == {'mark_document_saved'}, \
 assert _call_counts.get('commit_clean_document', 0) == 4, \
     f"New + 3 个 Open 成功分支应提交 clean revision，实际 {_call_counts.get('commit_clean_document', 0)}"
 assert _call_counts.get('advance_document_revision', 0) == 2, \
-    f"用户 EN_CHANGE 与 clean commit 应各调用一次 revision advance，实际 {_call_counts.get('advance_document_revision', 0)}"
+    f"用户 EN_CHANGE 与 clean helper 应各调用一次 revision advance，实际 {_call_counts.get('advance_document_revision', 0)}"
 assert _call_counts.get('mark_document_saved', 0) == 2, \
-    f"clean commit 与 Save 成功应各调用一次 mark saved，实际 {_call_counts.get('mark_document_saved', 0)}"
+    f"clean helper 与 Save 成功应调用 mark saved，实际 {_call_counts.get('mark_document_saved', 0)}"
 # (I) Entry point begins with the fixed Win64 stack frame used by the main flow.
 _e0 = em.labels['entry_first_run']
 assert _e0 == 0 and _code.startswith(bytes.fromhex('4881ec88000000')), \

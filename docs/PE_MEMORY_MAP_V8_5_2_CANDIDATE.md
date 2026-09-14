@@ -2,9 +2,9 @@
 
 布局（V8.5.0-pre 扩展）：text @ 0x1000（预算 0xf000 字节）、rdata @ 0x10000、idata @ 0x13000、BSS @ 0x14000（virtual-only 尾部）。
 
-本次构建：text 实际 27155 字节（余量 34285 字节）；BSS 符号 160 个，最终虚拟 BSS 121106432 字节。
+本次构建：text 实际 27162 字节（余量 34278 字节）；BSS 符号 160 个，最终虚拟 BSS 121106432 字节。
 
-SHA-256：`e5d0df68af457712162d4d1bf18adc312c3647f77dcc1faf7cd821be14e10132`
+SHA-256：`2000ed8b3ab63e4e0face9438d8cd9367831b141d43dad8964206c4b3fff8872`
 
 | Symbol | RVA | Size |
 |---|---:|---:|
@@ -159,12 +159,12 @@ SHA-256：`e5d0df68af457712162d4d1bf18adc312c3647f77dcc1faf7cd821be14e10132`
 | `link_flag` | `0x19BA2C` | 4 |
 | `codeblock_flag` | `0x19BA30` | 4 |
 | `document_len` | `0x19BA34` | 4 |
-| `document_revision` | `0x19BA38` | 4 |
-| `saved_revision` | `0x19BA3C` | 4 |
-| `suppress_edit_change` | `0x19BA40` | 4 |
-| `render_len` | `0x19BA44` | 4 |
-| `render_srcmap` | `0x19BA50` | 34000000 |
-| `document_model` | `0x22086D0` | 17000000 |
-| `widebuf` | `0x323ED10` | 17000000 |
-| `previewbuf` | `0x4275350` | 17000000 |
-| `bytebuf` | `0x52AB990` | 34500016 |
+| `suppress_edit_change` | `0x19BA38` | 4 |
+| `render_len` | `0x19BA3C` | 4 |
+| `render_srcmap` | `0x19BA40` | 34000000 |
+| `document_model` | `0x22086C0` | 17000000 |
+| `widebuf` | `0x323ED00` | 17000000 |
+| `previewbuf` | `0x4275340` | 17000000 |
+| `bytebuf` | `0x52AB980` | 34500016 |
+| `document_revision` | `0x7392730` | 8 |
+| `saved_revision` | `0x7392738` | 8 |

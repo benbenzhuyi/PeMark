@@ -12,10 +12,13 @@
 
 ## V8.5.2 document revision candidate
 
-- Added a candidate-channel implementation of `document_revision` and
-  `saved_revision` with single-writer build assertions.
-- Verified the runtime transitions `(0,0) -> edit (1,0) -> New (2,2)` through
-  direct process-state reads.
+- Added a candidate-channel implementation of 64-bit `document_revision` and
+  `saved_revision` with single-writer build assertions. The fields are appended
+  after the V8.5.1 state layout so all existing BSS addresses remain stable.
+- Verified the runtime transitions `(0,0) -> advance (1,0) -> Open commit (2,2)
+  -> edit (3,2) -> edit (4,2) -> Save commit (4,4) -> New (5,5)` through direct
+  process-state reads and calls to the emitted commit helpers.
+- Repeated the complete revision sequence for 10/10 clean Windows runs.
 - Preserved all V8.5.1 machine-code and Windows GUI regression results.
 - Kept the V8.5.1 current/release generator and binary unchanged.
 
