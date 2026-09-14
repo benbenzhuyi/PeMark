@@ -18,11 +18,18 @@ Analysis/debugging tools are allowed. Python is allowed as the generator and tes
 
 ## Before editing
 
+- Read `docs/SYSTEM_ARCHITECTURE_LONG_TERM.md`.
+- Read `docs/MILESTONE_PLAN.md`.
+- Read `docs/DEVELOPMENT_MANUAL_V8_5_PLUS.md`.
 - Read `docs/CURRENT_CODE_AUDIT.md`.
 - Read `docs/WIN64_ABI_RULES.md`.
 - Read `docs/ARCHITECTURE_V8_5_TARGET.md`.
 - Read `docs/FAILED_APPROACHES.md` so you do not reintroduce already-proven bad designs.
 - Rebuild and hash the current baseline.
+
+When documents conflict, the long-term architecture, milestone plan and V8.5+
+development manual describe current policy. V8.4 audit/handoff files are
+historical evidence unless a current document explicitly adopts their finding.
 
 ## Hard engineering rules
 

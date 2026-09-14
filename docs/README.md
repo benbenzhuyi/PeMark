@@ -4,6 +4,12 @@ English | [简体中文](README.zh-CN.md)
 
 ## Current public documentation
 
+- [Long-term system architecture](SYSTEM_ARCHITECTURE_LONG_TERM.md)
+- [V8.5+ development manual](DEVELOPMENT_MANUAL_V8_5_PLUS.md)
+- [Milestone plan](MILESTONE_PLAN.md)
+- [Cross-architecture feature contract V1](CROSS_ARCH_FEATURE_CONTRACT_V1.md)
+- [Cross-architecture benchmark specification V1](BENCHMARK_SPEC_V1.md)
+
 - [V8.5.1 Preview release notes](RELEASE_V8_5_1_PREVIEW.md)
 - [V8.5.1 merge and validation results](V8_5_1_MERGE_RESULTS.md)
 - [V8.5 target architecture](ARCHITECTURE_V8_5_TARGET.md)

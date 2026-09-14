@@ -4,6 +4,12 @@
 
 ## 当前公开文档
 
+- [长期系统架构设计](SYSTEM_ARCHITECTURE_LONG_TERM.md)
+- [V8.5+ 开发手册](DEVELOPMENT_MANUAL_V8_5_PLUS.md)
+- [清晰里程碑计划](MILESTONE_PLAN.md)
+- [跨架构功能契约 V1](CROSS_ARCH_FEATURE_CONTRACT_V1.md)
+- [跨架构基准测试规范 V1](BENCHMARK_SPEC_V1.md)
+
 - [V8.5.1 Preview 中文发布说明](RELEASE_V8_5_1_PREVIEW.zh-CN.md)
 - [V8.5.1 合并与验证结果](V8_5_1_MERGE_RESULTS.md)
 - [V8.5 目标架构](ARCHITECTURE_V8_5_TARGET.md)

@@ -20,14 +20,15 @@ the same issue as active work.
 ## First-session sequence
 
 1. Read `AGENTS.md`.
-2. Read `docs/V8_5_1_MERGE_RESULTS.md`.
-3. Read `docs/WIN64_ABI_RULES.md`.
-4. Read `docs/ARCHITECTURE_V8_5_TARGET.md`.
-5. Read `docs/FAILED_APPROACHES.md`.
-6. Run `python tools/build_current.py`.
-7. Run
+2. Read `docs/SYSTEM_ARCHITECTURE_LONG_TERM.md`.
+3. Read `docs/MILESTONE_PLAN.md`.
+4. Read `docs/DEVELOPMENT_MANUAL_V8_5_PLUS.md`.
+5. Read `docs/V8_5_1_MERGE_RESULTS.md`.
+6. Read `docs/WIN64_ABI_RULES.md` and `docs/FAILED_APPROACHES.md`.
+7. Run `python tools/build_current.py`.
+8. Run
    `python tools/test_v8_5_1.py src/current/generate_markdown_editor_v8_5_1.py`.
-8. Inspect the PE with `python tools/inspect_pe.py
+9. Inspect the PE with `python tools/inspect_pe.py
    bin/current/pemark_x64_v8_5_1.exe`.
 
 Run `tools/smoke_test_v8_5_1.py` in an interactive Windows desktop session
