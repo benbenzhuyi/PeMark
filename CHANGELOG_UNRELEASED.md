@@ -19,6 +19,10 @@
   -> edit (3,2) -> edit (4,2) -> Save commit (4,4) -> New (5,5)` through direct
   process-state reads and calls to the emitted commit helpers.
 - Repeated the complete revision sequence for 10/10 clean Windows runs.
+- Added a read-only 64-bit revision-equality helper as the single dirty-state
+  derivation point, with normalized clean/dirty results and build assertions.
+- Verified that an internally suppressed `EN_CHANGE` leaves revisions and dirty
+  state unchanged; user notifications still advance the document revision.
 - Preserved all V8.5.1 machine-code and Windows GUI regression results.
 - Kept the V8.5.1 current/release generator and binary unchanged.
 

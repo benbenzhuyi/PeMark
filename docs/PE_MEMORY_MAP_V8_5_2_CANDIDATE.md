@@ -2,9 +2,9 @@
 
 布局（V8.5.0-pre 扩展）：text @ 0x1000（预算 0xf000 字节）、rdata @ 0x10000、idata @ 0x13000、BSS @ 0x14000（virtual-only 尾部）。
 
-本次构建：text 实际 27162 字节（余量 34278 字节）；BSS 符号 160 个，最终虚拟 BSS 121106432 字节。
+本次构建：text 实际 27194 字节（余量 34246 字节）；BSS 符号 160 个，最终虚拟 BSS 121106432 字节。
 
-SHA-256：`2000ed8b3ab63e4e0face9438d8cd9367831b141d43dad8964206c4b3fff8872`
+SHA-256：`2254fcc31548f207b4e58e6ec91b9e7b2eec97aa67398bcd9442f575ac843a81`
 
 | Symbol | RVA | Size |
 |---|---:|---:|

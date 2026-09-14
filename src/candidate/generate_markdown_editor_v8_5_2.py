@@ -1814,6 +1814,10 @@ em.label('advance_document_revision_store'); em.mov_ripmem_r64(bsyms['document_r
 em.label('mark_document_saved')
 em.mov_r64_ripmem('rax',bsyms['document_revision']); em.mov_ripmem_r64(bsyms['saved_revision'],'rax'); em.emit(0xC3)
 
+em.label('is_document_dirty')
+em.mov_r64_ripmem('rax',bsyms['document_revision']); em.mov_r64_ripmem('r10',bsyms['saved_revision']); em.cmp_r64_r64('rax','r10'); em.jcc(0x85,'is_document_dirty_true'); em.xor32('rax'); em.emit(0xC3)
+em.label('is_document_dirty_true'); em.xor32('rax'); em.add_r32_imm8('rax',1); em.emit(0xC3)
+
 em.label('commit_clean_document')
 em.emit(0x48,0x83,0xEC,0x28)
 em.call_label('advance_document_revision'); em.call_label('mark_document_saved')
@@ -3096,12 +3100,23 @@ assert _call_counts.get('advance_document_revision', 0) == 2, \
     f"用户 EN_CHANGE 与 clean helper 应各调用一次 revision advance，实际 {_call_counts.get('advance_document_revision', 0)}"
 assert _call_counts.get('mark_document_saved', 0) == 2, \
     f"clean helper 与 Save 成功应调用 mark saved，实际 {_call_counts.get('mark_document_saved', 0)}"
-# (I) Entry point begins with the fixed Win64 stack frame used by the main flow.
+# (I) Dirty state is derived only from the two 64-bit revisions. The leaf helper
+# returns normalized 0/1 and cannot write either revision field.
+assert bss_sizes['document_revision'] == 8 and bss_sizes['saved_revision'] == 8, \
+    'document/saved revision 必须保持 64-bit'
+_dirty0 = em.labels['is_document_dirty']
+_dirty1 = em.labels['commit_clean_document']
+_dirty_code = bytes(_code[_dirty0:_dirty1])
+assert _dirty_code.count(b'\xC3') == 2 and bytes.fromhex('4c39d0') in _dirty_code, \
+    'is_document_dirty 必须比较完整 64-bit revision 并保留 clean/dirty 两个叶出口'
+assert bytes.fromhex('488905') not in _dirty_code and bytes.fromhex('4c8905') not in _dirty_code, \
+    'is_document_dirty 必须是只读推导，禁止写入 revision state'
+# (J) Entry point begins with the fixed Win64 stack frame used by the main flow.
 _e0 = em.labels['entry_first_run']
 assert _e0 == 0 and _code.startswith(bytes.fromhex('4881ec88000000')), \
     'entry point must begin with sub rsp,0x88'
 
-# (J) dispatch 终结断言（退出崩溃根因的防回退门禁）：dispatch_status_done
+# (K) dispatch 终结断言（退出崩溃根因的防回退门禁）：dispatch_status_done
 #     块检查 IsWindow 后必须以 JNE msg_loop + 无条件 jmp exit 终结，绝不
 #     允许执行流直落进下一个 label。本断言要永久拦截的错误模式：dispatch
 #     尾部 fall through 进 ret 结尾的子程序（无压栈返回地址的 ret = 野返回

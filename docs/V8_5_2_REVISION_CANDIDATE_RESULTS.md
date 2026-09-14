@@ -12,6 +12,9 @@ Scope: first bounded production change; candidate channel only
   same saved revision.
 - Successful current Save copies document revision to saved revision.
 - Revision wrap skips zero.
+- Added the read-only `is_document_dirty` leaf helper. It derives dirty state
+  exclusively from the full 64-bit revision equality and normalizes its return
+  value to zero or one; no independent dirty flag exists.
 
 No close prompt, title marker, encoding change, save-byte change, allocator
 change, import change or PE section change is included.
@@ -33,6 +36,7 @@ the initial state sample:
 initial: (document_revision, saved_revision) = (0, 0)
 direct revision helper:                      = (1, 0)
 successful Open commit helper:               = (2, 2)
+suppressed internal EN_CHANGE:                = (2, 2), clean
 user edit:                                   = (3, 2)
 second user edit:                            = (4, 2)
 successful Save commit helper:               = (4, 4)
@@ -47,10 +51,12 @@ normal close exit code:                  = 0
 - 17/17 prior Windows GUI smoke checks passed.
 - PE inspection passed with the same import surface and section model.
 - The full revision sequence passed 10/10 consecutive Windows runs.
+- Clean/dirty helper results were checked at every transition; a forced
+  `suppress_edit_change=1` notification left both revisions unchanged.
 - Candidate size: 77,824 bytes.
-- Emitted text: 27,162 bytes, 96 bytes above V8.5.1.
+- Emitted text: 27,194 bytes, 128 bytes above V8.5.1.
 - Candidate SHA-256:
-  `2000ed8b3ab63e4e0face9438d8cd9367831b141d43dad8964206c4b3fff8872`.
+  `2254fcc31548f207b4e58e6ec91b9e7b2eec97aa67398bcd9442f575ac843a81`.
 
 ## Remaining before promotion
 

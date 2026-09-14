@@ -23,11 +23,16 @@ u32.SendMessageW.argtypes = [w.HWND, w.UINT, w.WPARAM, w.LPARAM]
 u32.SendMessageW.restype = w.LPARAM
 u32.PostMessageW.argtypes = [w.HWND, w.UINT, w.WPARAM, w.LPARAM]
 u32.PostMessageW.restype = w.BOOL
+u32.WaitForInputIdle.argtypes = [w.HANDLE, w.DWORD]
+u32.WaitForInputIdle.restype = w.DWORD
 k32.OpenProcess.argtypes = [w.DWORD, w.BOOL, w.DWORD]
 k32.OpenProcess.restype = w.HANDLE
 k32.ReadProcessMemory.argtypes = [w.HANDLE, c.c_void_p, c.c_void_p,
                                   c.c_size_t, c.POINTER(c.c_size_t)]
 k32.ReadProcessMemory.restype = w.BOOL
+k32.WriteProcessMemory.argtypes = [w.HANDLE, c.c_void_p, c.c_void_p,
+                                   c.c_size_t, c.POINTER(c.c_size_t)]
+k32.WriteProcessMemory.restype = w.BOOL
 k32.CreateRemoteThread.argtypes = [w.HANDLE, c.c_void_p, c.c_size_t,
                                     c.c_void_p, c.c_void_p, w.DWORD,
                                     c.POINTER(w.DWORD)]
@@ -90,6 +95,8 @@ def main():
     ns = load_generator(GEN)
     bsyms = ns["bsyms"]
     proc = subprocess.Popen([str(EXE)], cwd=str(EXE.parent))
+    assert u32.WaitForInputIdle(w.HANDLE(proc._handle), 5000) == 0, \
+        "process did not reach input-idle state"
     main_hwnd = wait_main(proc.pid)
     if not main_hwnd:
         proc.kill(); raise AssertionError("main window not found")
@@ -112,6 +119,13 @@ def main():
             raise c.WinError(c.get_last_error())
         assert count.value == 8, f"short read for {name}: {count.value}"
         return value.value
+    def write32(name, number):
+        value, count = w.DWORD(number), c.c_size_t()
+        ok = k32.WriteProcessMemory(handle, c.c_void_p(image_base + bsyms[name]),
+                                    c.byref(value), 4, c.byref(count))
+        if not ok:
+            raise c.WinError(c.get_last_error())
+        assert count.value == 4, f"short write for {name}: {count.value}"
     def expect(expected, stage):
         actual = (read64("document_revision"), read64("saved_revision"))
         assert actual == expected, f"{stage}: expected {expected}, got {actual}"
@@ -139,31 +153,47 @@ def main():
             return exit_code.value
         finally:
             k32.CloseHandle(thread)
+    def expect_dirty(expected, stage):
+        actual = run_remote("is_document_dirty")
+        assert actual == expected, f"{stage}: expected dirty={expected}, got {actual}"
     try:
         edit = wait_edit(main_hwnd)
         assert edit, "edit control not ready"
         expect((0, 0), "initial")
+        expect_dirty(0, "initial")
         helper_result = run_remote("advance_document_revision")
         assert helper_result == 1, f"advance helper returned {helper_result}"
         expect((1, 0), "direct advance helper")
+        expect_dirty(1, "direct advance helper")
         run_remote("commit_clean_document")
         expect((2, 2), "open commit")
+        expect_dirty(0, "open commit")
+        write32("suppress_edit_change", 1)
+        u32.SendMessageW(main_hwnd, WM_COMMAND, (EN_CHANGE << 16) | 1, edit)
+        time.sleep(.1)
+        expect((2, 2), "suppressed internal edit")
+        expect_dirty(0, "suppressed internal edit")
+        write32("suppress_edit_change", 0)
         changed = c.c_wchar_p("# changed\r\n")
         u32.SendMessageW(edit, WM_SETTEXT, 0, c.cast(changed, c.c_void_p).value)
         u32.SendMessageW(main_hwnd, WM_COMMAND, (EN_CHANGE << 16) | 1, edit)
         time.sleep(.2)
         expect((3, 2), "edit")
+        expect_dirty(1, "edit")
         u32.SendMessageW(main_hwnd, WM_COMMAND, (EN_CHANGE << 16) | 1, edit)
         time.sleep(.2)
         expect((4, 2), "second edit")
         run_remote("mark_document_saved")
         wait_expect((4, 4), "save commit")
+        expect_dirty(0, "save commit")
         u32.SendMessageW(main_hwnd, WM_COMMAND, CMD_NEW, 0)
         time.sleep(.2)
         expect((5, 5), "new")
+        expect_dirty(0, "new")
         u32.PostMessageW(main_hwnd, WM_CLOSE, 0, 0)
         assert proc.wait(timeout=5) == 0
-        print("PASS revision ownership: initial=(0,0), edit=(1,0), "
+        print("PASS revision/dirty ownership: initial clean, suppressed edit clean, "
+              "direct advance dirty; revisions: initial=(0,0), advance=(1,0), "
               "open=(2,2), edit=(3,2), second-edit=(4,2), "
               "save=(4,4), new=(5,5), exit=0")
     finally:
