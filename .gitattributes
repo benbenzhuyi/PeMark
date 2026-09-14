@@ -12,4 +12,4 @@
 tests/newline_cr.md binary
 tests/newline_crlf.md binary
 tests/newline_lf.md binary
-
+tests/v8_5_2/fixtures/* binary
