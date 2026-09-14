@@ -1,6 +1,6 @@
 # V8.5.2 Failure Injection Design
 
-Status: WriteFile injection implemented; remaining API/allocation modes are design gates
+Status: WriteFile, flush and atomic-replace injection implemented; remaining API/allocation modes are design gates
 
 ## Principle
 
@@ -33,7 +33,7 @@ result.
 - atomic replace failure before and at commit;
 - CloseHandle failure recorded without overriding the primary operation result.
 
-## Implemented WriteFile slice
+## Implemented transactional-write slice
 
 `tools/test_v8_5_2_write_injection.py` builds four visibly marked binaries in
 ignored `bin/test/`. The generator accepts the mode only through its build
@@ -46,13 +46,14 @@ Covered modes:
 - successful zero-byte progress, which the save loop rejects;
 - failure on the first write call;
 - seven-byte success followed by failure on the second call.
+- failure while flushing the completed sibling staging file;
+- failure at the atomic replacement commit point.
 
 The tests verify call counts, memory text, dirty revisions, pending destructive
-action, resulting disk bytes and release-candidate hash preservation. Until
-atomic replacement is implemented, the failure variants deliberately record
-that direct-to-target creation truncates the old destination and a late failure
-leaves a partial prefix. This is evidence for the next transactional-output
-gate, not accepted final save behavior.
+action, resulting disk bytes, staging cleanup and release-candidate hash
+preservation. Every injected failure preserves the prior target byte-for-byte.
+The staging file is created with `CREATE_NEW`, so a preexisting artifact is also
+preserved and causes a safe failure instead of being truncated.
 
 ## Required allocation modes
 

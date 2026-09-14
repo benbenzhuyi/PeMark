@@ -43,13 +43,14 @@ def short_then_complete(ns, exe, target):
         app.post_command(CMD_NEW); app.click_dialog("PeMark", 6)
         wait_clean_new(app)
         assert target.read_bytes() == text.encode("utf-8")
+        assert not Path(str(target) + ".pemark.tmp").exists()
         assert app.read32("inject_write_call_count") >= 2
         app.post_close(); assert app.proc.wait(timeout=5) == 0
     finally:
         app.close_handle()
 
 
-def expected_failure(ns, exe, target, expected_prefix, expected_calls):
+def expected_failure(ns, exe, target, counter, expected_calls):
     target.write_bytes(b"ORIGINAL-TARGET")
     app = App(ns, exe)
     before = None
@@ -63,11 +64,30 @@ def expected_failure(ns, exe, target, expected_prefix, expected_calls):
         assert app.revisions() == before
         assert app.text() == "late failure must preserve memory\r\n"
         assert app.read32("pending_destructive_action") == 0
-        assert app.read32("inject_write_call_count") == expected_calls
-        # Direct-to-target saving is intentionally still unsafe here. This
-        # evidence freezes the exact disk damage that atomic replacement must
-        # eliminate in the next phase.
-        assert target.read_bytes() == expected_prefix
+        assert app.read32(counter) == expected_calls
+        assert target.read_bytes() == b"ORIGINAL-TARGET"
+        assert not Path(str(target) + ".pemark.tmp").exists()
+        app.post_close(); app.click_dialog("PeMark", 7)
+        assert app.proc.wait(timeout=5) == 0
+    finally:
+        app.close_handle()
+
+
+def staging_collision_preserved(ns, exe, target):
+    target.write_bytes(b"ORIGINAL-TARGET")
+    stage = Path(str(target) + ".pemark.tmp")
+    stage.write_bytes(b"PREEXISTING-STAGING-ARTIFACT")
+    app = App(ns, exe)
+    try:
+        app.write_path(target)
+        before = app.set_text_dirty("collision must not truncate either file\r\n")
+        app.post_close(); app.click_dialog("PeMark", 6)
+        app.click_dialog("PeMark", 2, body_contains="Could not save")
+        assert app.proc.poll() is None
+        assert app.revisions() == before
+        assert target.read_bytes() == b"ORIGINAL-TARGET"
+        assert stage.read_bytes() == b"PREEXISTING-STAGING-ARTIFACT"
+        assert app.read32("inject_write_call_count") == 0
         app.post_close(); app.click_dialog("PeMark", 7)
         assert app.proc.wait(timeout=5) == 0
     finally:
@@ -80,15 +100,22 @@ def main():
         root = Path(temp)
         ns, exe = build_variant("short_then_complete")
         short_then_complete(ns, exe, root / "short.md")
+        staging_collision_preserved(ns, exe, root / "collision.md")
         ns, exe = build_variant("zero_success")
-        expected_failure(ns, exe, root / "zero.md", b"", 1)
+        expected_failure(ns, exe, root / "zero.md", "inject_write_call_count", 1)
         ns, exe = build_variant("fail_first")
-        expected_failure(ns, exe, root / "first.md", b"", 1)
+        expected_failure(ns, exe, root / "first.md", "inject_write_call_count", 1)
         ns, exe = build_variant("late_failure")
-        expected_failure(ns, exe, root / "late.md", b"late fa", 2)
+        expected_failure(ns, exe, root / "late.md", "inject_write_call_count", 2)
+        ns, exe = build_variant("flush_failure")
+        expected_failure(ns, exe, root / "flush.md", "inject_flush_call_count", 1)
+        ns, exe = build_variant("replace_failure")
+        expected_failure(ns, exe, root / "replace.md", "inject_replace_call_count", 1)
     assert hashlib.sha256(EXE.read_bytes()).hexdigest() == release_hash
-    print("PASS WriteFile injection: short->complete; zero-success rejected; "
-          "first failure; partial-then-failure; release candidate unchanged")
+    print("PASS atomic WriteFile injection: short->complete; zero-success rejected; "
+          "first failure; partial-then-failure; flush failure; replace failure; "
+          "original target and preexisting staging artifact preserved; "
+          "staging files cleaned; release candidate unchanged")
     return 0
 
 

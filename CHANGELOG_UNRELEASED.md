@@ -43,8 +43,13 @@
   zero success, first-call failure and partial-then-failure. Their binaries are
   visibly marked and isolated under ignored `bin/test/`; release bytes remain
   unchanged.
-- Recorded the remaining direct-write data-loss behavior under injected failure
-  as the concrete blocker for sibling temporary-file atomic replacement.
+- Replaced direct-to-target saving with a sibling `.pemark.tmp` transaction:
+  create without overwriting an existing staging artifact, complete-write,
+  flush, checked close, and `MoveFileExW(REPLACE_EXISTING | WRITE_THROUGH)`.
+- Extended build-time fault injection through flush and atomic-replace failure.
+  All pre-commit failures now preserve the old target, dirty model and prior
+  path while cleaning newly owned staging files. A preexisting staging artifact
+  is preserved and causes a safe save failure.
 - Preserved all V8.5.1 machine-code and Windows GUI regression results.
 - Kept the V8.5.1 current/release generator and binary unchanged.
 

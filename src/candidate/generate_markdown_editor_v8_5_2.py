@@ -5,10 +5,13 @@ try:
 except NameError:
     WRITE_INJECTION_MODE = 'release'
 _WRITE_INJECTION_MODES = {'release', 'short_then_complete', 'zero_success',
-                          'fail_first', 'late_failure'}
+                          'fail_first', 'late_failure', 'flush_failure',
+                          'replace_failure'}
 if WRITE_INJECTION_MODE not in _WRITE_INJECTION_MODES:
     raise ValueError('unknown WRITE_INJECTION_MODE: %r' % WRITE_INJECTION_MODE)
 INJECTED_BUILD = WRITE_INJECTION_MODE != 'release'
+WRITE_CALL_INJECTED = WRITE_INJECTION_MODE in {
+    'short_then_complete', 'zero_success', 'fail_first', 'late_failure'}
 
 IMAGE_BASE = 0x140000000
 TEXT_RVA = 0x1000
@@ -377,12 +380,16 @@ bss_alloc('saved_revision', 8, 8)
 bss_alloc('pending_destructive_action', 4, 4)  # 0 none, 1 New, 2 Open, 3 Close
 bss_alloc('save_target_is_temp', 4, 4)         # Save As commits temp_path only after write
 bss_alloc('inject_write_call_count', 4, 4)     # test builds only; zero in release
+bss_alloc('inject_flush_call_count', 4, 4)
+bss_alloc('inject_replace_call_count', 4, 4)
+bss_alloc('save_stage_path', 512*2, 16)         # append-only candidate state
 BSS_VSIZE = align(bss_off, 0x1000)
 
 # ---------------- IDATA ----------------
 imports = {
     'KERNEL32.dll': [
-        'ExitProcess','CreateFileW','ReadFile','WriteFile','CloseHandle','GetFileSize',
+        'ExitProcess','CreateFileW','ReadFile','WriteFile','FlushFileBuffers','CloseHandle',
+        'MoveFileExW','DeleteFileW','GetFileSize',
         'MultiByteToWideChar','WideCharToMultiByte','lstrcpyW','lstrlenW','GetModuleHandleW','CompareStringOrdinal','LoadLibraryW','GetProcAddress','MulDiv'
     ],
     'USER32.dll': [
@@ -1072,26 +1079,49 @@ em.test32('r13'); em.jcc(0x84,'save_zero_bytes')
 em.mov_r32_imm('rcx',65001); em.xor32('rdx'); em.lea_rip('r8',bsyms['document_model']); em.mov_r32_r32('r9','r13'); em.lea_rip('rax',bsyms['bytebuf']); em.mov_mrsp_reg64(0x20,'rax'); em.mov_mrsp_imm32(0x28,BYTE_CAP); em.mov_mrsp_imm32(0x30,0,qword=True); em.mov_mrsp_imm32(0x38,0,qword=True); em.call_iat('WideCharToMultiByte'); em.test32('rax'); em.jcc(0x84,'err_save'); em.mov_r32_r32('r13','rax'); em.jmp('save_create')
 em.label('save_zero_bytes'); em.xor32('r13')
 em.label('save_create')
-# Existing Save writes current_path; Save As writes temp_path until disk commit.
-em.mov_r32_ripmem('rax',bsyms['save_target_is_temp']); em.test32('rax'); em.jcc(0x84,'save_use_current_path'); em.lea_rip('rcx',bsyms['temp_path']); em.jmp('save_path_ready')
-em.label('save_use_current_path'); em.lea_rip('rcx',bsyms['current_path'])
-em.label('save_path_ready'); em.mov_r32_imm('rdx',0x40000000); em.xor32('r8'); em.xor32('r9'); em.mov_mrsp_imm32(0x20,2); em.mov_mrsp_imm32(0x28,0x80); em.mov_mrsp_imm32(0x30,0,qword=True); em.call_iat('CreateFileW'); em.cmp_rax_neg1(); em.jcc(0x84,'err_save'); em.mov_r64_r64('r12','rax')
+# Freeze the destination for this transaction in nonvolatile r14. Save As keeps
+# its selected path in temp_path until the atomic replacement commits.
+em.mov_r32_ripmem('rax',bsyms['save_target_is_temp']); em.test32('rax'); em.jcc(0x84,'save_use_current_path'); em.lea_rip('r14',bsyms['temp_path']); em.jmp('save_target_ready')
+em.label('save_use_current_path'); em.lea_rip('r14',bsyms['current_path'])
+# Build a sibling staging path by appending ".pemark.tmp". A 500-character
+# destination plus the 11-character suffix and NUL exactly fits PATH_CHARS=512.
+em.label('save_target_ready'); em.mov_r64_r64('rcx','r14'); em.call_iat('lstrlenW'); em.cmp_r32_imm('rax',500); em.jcc(0x87,'err_save'); em.mov_r32_r32('r15','rax')
+em.lea_rip('rcx',bsyms['save_stage_path']); em.mov_r64_r64('rdx','r14'); em.call_iat('lstrcpyW'); em.lea_rip('rcx',bsyms['save_stage_path'])
+for _ch in '.pemark.tmp':
+    em.mov_word_index2_imm16('rcx','r15',ord(_ch)); em.add_r32_imm8('r15',1)
+em.mov_word_index2_zero('rcx','r15')
+# Only the sibling staging file is truncated. The destination remains untouched
+# until MoveFileExW is the single commit point.
+em.lea_rip('rcx',bsyms['save_stage_path']); em.mov_r32_imm('rdx',0x40000000); em.xor32('r8'); em.xor32('r9'); em.mov_mrsp_imm32(0x20,1); em.mov_mrsp_imm32(0x28,0x80); em.mov_mrsp_imm32(0x30,0,qword=True); em.call_iat('CreateFileW'); em.cmp_rax_neg1(); em.jcc(0x84,'err_save'); em.mov_r64_r64('r12','rax')
 # Complete-write loop. WriteFile success may legally report fewer bytes than
 # requested. Advance by io_count until no bytes remain; zero progress or an
 # impossible count above remaining is a hard failure.
 em.lea_rip('r14',bsyms['bytebuf']); em.mov_r32_r32('r15','r13')
 em.label('save_write_loop'); em.test32('r15'); em.jcc(0x84,'save_write_complete')
 em.mov_r64_r64('rcx','r12'); em.mov_r64_r64('rdx','r14'); em.mov_r32_r32('r8','r15'); em.lea_rip('r9',bsyms['io_count']); em.mov_mrsp_imm32(0x20,0,qword=True)
-if INJECTED_BUILD: em.call_label('injected_WriteFile')
+if WRITE_CALL_INJECTED: em.call_label('injected_WriteFile')
 else: em.call_iat('WriteFile')
 em.test32('rax'); em.jcc(0x84,'save_fail_close')
 em.mov_r32_ripmem('rax',bsyms['io_count']); em.test32('rax'); em.jcc(0x84,'save_fail_close'); em.cmp_r32_r32('rax','r15'); em.jcc(0x87,'save_fail_close')
 em.add_r64_r64('r14','rax'); em.sub_r32_r32('r15','rax'); em.jmp('save_write_loop')
 em.label('save_write_complete')
-em.mov_r64_r64('rcx','r12'); em.call_iat('CloseHandle'); em.mov_r32_ripmem('rax',bsyms['save_target_is_temp']); em.test32('rax'); em.jcc(0x84,'save_path_committed'); em.lea_rip('rcx',bsyms['current_path']); em.lea_rip('rdx',bsyms['temp_path']); em.call_iat('lstrcpyW')
+em.mov_r64_r64('rcx','r12')
+if WRITE_INJECTION_MODE == 'flush_failure': em.call_label('injected_FlushFileBuffers')
+else: em.call_iat('FlushFileBuffers')
+em.test32('rax'); em.jcc(0x84,'save_fail_close')
+em.mov_r64_r64('rcx','r12'); em.call_iat('CloseHandle'); em.test32('rax'); em.jcc(0x84,'save_fail_delete')
+# Recover the frozen destination pointer after r14 was reused by the write loop.
+em.mov_r32_ripmem('rax',bsyms['save_target_is_temp']); em.test32('rax'); em.jcc(0x84,'save_replace_current'); em.lea_rip('rdx',bsyms['temp_path']); em.jmp('save_replace_ready')
+em.label('save_replace_current'); em.lea_rip('rdx',bsyms['current_path'])
+em.label('save_replace_ready'); em.lea_rip('rcx',bsyms['save_stage_path']); em.mov_r32_imm('r8',9)
+if WRITE_INJECTION_MODE == 'replace_failure': em.call_label('injected_MoveFileExW')
+else: em.call_iat('MoveFileExW')
+em.test32('rax'); em.jcc(0x84,'save_fail_delete')
+em.mov_r32_ripmem('rax',bsyms['save_target_is_temp']); em.test32('rax'); em.jcc(0x84,'save_path_committed'); em.lea_rip('rcx',bsyms['current_path']); em.lea_rip('rdx',bsyms['temp_path']); em.call_iat('lstrcpyW')
 em.label('save_path_committed'); em.mov_ripmem_imm32(bsyms['save_target_is_temp'],0); em.mov_ripmem_imm32(bsyms['encoding_state'],0); em.call_label('mark_document_saved'); em.call_label('update_preview'); em.call_label('update_status'); em.jmp('destructive_continue')
 
 em.label('save_fail_close'); em.mov_r64_r64('rcx','r12'); em.call_iat('CloseHandle')
+em.label('save_fail_delete'); em.lea_rip('rcx',bsyms['save_stage_path']); em.call_iat('DeleteFileW')
 em.label('err_save'); em.mov_ripmem_imm32(bsyms['pending_destructive_action'],0); em.mov_ripmem_imm32(bsyms['save_target_is_temp'],0); em.mov_r64_r64('rcx','rbx'); em.lea_rip('rdx',rsyms['err_save']); em.lea_rip('r8',rsyms['err_title']); em.mov_r32_imm('r9',0x10); em.call_iat('MessageBoxW'); em.jmp('msg_loop')
 
 # All destructive document transitions enter here. pending action: 1 New,
@@ -1867,7 +1897,7 @@ em.label('is_document_dirty')
 em.mov_r64_ripmem('rax',bsyms['document_revision']); em.mov_r64_ripmem('r10',bsyms['saved_revision']); em.cmp_r64_r64('rax','r10'); em.jcc(0x85,'is_document_dirty_true'); em.xor32('rax'); em.emit(0xC3)
 em.label('is_document_dirty_true'); em.xor32('rax'); em.add_r32_imm8('rax',1); em.emit(0xC3)
 
-if INJECTED_BUILD:
+if WRITE_CALL_INJECTED:
     em.label('injected_WriteFile')
     em.mov_r32_ripmem('rax',bsyms['inject_write_call_count']); em.add_r32_imm8('rax',1); em.mov_ripmem_r32(bsyms['inject_write_call_count'],'rax')
     if WRITE_INJECTION_MODE == 'zero_success':
@@ -1879,6 +1909,14 @@ if INJECTED_BUILD:
     if WRITE_INJECTION_MODE in {'short_then_complete', 'late_failure'}:
         em.label('injected_write_short'); em.cmp_r32_imm('r8',7); em.jcc(0x86,'injected_write_real'); em.mov_r32_imm('r8',7)
         em.label('injected_write_real'); em.emit(0x48,0x83,0xEC,0x28); em.mov_mrsp_imm32(0x20,0,qword=True); em.call_iat('WriteFile'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
+
+if WRITE_INJECTION_MODE == 'flush_failure':
+    em.label('injected_FlushFileBuffers')
+    em.mov_r32_ripmem('rax',bsyms['inject_flush_call_count']); em.add_r32_imm8('rax',1); em.mov_ripmem_r32(bsyms['inject_flush_call_count'],'rax'); em.xor32('rax'); em.emit(0xC3)
+
+if WRITE_INJECTION_MODE == 'replace_failure':
+    em.label('injected_MoveFileExW')
+    em.mov_r32_ripmem('rax',bsyms['inject_replace_call_count']); em.add_r32_imm8('rax',1); em.mov_ripmem_r32(bsyms['inject_replace_call_count'],'rax'); em.xor32('rax'); em.emit(0xC3)
 
 em.label('commit_clean_document')
 em.emit(0x48,0x83,0xEC,0x28)
@@ -3172,7 +3210,10 @@ assert _call_counts.get('mark_document_saved', 0) == 2, \
 assert bss_sizes['document_revision'] == 8 and bss_sizes['saved_revision'] == 8, \
     'document/saved revision 必须保持 64-bit'
 _dirty0 = em.labels['is_document_dirty']
-_dirty1 = em.labels.get('injected_WriteFile', em.labels['commit_clean_document'])
+_dirty1 = min(em.labels[name] for name in
+              ('injected_WriteFile', 'injected_FlushFileBuffers',
+               'injected_MoveFileExW', 'commit_clean_document')
+              if name in em.labels)
 _dirty_code = bytes(_code[_dirty0:_dirty1])
 assert _dirty_code.count(b'\xC3') == 2 and bytes.fromhex('4c39d0') in _dirty_code, \
     'is_document_dirty 必须比较完整 64-bit revision 并保留 clean/dirty 两个叶出口'
@@ -3189,7 +3230,7 @@ assert "em.label('cmd_exit'); em.jmp('request_close')" in _production_source
 assert "em.cmp_r32_imm('rdx',0x0010); em.jcc(0x84,'wp_close')" in _production_source
 assert "em.label('destructive_close'); em.mov_r64_r64('rcx','rbx'); em.call_iat('DestroyWindow')" in _production_source
 # (K) Save As path transaction: selection remains in temp_path; current_path is
-# copied only after WriteFile succeeds and the handle is closed.
+# copied only after the sibling staging file atomically replaces the target.
 _saveas_src = _production_source[_production_source.index("em.label('cmd_saveas')"):
                                  _production_source.index("em.label('do_save')")]
 assert "mov_ripmem_imm32(bsyms['save_target_is_temp'],1)" in _saveas_src
@@ -3198,10 +3239,22 @@ assert "lea_rip('rcx',bsyms['current_path']); em.lea_rip('rdx',bsyms['temp_path'
 _save_commit_src = _production_source[_production_source.index("em.label('save_create')"):
                                       _production_source.index("em.label('save_fail_close')")]
 _close_pos = _save_commit_src.rindex("call_iat('CloseHandle')")
+_replace_pos = _save_commit_src.index("call_iat('MoveFileExW')")
 _path_pos = _save_commit_src.index("em.lea_rip('rcx',bsyms['current_path']); em.lea_rip('rdx',bsyms['temp_path']); em.call_iat('lstrcpyW')")
 _saved_pos = _save_commit_src.index("call_label('mark_document_saved')")
-assert _close_pos < _path_pos < _saved_pos, \
-    'Save As 必须按 close handle -> commit path -> mark saved 的顺序提交'
+assert _close_pos < _replace_pos < _path_pos < _saved_pos, \
+    'Save As 必须按 close -> atomic replace -> commit path -> mark saved 的顺序提交'
+assert "lea_rip('rcx',bsyms['save_stage_path'])" in _save_commit_src
+assert "call_iat('FlushFileBuffers')" in _save_commit_src
+assert "em.mov_mrsp_imm32(0x20,1)" in _save_commit_src, \
+    'staging file 必须使用 CREATE_NEW，禁止覆盖已有恢复文件'
+assert "em.mov_r32_imm('r8',9)" in _save_commit_src, \
+    'atomic commit 必须请求 REPLACE_EXISTING | WRITE_THROUGH'
+_save_failure_src = _production_source[_production_source.index("em.label('save_fail_close')"):
+                                       _production_source.index("em.label('err_save')")]
+assert "call_iat('CloseHandle')" in _save_failure_src and \
+       "call_iat('DeleteFileW')" in _save_failure_src, \
+    '写入/刷新/替换失败必须关闭句柄并清理自有 staging file'
 # (L) Complete-write ownership: exactly one WriteFile call lives in a back-edge
 # loop, and io_count==0 / io_count>remaining both reach the failure cleanup.
 _write_src = _production_source[_production_source.index("em.label('save_write_loop')"):
@@ -3210,8 +3263,9 @@ assert _write_src.count("call_iat('WriteFile')") == 1
 assert "mov_r32_ripmem('rax',bsyms['io_count']); em.test32('rax'); em.jcc(0x84,'save_fail_close')" in _write_src
 assert "em.cmp_r32_r32('rax','r15'); em.jcc(0x87,'save_fail_close')" in _write_src
 assert "em.add_r64_r64('r14','rax'); em.sub_r32_r32('r15','rax'); em.jmp('save_write_loop')" in _write_src
-assert ('injected_WriteFile' in em.labels) == INJECTED_BUILD, \
-    'WriteFile injection wrapper 必须只存在于显式测试构建'
+assert ('injected_WriteFile' in em.labels) == WRITE_CALL_INJECTED
+assert ('injected_FlushFileBuffers' in em.labels) == (WRITE_INJECTION_MODE == 'flush_failure')
+assert ('injected_MoveFileExW' in em.labels) == (WRITE_INJECTION_MODE == 'replace_failure')
 # (M) Entry point begins with the fixed Win64 stack frame used by the main flow.
 _e0 = em.labels['entry_first_run']
 assert _e0 == 0 and _code.startswith(bytes.fromhex('4881ec88000000')), \

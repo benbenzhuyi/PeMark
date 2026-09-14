@@ -74,14 +74,20 @@ normal close exit code:                  = 0
 - A 512 KiB document saved through the real controller matched the expected
   UTF-8 bytes. Build assertions require the `WriteFile` back edge and both
   zero-progress and excessive-count failure branches.
-- Build-time-only WriteFile variants passed for short-write completion,
-  zero-success rejection, first-call failure and partial-then-failure. Test
+- Build-time-only I/O variants passed for short-write completion,
+  zero-success rejection, first-call failure, partial-then-failure, flush
+  failure and atomic-replace failure. Test
   executables are visibly titled, emitted only under ignored `bin/test/`, and
   leave the release candidate hash unchanged.
+- Save now writes a sibling `.pemark.tmp` with `CREATE_NEW`, loops to completion,
+  flushes, checks close and commits with
+  `MoveFileExW(REPLACE_EXISTING | WRITE_THROUGH)`. All tested pre-commit failures
+  preserve the old target, old path, dirty revisions and any preexisting staging
+  artifact; newly owned staging files are removed.
 - Candidate size: 77,824 bytes.
-- Emitted text: 27,572 bytes, 506 bytes above V8.5.1.
+- Emitted text: 27,852 bytes, 786 bytes above V8.5.1.
 - Candidate SHA-256:
-  `1aab7d19099cb42437c1a0787aed70060a7e618d6c29ab131b261f542948d381`.
+  `6b8571318d174098a98c8ef67b0f0e5359e4331c1ab5d9ae06bf301dd04bb105`.
 
 ## Remaining before promotion
 
@@ -89,7 +95,6 @@ normal close exit code:                  = 0
   covered through the real controller and disk bytes; Save As picker Cancel and
   commit ordering are covered, while its injected write-failure path belongs to
   the next failure-injection layer.
-- Replace direct-to-target creation with a sibling temporary file and atomic
-  replacement. Injection now proves that the current failure path can truncate
-  or partially overwrite the old target, so this remains a release blocker.
+- Add explicit CreateFile/CloseHandle failure injection and decide the product
+  recovery policy for staging artifacts left by abrupt process or machine loss.
 - Independently inspect helper bytes and every revision call site.

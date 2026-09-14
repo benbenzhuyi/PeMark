@@ -1,14 +1,14 @@
-# Win32 API Surface — V8.4.23
+# Win32 API Surface — V8.5.2 Candidate
 
 Current imported APIs. When adding/removing imports, update this file and run PE inspection.
 
 ## KERNEL32.dll
 
-`ExitProcess`, `CreateFileW`, `ReadFile`, `WriteFile`, `CloseHandle`, `GetFileSize`, `MultiByteToWideChar`, `WideCharToMultiByte`, `lstrcpyW`, `lstrlenW`, `GetModuleHandleW`, `CompareStringOrdinal`, `LoadLibraryW`, `GetProcAddress`, `MulDiv`
+`ExitProcess`, `CreateFileW`, `ReadFile`, `WriteFile`, `FlushFileBuffers`, `CloseHandle`, `MoveFileExW`, `DeleteFileW`, `GetFileSize`, `MultiByteToWideChar`, `WideCharToMultiByte`, `lstrcpyW`, `lstrlenW`, `GetModuleHandleW`, `CompareStringOrdinal`, `LoadLibraryW`, `GetProcAddress`, `MulDiv`
 
 ## USER32.dll
 
-`CreateWindowExW`, `GetMessageW`, `TranslateMessage`, `DispatchMessageW`, `IsWindow`, `IsWindowVisible`, `CreateMenu`, `CreatePopupMenu`, `AppendMenuW`, `GetWindowTextLengthW`, `GetWindowTextW`, `SetWindowTextW`, `SendMessageW`, `MoveWindow`, `SetWindowPos`, `MessageBoxW`, `SetFocus`, `RegisterClassExW`, `DefWindowProcW`, `PostQuitMessage`, `PostMessageW`, `LoadCursorW`, `DestroyWindow`, `ShowWindow`, `CheckMenuItem`, `GetWindowRect`, `GetClientRect`, `wsprintfW`, `RegisterWindowMessageW`, `InvalidateRect`, `UpdateWindow`, `RedrawWindow`, `GetCursorPos`, `ScreenToClient`, `SetCapture`, `ReleaseCapture`, `SetCursor`, `BeginPaint`, `EndPaint`, `SetScrollRange`, `SetScrollPos`, `ShowScrollBar`, `GetKeyState`, `GetSystemMetrics`, `SetTimer`, `KillTimer`, `CreateAcceleratorTableW`, `TranslateAcceleratorW`, `DestroyAcceleratorTable`, `IsDialogMessageW`, `SetForegroundWindow`, `DrawMenuBar`, `DrawTextW`, `FillRect`, `GetMenuStringW`, `SetMenuInfo`, `GetWindowDC`, `ReleaseDC`, `GetMenuItemRect`
+`CreateWindowExW`, `GetMessageW`, `TranslateMessage`, `DispatchMessageW`, `IsWindow`, `CreateMenu`, `CreatePopupMenu`, `AppendMenuW`, `GetWindowTextLengthW`, `GetWindowTextW`, `SetWindowTextW`, `SendMessageW`, `MoveWindow`, `SetWindowPos`, `MessageBoxW`, `SetFocus`, `RegisterClassExW`, `DefWindowProcW`, `PostQuitMessage`, `PostMessageW`, `LoadCursorW`, `DestroyWindow`, `ShowWindow`, `CheckMenuItem`, `GetWindowRect`, `GetClientRect`, `wsprintfW`, `RegisterWindowMessageW`, `InvalidateRect`, `UpdateWindow`, `RedrawWindow`, `GetCursorPos`, `ScreenToClient`, `SetCapture`, `ReleaseCapture`, `SetCursor`, `BeginPaint`, `EndPaint`, `SetScrollRange`, `SetScrollPos`, `ShowScrollBar`, `GetKeyState`, `GetSystemMetrics`, `SetTimer`, `KillTimer`, `CreateAcceleratorTableW`, `TranslateAcceleratorW`, `DestroyAcceleratorTable`, `IsDialogMessageW`, `SetForegroundWindow`, `DrawMenuBar`, `DrawTextW`, `FillRect`, `GetMenuStringW`, `SetMenuInfo`, `GetWindowDC`, `ReleaseDC`, `GetMenuItemRect`
 
 ## COMDLG32.dll
 
