@@ -40,6 +40,16 @@ def find_edit(main):
     return result[0] if result else 0
 
 
+def wait_edit(main, timeout=5.0):
+    deadline = time.perf_counter() + timeout
+    while time.perf_counter() < deadline:
+        hwnd = find_edit(main)
+        if hwnd:
+            return hwnd
+        time.sleep(.05)
+    return 0
+
+
 def main():
     ns = load_generator(GEN)
     bsyms = ns["bsyms"]
@@ -60,7 +70,7 @@ def main():
         return value.value
     try:
         assert (read32("document_revision"), read32("saved_revision")) == (0, 0)
-        edit = find_edit(main_hwnd)
+        edit = wait_edit(main_hwnd)
         assert edit
         u32.SendMessageW(edit, WM_SETTEXT, 0, "# changed\r\n")
         u32.SendMessageW(main_hwnd, WM_COMMAND, (EN_CHANGE << 16) | 1, edit)
@@ -81,4 +91,3 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-
