@@ -35,6 +35,10 @@
   Cancellation or failure therefore retains the previous `current_path`.
 - Added a real Save As cancellation check and build-time assertions for the
   required close-handle, path-commit and saved-revision ordering.
+- Replaced the one-shot save write with a complete-write loop that advances on
+  partial success and rejects API failure, zero progress and counts above the
+  requested remainder.
+- Added a 512 KiB real-disk save check and build-time loop/back-edge guards.
 - Preserved all V8.5.1 machine-code and Windows GUI regression results.
 - Kept the V8.5.1 current/release generator and binary unchanged.
 

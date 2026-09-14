@@ -1064,8 +1064,15 @@ em.label('save_create')
 em.mov_r32_ripmem('rax',bsyms['save_target_is_temp']); em.test32('rax'); em.jcc(0x84,'save_use_current_path'); em.lea_rip('rcx',bsyms['temp_path']); em.jmp('save_path_ready')
 em.label('save_use_current_path'); em.lea_rip('rcx',bsyms['current_path'])
 em.label('save_path_ready'); em.mov_r32_imm('rdx',0x40000000); em.xor32('r8'); em.xor32('r9'); em.mov_mrsp_imm32(0x20,2); em.mov_mrsp_imm32(0x28,0x80); em.mov_mrsp_imm32(0x30,0,qword=True); em.call_iat('CreateFileW'); em.cmp_rax_neg1(); em.jcc(0x84,'err_save'); em.mov_r64_r64('r12','rax')
-# WriteFile
-em.mov_r64_r64('rcx','r12'); em.lea_rip('rdx',bsyms['bytebuf']); em.mov_r32_r32('r8','r13'); em.lea_rip('r9',bsyms['io_count']); em.mov_mrsp_imm32(0x20,0,qword=True); em.call_iat('WriteFile'); em.test32('rax'); em.jcc(0x84,'save_fail_close')
+# Complete-write loop. WriteFile success may legally report fewer bytes than
+# requested. Advance by io_count until no bytes remain; zero progress or an
+# impossible count above remaining is a hard failure.
+em.lea_rip('r14',bsyms['bytebuf']); em.mov_r32_r32('r15','r13')
+em.label('save_write_loop'); em.test32('r15'); em.jcc(0x84,'save_write_complete')
+em.mov_r64_r64('rcx','r12'); em.mov_r64_r64('rdx','r14'); em.mov_r32_r32('r8','r15'); em.lea_rip('r9',bsyms['io_count']); em.mov_mrsp_imm32(0x20,0,qword=True); em.call_iat('WriteFile'); em.test32('rax'); em.jcc(0x84,'save_fail_close')
+em.mov_r32_ripmem('rax',bsyms['io_count']); em.test32('rax'); em.jcc(0x84,'save_fail_close'); em.cmp_r32_r32('rax','r15'); em.jcc(0x87,'save_fail_close')
+em.add_r64_r64('r14','rax'); em.sub_r32_r32('r15','rax'); em.jmp('save_write_loop')
+em.label('save_write_complete')
 em.mov_r64_r64('rcx','r12'); em.call_iat('CloseHandle'); em.mov_r32_ripmem('rax',bsyms['save_target_is_temp']); em.test32('rax'); em.jcc(0x84,'save_path_committed'); em.lea_rip('rcx',bsyms['current_path']); em.lea_rip('rdx',bsyms['temp_path']); em.call_iat('lstrcpyW')
 em.label('save_path_committed'); em.mov_ripmem_imm32(bsyms['save_target_is_temp'],0); em.mov_ripmem_imm32(bsyms['encoding_state'],0); em.call_label('mark_document_saved'); em.call_label('update_preview'); em.call_label('update_status'); em.jmp('destructive_continue')
 
@@ -3167,12 +3174,20 @@ _path_pos = _save_commit_src.index("em.lea_rip('rcx',bsyms['current_path']); em.
 _saved_pos = _save_commit_src.index("call_label('mark_document_saved')")
 assert _close_pos < _path_pos < _saved_pos, \
     'Save As 必须按 close handle -> commit path -> mark saved 的顺序提交'
-# (L) Entry point begins with the fixed Win64 stack frame used by the main flow.
+# (L) Complete-write ownership: exactly one WriteFile call lives in a back-edge
+# loop, and io_count==0 / io_count>remaining both reach the failure cleanup.
+_write_src = _production_source[_production_source.index("em.label('save_write_loop')"):
+                                _production_source.index("em.label('save_write_complete')")]
+assert _write_src.count("call_iat('WriteFile')") == 1
+assert "mov_r32_ripmem('rax',bsyms['io_count']); em.test32('rax'); em.jcc(0x84,'save_fail_close')" in _write_src
+assert "em.cmp_r32_r32('rax','r15'); em.jcc(0x87,'save_fail_close')" in _write_src
+assert "em.add_r64_r64('r14','rax'); em.sub_r32_r32('r15','rax'); em.jmp('save_write_loop')" in _write_src
+# (M) Entry point begins with the fixed Win64 stack frame used by the main flow.
 _e0 = em.labels['entry_first_run']
 assert _e0 == 0 and _code.startswith(bytes.fromhex('4881ec88000000')), \
     'entry point must begin with sub rsp,0x88'
 
-# (M) dispatch 终结断言（退出崩溃根因的防回退门禁）：dispatch_status_done
+# (N) dispatch 终结断言（退出崩溃根因的防回退门禁）：dispatch_status_done
 #     块检查 IsWindow 后必须以 JNE msg_loop + 无条件 jmp exit 终结，绝不
 #     允许执行流直落进下一个 label。本断言要永久拦截的错误模式：dispatch
 #     尾部 fall through 进 ret 结尾的子程序（无压栈返回地址的 ret = 野返回

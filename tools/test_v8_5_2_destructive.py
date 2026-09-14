@@ -244,11 +244,12 @@ def scenario_open_cancel(ns):
         app.close_handle()
 
 
-def scenario_save_then_close_or_new(ns, target, command):
+def scenario_save_then_close_or_new(ns, target, command,
+                                    text="saved through controller\r\n"):
     app = App(ns)
     try:
         app.write_path(target)
-        app.set_text_dirty("saved through controller\r\n")
+        app.set_text_dirty(text)
         if command == WM_CLOSE:
             app.post_close()
         else:
@@ -263,7 +264,7 @@ def scenario_save_then_close_or_new(ns, target, command):
             doc, saved = app.revisions()
             assert app.text() == "" and doc == saved
             app.post_close(); assert app.proc.wait(timeout=5) == 0
-        assert target.read_bytes() == b"saved through controller\r\n"
+        assert target.read_bytes() == text.encode("utf-8")
     finally:
         app.close_handle()
 
@@ -311,12 +312,15 @@ def main():
         root = Path(temp)
         scenario_save_then_close_or_new(ns, root / "close-save.md", WM_CLOSE)
         scenario_save_then_close_or_new(ns, root / "new-save.md", CMD_NEW)
+        large_text = ("0123456789abcdef" * 32768) + "\r\n"
+        scenario_save_then_close_or_new(ns, root / "large-save.md", CMD_NEW,
+                                        large_text)
         scenario_save_failure_cancels_close(ns, root / "missing" / "fail.md")
         scenario_saveas_cancel_preserves_path(ns, root / "old.md")
     print("PASS destructive matrix: clean close; Close Cancel/Discard/Save; "
           "New Cancel/Discard/Save; Open decision Cancel and picker Cancel; "
           "failed Save preserves dirty document and cancels Close; Save As "
-          "cancel preserves the original path")
+          "cancel preserves the original path; 512 KiB save bytes match")
     return 0
 
 

@@ -23,6 +23,9 @@ Scope: first bounded production change; candidate channel only
 - Save As keeps the selected path in `temp_path`, writes that candidate, and
   copies it to `current_path` only after successful `WriteFile` and
   `CloseHandle`. Cancel and failure retain the previous path.
+- Replaced the one-shot `WriteFile` call with a complete-write loop. Each
+  successful partial write advances the byte pointer and reduces remaining;
+  API failure, zero progress, or a count above remaining enters save failure.
 
 No title marker, encoding change, save-byte algorithm change, allocator change,
 import change or PE section change is included.
@@ -68,10 +71,13 @@ normal close exit code:                  = 0
 - Save As cancellation was exercised through the real file picker, and
   build-time ordering assertions require `close handle -> commit path -> mark
   saved` on its success path.
+- A 512 KiB document saved through the real controller matched the expected
+  UTF-8 bytes. Build assertions require the `WriteFile` back edge and both
+  zero-progress and excessive-count failure branches.
 - Candidate size: 77,824 bytes.
-- Emitted text: 27,523 bytes, 457 bytes above V8.5.1.
+- Emitted text: 27,572 bytes, 506 bytes above V8.5.1.
 - Candidate SHA-256:
-  `3541747e96de9f438857ea4f5e19bb0b03d217241f73723a89c73c1b711afe88`.
+  `1aab7d19099cb42437c1a0787aed70060a7e618d6c29ab131b261f542948d381`.
 
 ## Remaining before promotion
 
@@ -79,4 +85,6 @@ normal close exit code:                  = 0
   covered through the real controller and disk bytes; Save As picker Cancel and
   commit ordering are covered, while its injected write-failure path belongs to
   the next failure-injection layer.
+- Execute emitted short-success, zero-success and late-failure variants through
+  the build-time-only WriteFile injection wrapper.
 - Independently inspect helper bytes and every revision call site.
