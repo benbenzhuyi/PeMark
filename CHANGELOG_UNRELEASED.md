@@ -10,6 +10,15 @@
 - Added a 30-run Windows launch/resource/clean-exit baseline harness.
 - No production generator or executable behavior changed in this preparation step.
 
+## V8.5.2 document revision candidate
+
+- Added a candidate-channel implementation of `document_revision` and
+  `saved_revision` with single-writer build assertions.
+- Verified the runtime transitions `(0,0) -> edit (1,0) -> New (2,2)` through
+  direct process-state reads.
+- Preserved all V8.5.1 machine-code and Windows GUI regression results.
+- Kept the V8.5.1 current/release generator and binary unchanged.
+
 V8.5.1 is the current public Preview baseline. Existing V8.4.23, V8.4.24 and the
 external V8.5.0 reference remain frozen.
 
