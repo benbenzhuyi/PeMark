@@ -1,0 +1,18 @@
+{
+  "passed": [
+    "preview navigation survives volatile API clobbers",
+    "long outline has positive thumb travel",
+    "drag above window clamps to start",
+    "20 view transitions keep HWND visibility coherent",
+    "wrap recreation preserves Preview model and creates wrapped Source",
+    "fenced code preserves indentation and internal spaces",
+    "short outline does not show a full-height hover thumb",
+    "destroyed main window reaches ExitProcess without helper fallthrough",
+    "queued mouse handlers consume message position",
+    "viewport formatting clips huge code spans to visible range",
+    "210 scrollbar capacity/height/top boundary combinations",
+    "drag clamps both extremes and returns to start"
+  ],
+  "failures": [],
+  "sha256": "a0342cd8f7bd8a6c4118241621e54fed7b4b83401c881fdfc73cc7e6633ee260"
+}

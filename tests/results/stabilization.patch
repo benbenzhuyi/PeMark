@@ -1,0 +1,742 @@
+--- src\current\generate_markdown_editor_v8_4_23.py
++++ src\stabilization\generate_markdown_editor_v8_4_24.py
+@@ -7,7 +7,7 @@
+ BSS_RVA = 0xC000
+ FILE_ALIGN = 0x200
+ SECT_ALIGN = 0x1000
+-STYLE_CAP = 131072  # V8.4.23: large-doc Markdown style span capacity
++STYLE_CAP = 131072  # V8.4.24: large-doc Markdown style span capacity
+ 
+ 
+ def align(x,a): return (x+a-1)&~(a-1)
+@@ -31,7 +31,7 @@
+ wstr('class_static','STATIC')
+ wstr('class_edit','EDIT')
+ wstr('class_main','DirectPE_Notepad_Main')
+-wstr('title','Direct PE Markdown Editor x64 V8.4.23 — No Compiler')
++wstr('title','Direct PE Markdown Editor x64 V8.4.24 — No Compiler')
+ wstr('empty','')
+ wstr('menu_file','&File')
+ wstr('menu_edit','&Edit')
+@@ -167,7 +167,7 @@
+ wstr('err_save','Could not save the file.')
+ wstr('err_large','The file is too large for this build (limit: 4 MiB).')
+ wstr('err_decode','The file could not be decoded as UTF-8/ANSI text.')
+-wstr('about','Direct PE Markdown Editor x64 V8.4.23\r\n\r\nNative PE32+ and x86-64 machine code generated directly, without a C/C++ compiler, assembler, or linker.\r\n\r\nV8.4.23 hardens view-mode state and the custom Outline scrollbar. Opening a document now explicitly re-enters Source mode, Preview commands reconcile logical state with the actually visible surface, Outline navigation uses the visible surface as the routing authority, and the custom scrollbar window is physically hidden when idle so only the thumb appears on hover.')
++wstr('about','Direct PE Markdown Editor x64 V8.4.24 - stabilization candidate\r\n\r\nNative PE32+ and x86-64 machine code generated directly, without a compiler, assembler, or linker.\r\n\r\nSingle Source/Preview mode, source-offset Outline navigation, shared scrollbar geometry, and viewport-limited Preview formatting. See CHANGELOG_UNRELEASED.md for validation and remaining issues.')
+ 
+ # ---------------- BSS layout ----------------
+ bss_off = 0
+@@ -212,7 +212,7 @@
+ bss_alloc('findreplace_hwnd', 8, 8)
+ bss_alloc('wrap_flag', 4, 4)
+ bss_alloc('status_flag', 4, 4)
+-bss_alloc('preview_flag', 4, 4)
++bss_alloc('view_mode', 4, 4)
+ bss_alloc('outline_flag', 4, 4)
+ bss_alloc('theme_dark', 4, 4)
+ bss_alloc('zoom_pct', 4, 4)
+@@ -236,7 +236,10 @@
+ bss_alloc('sel_end', 4, 4)
+ bss_alloc('line_zero', 4, 4)
+ bss_alloc('col_one', 4, 4)
++# Capture/restore scratch HWND, never a view-mode authority.
+ bss_alloc('view_hwnd', 8, 8)
++bss_alloc('nav_source_offset', 4, 4)
++bss_alloc('nav_target_offset', 4, 4)
+ bss_alloc('view_sel_start', 4, 4)
+ bss_alloc('view_sel_end', 4, 4)
+ bss_alloc('view_line', 4, 4)
+@@ -244,23 +247,27 @@
+ bss_alloc('view_line_start', 4, 4)
+ bss_alloc('view_line_len', 4, 4)
+ bss_alloc('view_top_pos', 4, 4)
+-bss_alloc('outline_scroll_top', 4, 4)
+-bss_alloc('outline_scroll_count', 4, 4)
++# OutlineController owns this state. Geometry fields are written only by scroll_layout.
+ bss_alloc('outline_width', 4, 4)
+ bss_alloc('splitter_drag', 4, 4)
+-bss_alloc('outline_scroll_visible', 4, 4)
+-bss_alloc('outline_scroll_drag', 4, 4)
+-bss_alloc('outline_scroll_drag_offset', 4, 4)
+-bss_alloc('outline_scroll_thumb_top', 4, 4)
+-bss_alloc('outline_scroll_thumb_h', 4, 4)
+-bss_alloc('outline_scroll_track_h', 4, 4)
+-bss_alloc('outline_visible_rows', 4, 4)
+-bss_alloc('outline_max_top', 4, 4)
+ bss_alloc('scrollbar_w', 4, 4)
+ bss_alloc('scroll_trim_w', 4, 4)
++_scroll_fields = [('outline_scroll_top',4), ('outline_scroll_count',4),
++    ('outline_visible_rows',4), ('outline_max_top',4), ('outline_scroll_visible',4),
++    ('outline_scroll_drag',4), ('outline_scroll_drag_offset',4),
++    ('outline_scroll_thumb_top',4), ('outline_scroll_thumb_h',4),
++    ('outline_scroll_track_h',4), ('outline_scroll_travel',4),
++    ('outline_track_rect',16), ('outline_thumb_rect',16)]
++_scroll_base = bss_alloc('outline_scroll_state', sum(n for _,n in _scroll_fields), 8)
++_scroll_offset = 0
++for _name, _size in _scroll_fields:
++    bsyms[_name] = _scroll_base + _scroll_offset
++    _scroll_offset += _size
+ bss_alloc('preview_visible_format_only', 4, 4)
+ bss_alloc('preview_theme_dirty', 4, 4)
+ bss_alloc('format_visible_end', 4, 4)
++bss_alloc('preview_client_rect',16,4)
++bss_alloc('preview_bottom_point',8,4)
+ bss_alloc('vscroll_wparam', 4, 4)
+ bss_alloc('wheel_x', 4, 4)
+ bss_alloc('wheel_y', 4, 4)
+@@ -582,18 +589,13 @@
+ em.xor32('rcx'); em.call_iat('GetModuleHandleW'); em.mov_r64_r64('r15','rax')
+ em.mov_ripmem_imm32(bsyms['wrap_flag'],1)
+ em.mov_ripmem_imm32(bsyms['status_flag'],1)
+-em.mov_ripmem_imm32(bsyms['preview_flag'],0)
++em.mov_ripmem_imm32(bsyms['view_mode'],0)
+ em.mov_ripmem_imm32(bsyms['outline_flag'],1)
+ em.mov_ripmem_imm32(bsyms['outline_width'],228)
+ em.mov_ripmem_imm32(bsyms['splitter_drag'],0)
+ em.mov_ripmem_imm32(bsyms['outline_scroll_visible'],0)
+ em.mov_ripmem_imm32(bsyms['outline_scroll_drag'],0)
+ em.mov_ripmem_imm32(bsyms['outline_scroll_drag_offset'],0)
+-em.mov_ripmem_imm32(bsyms['outline_scroll_thumb_top'],4)
+-em.mov_ripmem_imm32(bsyms['outline_scroll_thumb_h'],24)
+-em.mov_ripmem_imm32(bsyms['outline_scroll_track_h'],100)
+-em.mov_ripmem_imm32(bsyms['outline_visible_rows'],1)
+-em.mov_ripmem_imm32(bsyms['outline_max_top'],0)
+ em.mov_ripmem_imm32(bsyms['preview_visible_format_only'],0)
+ em.mov_ripmem_imm32(bsyms['preview_theme_dirty'],0)
+ em.mov_ripmem_imm32(bsyms['theme_dark'],0)
+@@ -603,7 +605,7 @@
+ em.mov_ripmem_imm32(bsyms['search_wrap_flag'],1)
+ em.mov_ripmem_imm32(bsyms['client_w'],884)
+ em.mov_ripmem_imm32(bsyms['client_h'],590)
+-# V8.4.23: reserve a permanent scrollbar gutter whose width follows the current
++# V8.4.24: reserve a permanent scrollbar gutter whose width follows the current
+ # Windows vertical-scrollbar metric. The Outline ListBox itself has NO WS_VSCROLL.
+ em.mov_ripmem_imm32(bsyms['scrollbar_w'],17)
+ em.mov_r32_imm('rcx',2); em.call_iat('GetSystemMetrics'); em.test32('rax'); em.jcc(0x84,'scroll_metric_ready'); em.mov_ripmem_r32(bsyms['scrollbar_w'],'rax')
+@@ -634,7 +636,7 @@
+ em.lea_rip('rax',rsyms['class_main']); em.mov_mr12_reg64(64,'rax')
+ em.mov_r64_r64('rcx','r12'); em.call_iat('RegisterClassExW')
+ em.test32('rax'); em.jcc(0x84,'exit')
+-# V8.4.23: register a dedicated scrollbar-surface child class.  Unlike an
++# V8.4.24: register a dedicated scrollbar-surface child class.  Unlike an
+ # owner-drawn STATIC, it owns its WM_PAINT lifecycle directly, so theme changes
+ # and hover invalidations cannot fall back to a system COLOR_WINDOW background.
+ em.lea_rip('r12',bsyms['wc'])
+@@ -751,7 +753,7 @@
+ # Same 10px document inset in rendered mode.
+ em.mov_r64_ripmem('rcx',bsyms['hwnd_preview']); em.mov_r32_imm('rdx',0x00D3); em.mov_r32_imm('r8',3); em.mov_r32_imm('r9',0x000A000A); em.call_iat('SendMessageW')
+ em.mov_r64_ripmem('rcx',bsyms['hwnd_preview']); em.mov_r32_imm('rdx',0x0030); em.mov_r64_ripmem('r8',bsyms['hfont']); em.mov_r32_imm('r9',1); em.call_iat('SendMessageW')
+-# Left Markdown outline. V8.4.23 intentionally omits WS_VSCROLL: the ListBox
++# Left Markdown outline. V8.4.24 intentionally omits WS_VSCROLL: the ListBox
+ # owns only the content rectangle, while a separate SCROLLBAR child lives in a
+ # permanently reserved gutter to its right.
+ em.xor32('rcx'); em.lea_rip('rdx',rsyms['class_listbox']); em.lea_rip('r8',rsyms['empty']); em.mov_r32_imm('r9',0x54010151)  # no WS_VSCROLL
+@@ -767,7 +769,7 @@
+ em.mov_mrsp_imm32(0x20,210); em.mov_mrsp_imm32(0x28,0); em.mov_mrsp_imm32(0x30,18); em.mov_mrsp_imm32(0x38,590)
+ em.mov_mrsp_reg64(0x40,'rbx'); em.mov_mrsp_imm32(0x48,7,qword=True); em.mov_mrsp_reg64(0x50,'r15'); em.mov_mrsp_imm32(0x58,0,qword=True)
+ em.call_iat('CreateWindowExW'); em.mov_ripmem_r64(bsyms['hwnd_outline_gutter'],'rax'); em.test64('rax'); em.jcc(0x84,'exit')
+-# V8.4.23 architecture preview: dedicated custom scrollbar surface.
++# V8.4.24 architecture preview: dedicated custom scrollbar surface.
+ # It lives permanently in the fixed gutter and paints itself via scrollproc/WM_PAINT.
+ # This removes the brittle owner-drawn STATIC -> parent WM_DRAWITEM dependency that
+ # caused the V8.4.20 white/black full-height gutter and invisible thumb.
+@@ -815,8 +817,7 @@
+ # Convert current pointer to main-client coordinates once.  The permanent scrollbar
+ # gutter and the divider resize hit-zone are geometrically disjoint.
+ em.mov_r32_ripmem('rax',bsyms['outline_flag']); em.test32('rax'); em.jcc(0x84,'dispatch')
+-em.lea_rip('rcx',bsyms['cursor_pt']); em.call_iat('GetCursorPos'); em.test32('rax'); em.jcc(0x84,'dispatch')
+-em.mov_r64_ripmem('rcx',bsyms['hwnd_main']); em.lea_rip('rdx',bsyms['cursor_pt']); em.call_iat('ScreenToClient'); em.test32('rax'); em.jcc(0x84,'dispatch')
++em.call_label('capture_message_point'); em.test32('rax'); em.jcc(0x84,'dispatch')
+ # First test permanent scrollbar gutter: [outline_width-scrollbar_w, outline_width).
+ em.mov_r32_ripmem('r10',bsyms['cursor_pt']); em.mov_r32_ripmem('r11',bsyms['outline_width']); em.mov_r32_ripmem('rax',bsyms['scrollbar_w']); em.mov_r32_r32('r8','r11'); em.sub_r32_r32('r8','rax')
+ em.cmp_r32_r32('r10','r8'); em.jcc(0x8C,'lbd_test_splitter'); em.cmp_r32_r32('r10','r11'); em.jcc(0x8D,'lbd_test_splitter')
+@@ -826,8 +827,12 @@
+ em.mov_r64_ripmem('rcx',bsyms['hwnd_outline_scroll']); em.mov_r32_imm('rdx',5); em.call_iat('ShowWindow')
+ em.call_label('sync_outline_scrollbar')
+ # Hit-test thumb [thumb_top, thumb_top+thumb_h].
+-em.mov_r32_ripmem('r10',bsyms['cursor_pt']+4); em.mov_r32_ripmem('r11',bsyms['outline_scroll_thumb_top']); em.cmp_r32_r32('r10','r11'); em.jcc(0x8C,'lbd_scroll_pageup')
+-em.mov_r32_ripmem('rax',bsyms['outline_scroll_thumb_h']); em.add_r32_r32('r11','rax'); em.cmp_r32_r32('r10','r11'); em.jcc(0x8D,'lbd_scroll_pagedown')
++em.mov_r32_ripmem('r10',bsyms['cursor_pt']+4); em.mov_r32_ripmem('r11',bsyms['outline_thumb_rect']+4); em.cmp_r32_r32('r10','r11'); em.jcc(0x8C,'lbd_scroll_pageup')
++em.mov_r32_ripmem('r11',bsyms['outline_thumb_rect']+12); em.cmp_r32_r32('r10','r11'); em.jcc(0x8D,'lbd_scroll_pagedown')
++# Only the painted thumb starts a drag; blank horizontal gutter is not a fake thumb.
++em.mov_r32_ripmem('rax',bsyms['cursor_pt']); em.mov_r32_ripmem('r11',bsyms['outline_width']); em.sub_r32_r32('rax','r11'); em.mov_r32_ripmem('r11',bsyms['scrollbar_w']); em.add_r32_r32('rax','r11')
++em.mov_r32_ripmem('r11',bsyms['outline_thumb_rect']); em.cmp_r32_r32('rax','r11'); em.jcc(0x8C,'dispatch')
++em.mov_r32_ripmem('r11',bsyms['outline_thumb_rect']+8); em.cmp_r32_r32('rax','r11'); em.jcc(0x8D,'dispatch')
+ # Begin thumb drag and remember y-within-thumb.
+ em.mov_r32_ripmem('r11',bsyms['outline_scroll_thumb_top']); em.sub_r32_r32('r10','r11'); em.mov_ripmem_r32(bsyms['outline_scroll_drag_offset'],'r10'); em.mov_ripmem_imm32(bsyms['outline_scroll_drag'],1)
+ em.mov_r64_ripmem('rcx',bsyms['hwnd_main']); em.call_iat('SetCapture'); em.mov_r64_ripmem('rcx',bsyms['hwnd_outline_scroll']); em.xor32('rdx'); em.mov_r32_imm('r8',1); em.call_iat('InvalidateRect'); em.jmp('msg_loop')
+@@ -920,10 +925,7 @@
+ em.jmp('dispatch')
+ 
+ em.label('cmd_new')
+-em.mov_ripmem_imm32(bsyms['preview_flag'],0)
+-em.mov_r64_ripmem('rcx',bsyms['hwnd_preview']); em.xor32('rdx'); em.call_iat('ShowWindow')
+-em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.mov_r32_imm('rdx',5); em.call_iat('ShowWindow')
+-em.mov_r64_ripmem('rcx',bsyms['hmenu_view']); em.mov_r32_imm('rdx',1306); em.xor32('r8'); em.call_iat('CheckMenuItem')
++em.xor32('rcx'); em.call_label('set_view_mode')
+ em.lea_rip('rax',bsyms['document_model']); em.mov_word_ptr_reg_zero('rax'); em.mov_ripmem_imm32(bsyms['document_len'],0); em.call_label('load_model_into_editor')
+ em.lea_rip('rax',bsyms['current_path']); em.mov_word_ptr_reg_zero('rax'); em.mov_ripmem_imm32(bsyms['encoding_state'],0); em.call_label('update_preview'); em.call_label('update_status'); em.jmp('msg_loop')
+ 
+@@ -940,13 +942,8 @@
+ em.lea_rip('rax',bsyms['temp_path']); em.mov_word_ptr_reg_zero('rax')
+ em.emit(*[]) ; emit_ofn('open_title',0x00081804)
+ em.mov_r64_r64('rcx','r12'); em.call_iat('GetOpenFileNameW'); em.test32('rax'); em.jcc(0x84,'msg_loop')
+-# A newly opened document always starts in Source mode. Reconcile logical state,
+-# actual window visibility, menu state, and any pending Preview timer BEFORE load.
+-em.mov_ripmem_imm32(bsyms['preview_flag'],0)
+-em.mov_r64_ripmem('rcx',bsyms['hwnd_main']); em.mov_r32_imm('rdx',0x4D); em.call_iat('KillTimer'); em.mov_ripmem_imm32(bsyms['preview_theme_dirty'],0)
+-em.mov_r64_ripmem('rcx',bsyms['hwnd_preview']); em.xor32('rdx'); em.call_iat('ShowWindow')
+-em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.mov_r32_imm('rdx',5); em.call_iat('ShowWindow')
+-em.mov_r64_ripmem('rcx',bsyms['hmenu_view']); em.mov_r32_imm('rdx',1306); em.xor32('r8'); em.call_iat('CheckMenuItem')
++# The controller owns SOURCE visibility and menu state on a successful dialog selection.
++em.xor32('rcx'); em.call_label('set_view_mode')
+ # CreateFileW(temp, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, NORMAL, 0)
+ em.lea_rip('rcx',bsyms['temp_path']); em.mov_r32_imm('rdx',0x80000000); em.mov_r32_imm('r8',1); em.xor32('r9')
+ em.mov_mrsp_imm32(0x20,3); em.mov_mrsp_imm32(0x28,0x80); em.mov_mrsp_imm32(0x30,0,qword=True); em.call_iat('CreateFileW'); em.cmp_rax_neg1(); em.jcc(0x84,'err_open'); em.mov_r64_r64('r12','rax')
+@@ -1126,23 +1123,25 @@
+ em.call_label('sync_model_from_editor')
+ em.mov_r64_r64('rcx','rsi'); em.mov_r32_imm('rdx',0x00B0); em.lea_rip('r8',bsyms['sel_start']); em.lea_rip('r9',bsyms['sel_end']); em.call_iat('SendMessageW')
+ em.mov_r64_r64('rcx','rsi'); em.call_iat('DestroyWindow')
+-em.xor32('rcx'); em.lea_rip('rdx',rsyms['class_edit']); em.lea_rip('r8',bsyms['document_model'])
++em.xor32('rcx'); em.call_iat('GetModuleHandleW'); em.mov_mrsp_reg64(0x50,'rax')
++em.xor32('rcx'); em.lea_rip('rdx',rsyms['class_edit']); em.lea_rip('r8',rsyms['empty'])
+ em.mov_r32_ripmem('rax',bsyms['wrap_flag']); em.test32('rax'); em.jcc(0x84,'wrap_style_off')
+-em.mov_r32_imm('r9',0x54211044)  # WS_CLIPSIBLINGS; em.jmp('wrap_style_ready')
++em.mov_r32_imm('r9',0x54211044)  # WS_CLIPSIBLINGS
++em.jmp('wrap_style_ready')
+ em.label('wrap_style_off'); em.mov_r32_imm('r9',0x503110C4)
+ em.label('wrap_style_ready')
+ em.mov_mrsp_imm32(0x20,0); em.mov_mrsp_imm32(0x28,0); em.mov_mrsp_imm32(0x30,100); em.mov_mrsp_imm32(0x38,100)
+-em.mov_mrsp_reg64(0x40,'rbx'); em.mov_mrsp_imm32(0x48,1,qword=True); em.mov_mrsp_reg64(0x50,'r15'); em.mov_mrsp_imm32(0x58,0,qword=True)
++em.mov_mrsp_reg64(0x40,'rbx'); em.mov_mrsp_imm32(0x48,1,qword=True); em.mov_mrsp_imm32(0x58,0,qword=True)
+ em.call_iat('CreateWindowExW'); em.mov_r64_r64('rsi','rax'); em.mov_ripmem_r64(bsyms['hwnd_edit'],'rsi'); em.test64('rax'); em.jcc(0x84,'exit')
+ em.mov_r64_r64('rcx','rsi'); em.mov_r32_imm('rdx',0x00C5); em.mov_r32_imm('r8',WIDE_CHARS-1); em.xor32('r9'); em.call_iat('SendMessageW')
++em.mov_r64_r64('rcx','rsi'); em.lea_rip('rdx',bsyms['document_model']); em.call_iat('SetWindowTextW')
+ em.mov_r64_r64('rcx','rsi'); em.mov_r32_imm('rdx',0x0030); em.mov_r64_ripmem('r8',bsyms['hfont']); em.mov_r32_imm('r9',1); em.call_iat('SendMessageW')
+ # Apply the 10px Source text gutter after WM_SETFONT so it cannot be reset by the font change.
+ em.mov_r64_r64('rcx','rsi'); em.mov_r32_imm('rdx',0x00D3); em.mov_r32_imm('r8',3); em.mov_r32_imm('r9',0x000A000A); em.call_iat('SendMessageW')
+ em.mov_r64_r64('rcx','rsi'); em.mov_r32_imm('rdx',0x00B1); em.mov_r32_ripmem('r8',bsyms['sel_start']); em.mov_r32_ripmem('r9',bsyms['sel_end']); em.call_iat('SendMessageW')
+-em.call_label('resize_children'); em.call_label('update_preview'); em.call_label('update_status')
+-em.mov_r32_ripmem('rax',bsyms['preview_flag']); em.test32('rax'); em.jcc(0x84,'wrap_focus_source')
+-em.mov_r64_r64('rcx','rsi'); em.xor32('rdx'); em.call_iat('ShowWindow'); em.mov_r64_ripmem('rcx',bsyms['hwnd_preview']); em.mov_r32_imm('rdx',5); em.call_iat('ShowWindow'); em.call_iat('SetFocus'); em.jmp('msg_loop')
+-em.label('wrap_focus_source'); em.mov_r64_r64('rcx','rsi'); em.call_iat('SetFocus'); em.jmp('msg_loop')
++# Source control recreation does not change Markdown or the Preview surface.
++em.call_label('resize_children'); em.call_label('rebuild_outline'); em.call_label('refresh_preview_visible_theme'); em.call_label('update_status')
++em.call_label('apply_view_visibility'); em.call_label('active_view_hwnd'); em.mov_r64_r64('rcx','rax'); em.call_iat('SetFocus'); em.jmp('msg_loop')
+ 
+ em.label('cmd_status')
+ em.mov_r32_ripmem('rax',bsyms['status_flag']); em.test32('rax'); em.jcc(0x84,'status_show')
+@@ -1159,24 +1158,14 @@
+ em.call_label('resize_children'); em.call_label('update_status'); em.jmp('msg_loop')
+ 
+ em.label('cmd_preview')
+-# preview_flag is the model state, but the actually visible surface is the final
+-# authority. If an earlier load/resize ever desynchronizes them, repair it here so
+-# the FIRST Ctrl+Shift+P always performs a visible mode switch.
+-em.mov_r32_ripmem('rax',bsyms['preview_flag']); em.test32('rax'); em.jcc(0x84,'preview_show')
+-em.mov_r64_ripmem('rcx',bsyms['hwnd_preview']); em.call_iat('IsWindowVisible'); em.test32('rax'); em.jcc(0x85,'preview_hide_active')
+-em.mov_ripmem_imm32(bsyms['preview_flag'],0); em.jmp('preview_show')
+-em.label('preview_hide_active')
++em.mov_r32_ripmem('rax',bsyms['view_mode']); em.test32('rax'); em.jcc(0x84,'preview_show')
+ # Preview -> Source: capture selection AND the first visible paragraph anchor,
+ # map both back into source coordinates, then restore the same viewport after switching.
+ em.mov_r64_ripmem('rcx',bsyms['hwnd_preview']); em.call_label('capture_surface_state')
+ em.mov_r32_ripmem('r8',bsyms['view_sel_start']); em.call_label('map_render_to_source'); em.mov_ripmem_r32(bsyms['view_sel_start'],'rax')
+ em.mov_r32_ripmem('r8',bsyms['view_sel_end']); em.call_label('map_render_to_source'); em.mov_ripmem_r32(bsyms['view_sel_end'],'rax')
+ em.mov_r32_ripmem('r8',bsyms['view_top_pos']); em.call_label('map_render_to_source'); em.mov_ripmem_r32(bsyms['view_top_pos'],'rax')
+-em.mov_ripmem_imm32(bsyms['preview_flag'],0)
+-em.mov_r64_ripmem('rcx',bsyms['hwnd_main']); em.mov_r32_imm('rdx',0x4D); em.call_iat('KillTimer'); em.mov_ripmem_imm32(bsyms['preview_theme_dirty'],0)
+-em.mov_r64_ripmem('rcx',bsyms['hwnd_preview']); em.xor32('rdx'); em.call_iat('ShowWindow')
+-em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.mov_r32_imm('rdx',5); em.call_iat('ShowWindow')
+-em.mov_r64_ripmem('rcx',bsyms['hmenu_view']); em.mov_r32_imm('rdx',1306); em.xor32('r8'); em.call_iat('CheckMenuItem')
++em.xor32('rcx'); em.call_label('set_view_mode')
+ em.call_label('resize_children')
+ em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.call_label('restore_surface_state')
+ em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.call_iat('SetFocus'); em.jmp('msg_loop')
+@@ -1186,26 +1175,23 @@
+ # top-visible anchor through render_srcmap, then restore them in RichEdit.
+ em.call_label('sync_model_from_editor')
+ em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.call_label('capture_surface_state')
+-em.mov_ripmem_imm32(bsyms['preview_flag'],1)
+-em.call_label('update_preview')
++# Build hidden Preview without changing the committed view mode.
++em.call_label('build_preview')
+ em.mov_r32_ripmem('r8',bsyms['view_sel_start']); em.call_label('map_source_to_render'); em.mov_ripmem_r32(bsyms['view_sel_start'],'rax')
+ em.mov_r32_ripmem('r8',bsyms['view_sel_end']); em.call_label('map_source_to_render'); em.mov_ripmem_r32(bsyms['view_sel_end'],'rax')
+ em.mov_r32_ripmem('r8',bsyms['view_top_pos']); em.call_label('map_source_to_render'); em.mov_ripmem_r32(bsyms['view_top_pos'],'rax')
+-# Keep Preview hidden while restoring its mapped viewport and applying the first
+-# visible semantic spans, so the user never sees an unformatted intermediate frame.
+-em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.xor32('rdx'); em.call_iat('ShowWindow')
+-em.mov_r64_ripmem('rcx',bsyms['hmenu_view']); em.mov_r32_imm('rdx',1306); em.mov_r32_imm('r8',0x8); em.call_iat('CheckMenuItem')
++# Restore the hidden destination, then commit the mode once.
+ em.call_label('resize_children')
+ em.mov_r64_ripmem('rcx',bsyms['hwnd_preview']); em.call_label('restore_surface_state')
++em.mov_r32_imm('rcx',1); em.call_label('set_view_mode')
+ em.call_label('refresh_preview_visible_theme')
+-em.mov_r64_ripmem('rcx',bsyms['hwnd_preview']); em.mov_r32_imm('rdx',5); em.call_iat('ShowWindow')
+ em.mov_r64_ripmem('rcx',bsyms['hwnd_preview']); em.call_iat('SetFocus'); em.jmp('msg_loop')
+ 
+ em.label('cmd_outline')
+ # Sidebar visibility changes only layout.  Do NOT rebuild Markdown/SetWindowText.
+ # Freeze the active document surface while RichEdit/EDIT recalculates wrapping,
+ # then restore its exact caret and top-visible anchor in one final paint.
+-em.mov_r32_ripmem('rax',bsyms['preview_flag']); em.test32('rax'); em.jcc(0x84,'outline_capture_source')
++em.mov_r32_ripmem('rax',bsyms['view_mode']); em.test32('rax'); em.jcc(0x84,'outline_capture_source')
+ em.mov_r64_ripmem('rcx',bsyms['hwnd_preview']); em.jmp('outline_capture_ready')
+ em.label('outline_capture_source'); em.mov_r64_ripmem('rcx',bsyms['hwnd_edit'])
+ em.label('outline_capture_ready'); em.call_label('capture_surface_state')
+@@ -1218,24 +1204,14 @@
+ em.mov_r64_ripmem('rcx',bsyms['hwnd_outline_scroll']); em.xor32('rdx'); em.call_iat('ShowWindow'); em.mov_ripmem_imm32(bsyms['outline_scroll_visible'],0)
+ em.mov_ripmem_imm32(bsyms['outline_scroll_drag'],0)
+ em.mov_ripmem_imm32(bsyms['outline_scroll_drag_offset'],0)
+-em.mov_ripmem_imm32(bsyms['outline_scroll_thumb_top'],4)
+-em.mov_ripmem_imm32(bsyms['outline_scroll_thumb_h'],24)
+-em.mov_ripmem_imm32(bsyms['outline_scroll_track_h'],100)
+-em.mov_ripmem_imm32(bsyms['outline_visible_rows'],1)
+-em.mov_ripmem_imm32(bsyms['outline_max_top'],0)
+ em.mov_r64_ripmem('rcx',bsyms['hmenu_view']); em.mov_r32_imm('rdx',1307); em.xor32('r8'); em.call_iat('CheckMenuItem'); em.jmp('outline_layout')
+ em.label('outline_show')
+ em.mov_ripmem_imm32(bsyms['outline_flag'],1)
+ em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.mov_r32_imm('rdx',5); em.call_iat('ShowWindow')
+ em.mov_r64_ripmem('rcx',bsyms['hwnd_outline_gutter']); em.mov_r32_imm('rdx',5); em.call_iat('ShowWindow')
+-em.mov_r64_ripmem('rcx',bsyms['hwnd_outline_scroll']); em.mov_r32_imm('rdx',5); em.call_iat('ShowWindow'); em.mov_ripmem_imm32(bsyms['outline_scroll_visible'],0)
++em.mov_r64_ripmem('rcx',bsyms['hwnd_outline_scroll']); em.xor32('rdx'); em.call_iat('ShowWindow'); em.mov_ripmem_imm32(bsyms['outline_scroll_visible'],0)
+ em.mov_ripmem_imm32(bsyms['outline_scroll_drag'],0)
+ em.mov_ripmem_imm32(bsyms['outline_scroll_drag_offset'],0)
+-em.mov_ripmem_imm32(bsyms['outline_scroll_thumb_top'],4)
+-em.mov_ripmem_imm32(bsyms['outline_scroll_thumb_h'],24)
+-em.mov_ripmem_imm32(bsyms['outline_scroll_track_h'],100)
+-em.mov_ripmem_imm32(bsyms['outline_visible_rows'],1)
+-em.mov_ripmem_imm32(bsyms['outline_max_top'],0)
+ em.mov_r64_ripmem('rcx',bsyms['hwnd_splitter']); em.mov_r32_imm('rdx',5); em.call_iat('ShowWindow')
+ em.mov_r64_ripmem('rcx',bsyms['hmenu_view']); em.mov_r32_imm('rdx',1307); em.mov_r32_imm('r8',0x8); em.call_iat('CheckMenuItem')
+ em.label('outline_layout')
+@@ -1256,7 +1232,7 @@
+ em.label('theme_fast_apply')
+ # Theme changes supersede any pending lazy repaint from the previous theme.
+ em.mov_r64_ripmem('rcx',bsyms['hwnd_main']); em.mov_r32_imm('rdx',0x4D); em.call_iat('KillTimer')
+-em.mov_r32_ripmem('rax',bsyms['preview_flag']); em.test32('rax'); em.jcc(0x84,'theme_fast_source')
++em.mov_r32_ripmem('rax',bsyms['view_mode']); em.test32('rax'); em.jcc(0x84,'theme_fast_source')
+ # Theme switching in Preview is viewport-scoped: only currently visible text and
+ # intersecting Markdown spans are reformatted synchronously. Offscreen regions
+ # are lazily refreshed when the user scrolls, avoiding multi-second full-doc stalls.
+@@ -1310,27 +1286,82 @@
+ em.jmp('dispatch_status_done')
+ em.label('dispatch_status_refresh'); em.call_label('update_status')
+ em.label('dispatch_status_done'); em.mov_r64_r64('rcx','rbx'); em.call_iat('IsWindow'); em.test32('rax'); em.jcc(0x85,'msg_loop')
++em.jmp('exit')  # Destroyed main window must never fall through into a helper.
+ 
+ # ------------------------------------------------------------------
+ # Helper: synchronize independent Outline scrollbar range/position.
++# ---------------- ViewController ----------------
++# SOURCE=0/PREVIEW=1. Only set_view_mode mutates the mode after zero-initialization.
++# view_hwnd is capture/restore scratch; active_view_hwnd derives the destination.
++em.label('active_view_hwnd')
++em.mov_r32_ripmem('rax',bsyms['view_mode']); em.test32('rax'); em.jcc(0x84,'active_view_source')
++em.mov_r64_ripmem('rax',bsyms['hwnd_preview']); em.emit(0xC3)
++em.label('active_view_source'); em.mov_r64_ripmem('rax',bsyms['hwnd_edit']); em.emit(0xC3)
++
++# rcx = mode. Preserves nonvolatile registers; owns visibility/menu/timer commit.
++em.label('set_view_mode')
++em.emit(0x48,0x83,0xEC,0x28)
++em.mov_ripmem_r32(bsyms['view_mode'],'rcx')
++em.call_label('apply_view_visibility')
++em.mov_r32_ripmem('rax',bsyms['view_mode']); em.test32('rax'); em.jcc(0x85,'view_commit_done')
++em.mov_r64_ripmem('rcx',bsyms['hwnd_main']); em.mov_r32_imm('rdx',0x4D); em.call_iat('KillTimer')
++em.mov_ripmem_imm32(bsyms['preview_theme_dirty'],0)
++em.label('view_commit_done'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
++
++# Temporary load transaction: no new state flag; caller must restore visibility.
++em.label('suspend_view_surfaces')
++em.emit(0x48,0x83,0xEC,0x28)
++em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.xor32('rdx'); em.call_iat('ShowWindow')
++em.mov_r64_ripmem('rcx',bsyms['hwnd_preview']); em.xor32('rdx'); em.call_iat('ShowWindow')
++em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
++
++em.label('apply_view_visibility')
++em.emit(0x48,0x83,0xEC,0x28)
++em.mov_r32_ripmem('rax',bsyms['view_mode']); em.test32('rax'); em.jcc(0x84,'view_apply_source')
++em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.xor32('rdx'); em.call_iat('ShowWindow')
++em.mov_r64_ripmem('rcx',bsyms['hwnd_preview']); em.mov_r32_imm('rdx',5); em.call_iat('ShowWindow')
++em.mov_r32_imm('r8',8); em.jmp('view_apply_menu')
++em.label('view_apply_source')
++em.mov_r64_ripmem('rcx',bsyms['hwnd_preview']); em.xor32('rdx'); em.call_iat('ShowWindow')
++em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.mov_r32_imm('rdx',5); em.call_iat('ShowWindow')
++em.xor32('r8')
++em.label('view_apply_menu')
++em.mov_r64_ripmem('rcx',bsyms['hmenu_view']); em.mov_r32_imm('rdx',1306); em.call_iat('CheckMenuItem')
++em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
++
+ em.label('sync_outline_scrollbar')
+ em.emit(0x48,0x83,0xEC,0x38)
+ # count/top from ListBox
+ em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.test64('rcx'); em.jcc(0x84,'sync_os_ret')
+ em.mov_r32_imm('rdx',0x018B); em.xor32('r8'); em.xor32('r9'); em.call_iat('SendMessageW'); em.mov_ripmem_r32(bsyms['outline_scroll_count'],'rax')
+ em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.mov_r32_imm('rdx',0x018E); em.xor32('r8'); em.xor32('r9'); em.call_iat('SendMessageW'); em.mov_ripmem_r32(bsyms['outline_scroll_top'],'rax')
+-# visibleRows ~= content_h / 30 (row height), minimum 1.
+-em.mov_r32_ripmem('rcx',bsyms['content_h']); em.mov_r32_imm('rdx',1); em.mov_r32_imm('r8',30); em.call_iat('MulDiv'); em.test32('rax'); em.jcc(0x85,'sync_rows_ok'); em.mov_r32_imm('rax',1)
++em.call_label('scroll_layout')
++# Enforce the same maximum as drag/page/wheel, including after native ListBox navigation.
++em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.mov_r32_imm('rdx',0x0197); em.mov_r32_ripmem('r8',bsyms['outline_scroll_top']); em.xor32('r9'); em.call_iat('SendMessageW')
++em.mov_r64_ripmem('rcx',bsyms['hwnd_outline_scroll']); em.xor32('rdx'); em.xor32('r8'); em.mov_r32_imm('r9',0x105); em.call_iat('RedrawWindow')
++em.label('sync_os_ret'); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
++
++# Inputs: count/top, content_h, scrollbar_w. Outputs: cached track/thumb/travel.
++# Only MulDiv is called, with all live values in named state. No paint or HWND mutation.
++em.label('scroll_layout')
++em.emit(0x48,0x83,0xEC,0x28)
++# floor(content_h / 30), not MulDiv's round-to-nearest: partially visible rows do not count.
++em.mov_r32_ripmem('rax',bsyms['content_h']); em.test32('rax'); em.jcc(0x89,'scroll_height_ok'); em.xor32('rax')
++em.label('scroll_height_ok'); em.xor32('rdx'); em.mov_r32_imm('rcx',30); em.emit(0xF7,0xF1)
++em.test32('rax'); em.jcc(0x85,'sync_rows_ok'); em.mov_r32_imm('rax',1)
+ em.label('sync_rows_ok'); em.mov_ripmem_r32(bsyms['outline_visible_rows'],'rax')
+ # maxTop=max(0,count-visibleRows)
+ em.mov_r32_ripmem('r10',bsyms['outline_scroll_count']); em.mov_r32_ripmem('r11',bsyms['outline_visible_rows']); em.cmp_r32_r32('r10','r11'); em.jcc(0x87,'sync_have_maxtop'); em.xor32('r10'); em.jmp('sync_store_maxtop')
+ em.label('sync_have_maxtop'); em.sub_r32_r32('r10','r11')
+ em.label('sync_store_maxtop'); em.mov_ripmem_r32(bsyms['outline_max_top'],'r10')
++em.mov_r32_ripmem('rax',bsyms['outline_scroll_top']); em.test32('rax'); em.jcc(0x89,'scroll_top_nonnegative'); em.xor32('rax')
++em.label('scroll_top_nonnegative'); em.cmp_r32_r32('rax','r10'); em.jcc(0x86,'scroll_top_clamped'); em.mov_r32_r32('rax','r10')
++em.label('scroll_top_clamped'); em.mov_ripmem_r32(bsyms['outline_scroll_top'],'rax')
+ # track height uses 4px top/bottom margins.
+-em.mov_r32_ripmem('r10',bsyms['content_h']); em.cmp_r32_imm('r10',8); em.jcc(0x87,'sync_track_ok'); em.mov_r32_imm('r10',8)
++em.mov_r32_ripmem('r10',bsyms['content_h']); em.cmp_r32_imm('r10',8); em.jcc(0x8F,'sync_track_ok'); em.mov_r32_imm('r10',8)
+ em.label('sync_track_ok'); em.sub_r32_imm8('r10',8); em.mov_ripmem_r32(bsyms['outline_scroll_track_h'],'r10')
+ # thumb_h = track if all rows fit, otherwise max(24, visibleRows*track/count)
+-em.mov_r32_ripmem('r11',bsyms['outline_scroll_count']); em.test32('r11'); em.jcc(0x84,'sync_thumb_full'); em.mov_r32_ripmem('rax',bsyms['outline_visible_rows']); em.cmp_r32_r32('rax','r11'); em.jcc(0x83,'sync_thumb_calc')
++em.mov_r32_ripmem('r11',bsyms['outline_scroll_count']); em.test32('r11'); em.jcc(0x84,'sync_thumb_full'); em.mov_r32_ripmem('rax',bsyms['outline_visible_rows']); em.cmp_r32_r32('rax','r11'); em.jcc(0x82,'sync_thumb_calc')
+ em.label('sync_thumb_full'); em.mov_r32_ripmem('rax',bsyms['outline_scroll_track_h']); em.jmp('sync_thumb_store')
+ em.label('sync_thumb_calc'); em.mov_r32_ripmem('rcx',bsyms['outline_visible_rows']); em.mov_r32_ripmem('rdx',bsyms['outline_scroll_track_h']); em.mov_r32_ripmem('r8',bsyms['outline_scroll_count']); em.call_iat('MulDiv'); em.cmp_r32_imm('rax',32); em.jcc(0x83,'sync_thumb_store'); em.mov_r32_imm('rax',32)
+ em.label('sync_thumb_store'); em.mov_r32_ripmem('r10',bsyms['outline_scroll_track_h']); em.cmp_r32_r32('rax','r10'); em.jcc(0x86,'sync_thumb_store2'); em.mov_r32_r32('rax','r10')
+@@ -1341,14 +1372,25 @@
+ em.mov_r32_ripmem('rcx',bsyms['outline_scroll_top']); em.mov_r32_r32('rdx','r11'); em.mov_r32_r32('r8','r10'); em.call_iat('MulDiv'); em.add_r32_imm8('rax',4); em.jmp('sync_thumb_top_store')
+ em.label('sync_thumb_top_zero'); em.mov_r32_imm('rax',4)
+ em.label('sync_thumb_top_store'); em.mov_ripmem_r32(bsyms['outline_scroll_thumb_top'],'rax')
+-# Repaint only the overlay surface, synchronously.  A queued WM_PAINT could be
+-# starved by a stream of mouse messages and left the old theme/gutter visible.
+-em.mov_r64_ripmem('rcx',bsyms['hwnd_outline_scroll']); em.xor32('rdx'); em.xor32('r8'); em.mov_r32_imm('r9',0x105); em.call_iat('RedrawWindow')
+-em.label('sync_os_ret'); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
++# Cache rectangles in scrollbar-local coordinates. Painter and hit-test read this exact thumb.
++em.lea_rip('rcx',bsyms['outline_track_rect']); em.mov_mreg_imm32('rcx',0,0); em.mov_mreg_imm32('rcx',4,4)
++em.mov_r32_ripmem('rax',bsyms['scrollbar_w']); em.mov_mreg_reg32('rcx',8,'rax')
++em.mov_r32_ripmem('rax',bsyms['outline_scroll_track_h']); em.add_r32_imm8('rax',4); em.mov_mreg_reg32('rcx',12,'rax')
++em.mov_r32_ripmem('r10',bsyms['outline_scroll_track_h']); em.mov_r32_ripmem('rax',bsyms['outline_scroll_thumb_h']); em.sub_r32_r32('r10','rax'); em.mov_ripmem_r32(bsyms['outline_scroll_travel'],'r10')
++# visual width clamp(gutter/2, 6..9); never wider than gutter.
++em.mov_r32_ripmem('r11',bsyms['scrollbar_w']); em.mov_r32_r32('r10','r11'); em.shr_r32_imm8('r10',1)
++em.cmp_r32_imm('r10',6); em.jcc(0x83,'scroll_width_min'); em.mov_r32_imm('r10',6)
++em.label('scroll_width_min'); em.cmp_r32_imm('r10',9); em.jcc(0x86,'scroll_width_max'); em.mov_r32_imm('r10',9)
++em.label('scroll_width_max'); em.cmp_r32_r32('r10','r11'); em.jcc(0x86,'scroll_width_ready'); em.mov_r32_r32('r10','r11')
++em.label('scroll_width_ready'); em.sub_r32_r32('r11','r10'); em.shr_r32_imm8('r11',1)
++em.lea_rip('rcx',bsyms['outline_thumb_rect']); em.mov_mreg_reg32('rcx',0,'r11'); em.add_r32_r32('r11','r10'); em.mov_mreg_reg32('rcx',8,'r11')
++em.mov_r32_ripmem('rax',bsyms['outline_scroll_thumb_top']); em.mov_mreg_reg32('rcx',4,'rax'); em.mov_r32_ripmem('r10',bsyms['outline_scroll_thumb_h']); em.add_r32_r32('rax','r10'); em.mov_mreg_reg32('rcx',12,'rax')
++em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
+ 
+ # Owner-drawn overlay scrollbar visibility.  Geometry never changes on hover.
+ em.label('update_outline_hover')
+ em.emit(0x48,0x83,0xEC,0x38)
++em.mov_r32_ripmem('rax',bsyms['outline_max_top']); em.test32('rax'); em.jcc(0x84,'hover_hide_custom')
+ em.mov_r32_ripmem('rax',bsyms['outline_flag']); em.test32('rax'); em.jcc(0x84,'hover_hide_custom')
+ em.mov_r32_ripmem('rax',bsyms['splitter_drag']); em.test32('rax'); em.jcc(0x85,'hover_hide_custom')
+ em.mov_r32_ripmem('rax',bsyms['outline_scroll_drag']); em.test32('rax'); em.jcc(0x85,'hover_show_custom')
+@@ -1375,16 +1417,24 @@
+ em.label('hover_done_custom'); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
+ 
+ # Drag the custom thumb without touching ListBox geometry.
++# MSG.pt records the pointer at event generation. GetCursorPos reads the later
++# position and can turn a fast queued drag into a track click. Preserve event time.
++em.label('capture_message_point')
++em.emit(0x48,0x83,0xEC,0x28)
++em.mov_r32_ripmem('rax',bsyms['msg']+36); em.mov_ripmem_r32(bsyms['cursor_pt'],'rax')
++em.mov_r32_ripmem('rax',bsyms['msg']+40); em.mov_ripmem_r32(bsyms['cursor_pt']+4,'rax')
++em.mov_r64_ripmem('rcx',bsyms['hwnd_main']); em.lea_rip('rdx',bsyms['cursor_pt']); em.call_iat('ScreenToClient')
++em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
++
+ em.label('outline_scroll_drag_move')
+ em.emit(0x48,0x83,0xEC,0x38)
+-em.lea_rip('rcx',bsyms['cursor_pt']); em.call_iat('GetCursorPos'); em.test32('rax'); em.jcc(0x84,'os_drag_ret')
+-em.mov_r64_ripmem('rcx',bsyms['hwnd_main']); em.lea_rip('rdx',bsyms['cursor_pt']); em.call_iat('ScreenToClient'); em.test32('rax'); em.jcc(0x84,'os_drag_ret')
++em.call_label('capture_message_point'); em.test32('rax'); em.jcc(0x84,'os_drag_ret')
+ # desired thumb offset inside track = y - dragOffset - 4, clamped to [0, travel].
+-em.mov_r32_ripmem('r10',bsyms['cursor_pt']+4); em.mov_r32_ripmem('rax',bsyms['outline_scroll_drag_offset']); em.sub_r32_r32('r10','rax'); em.cmp_r32_imm('r10',4); em.jcc(0x83,'os_drag_after_top'); em.mov_r32_imm('r10',4)
++em.mov_r32_ripmem('r10',bsyms['cursor_pt']+4); em.mov_r32_ripmem('rax',bsyms['outline_scroll_drag_offset']); em.sub_r32_r32('r10','rax'); em.cmp_r32_imm('r10',4); em.jcc(0x8D,'os_drag_after_top'); em.mov_r32_imm('r10',4)
+ em.label('os_drag_after_top'); em.sub_r32_imm8('r10',4)
+-em.mov_r32_ripmem('r11',bsyms['outline_scroll_track_h']); em.mov_r32_ripmem('rax',bsyms['outline_scroll_thumb_h']); em.sub_r32_r32('r11','rax'); em.cmp_r32_r32('r10','r11'); em.jcc(0x86,'os_drag_pos_ok'); em.mov_r32_r32('r10','r11')
++em.mov_r32_ripmem('r11',bsyms['outline_scroll_travel']); em.cmp_r32_r32('r10','r11'); em.jcc(0x86,'os_drag_pos_ok'); em.mov_r32_r32('r10','r11')
+ em.label('os_drag_pos_ok'); em.mov_r32_ripmem('r11',bsyms['outline_max_top']); em.test32('r11'); em.jcc(0x84,'os_drag_zero')
+-em.mov_r32_r32('rcx','r10'); em.mov_r32_r32('rdx','r11'); em.mov_r32_ripmem('r8',bsyms['outline_scroll_track_h']); em.mov_r32_ripmem('rax',bsyms['outline_scroll_thumb_h']); em.sub_r32_r32('r8','rax'); em.test32('r8'); em.jcc(0x84,'os_drag_zero'); em.call_iat('MulDiv'); em.mov_r32_r32('r10','rax'); em.jmp('os_drag_apply')
++em.mov_r32_r32('rcx','r10'); em.mov_r32_r32('rdx','r11'); em.mov_r32_ripmem('r8',bsyms['outline_scroll_travel']); em.test32('r8'); em.jcc(0x84,'os_drag_zero'); em.call_iat('MulDiv'); em.mov_r32_r32('r10','rax'); em.jmp('os_drag_apply')
+ em.label('os_drag_zero'); em.xor32('r10')
+ em.label('os_drag_apply'); em.mov_ripmem_r32(bsyms['outline_scroll_top'],'r10'); em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.mov_r32_imm('rdx',0x0197); em.mov_r32_r32('r8','r10'); em.xor32('r9'); em.call_iat('SendMessageW'); em.call_label('sync_outline_scrollbar')
+ em.label('os_drag_ret'); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
+@@ -1392,9 +1442,8 @@
+ # Helper: live splitter drag; clamp Outline to 140..500 px while preserving at least 240px document width.
+ em.label('splitter_drag_move')
+ em.emit(0x48,0x83,0xEC,0x28)
+-em.lea_rip('rcx',bsyms['cursor_pt']); em.call_iat('GetCursorPos'); em.test32('rax'); em.jcc(0x84,'split_drag_ret')
+-em.mov_r64_ripmem('rcx',bsyms['hwnd_main']); em.lea_rip('rdx',bsyms['cursor_pt']); em.call_iat('ScreenToClient'); em.test32('rax'); em.jcc(0x84,'split_drag_ret')
+-em.mov_r32_ripmem('r10',bsyms['cursor_pt']); em.cmp_r32_imm('r10',140); em.jcc(0x83,'split_drag_min_ok'); em.mov_r32_imm('r10',140)
++em.call_label('capture_message_point'); em.test32('rax'); em.jcc(0x84,'split_drag_ret')
++em.mov_r32_ripmem('r10',bsyms['cursor_pt']); em.cmp_r32_imm('r10',140); em.jcc(0x8D,'split_drag_min_ok'); em.mov_r32_imm('r10',140)
+ em.label('split_drag_min_ok'); em.mov_r32_ripmem('r11',bsyms['client_w']); em.mov_r32_imm('rax',240); em.sub_r32_r32('r11','rax'); em.cmp_r32_imm('r11',500); em.jcc(0x86,'split_drag_max_ready'); em.mov_r32_imm('r11',500)
+ em.label('split_drag_max_ready'); em.cmp_r32_imm('r11',140); em.jcc(0x83,'split_drag_have_max'); em.mov_r32_imm('r11',140)
+ em.label('split_drag_have_max'); em.cmp_r32_r32('r10','r11'); em.jcc(0x86,'split_drag_store'); em.mov_r32_r32('r10','r11')
+@@ -1403,15 +1452,27 @@
+ 
+ # Helper: compute the current theme-format window without touching RichEdit
+ # character metrics. Used by the fast theme path before apply_styles.
++# Actual viewport endpoint plus a small prefetch margin. The former fixed 40000
++# code-unit window caused multi-second input stalls even on a 200KB document.
++# EM_CHARFROMPOS RichEdit takes a POINTL pointer, returns a 32-bit character index.
+ em.label('set_visible_format_window')
+-em.mov_r32_ripmem('r8',bsyms['view_top_pos']); em.mov_r32_r32('r9','r8'); em.mov_r32_imm('rax',40000); em.add_r32_r32('r9','rax'); em.mov_r32_ripmem('rax',bsyms['render_len']); em.cmp_r32_r32('r9','rax'); em.jcc(0x86,'visible_window_ok'); em.mov_r32_r32('r9','rax')
+-em.label('visible_window_ok'); em.mov_ripmem_r32(bsyms['format_visible_end'],'r9'); em.emit(0xC3)
++em.emit(0x48,0x83,0xEC,0x28)
++em.mov_r64_ripmem('rcx',bsyms['hwnd_preview']); em.lea_rip('rdx',bsyms['preview_client_rect']); em.call_iat('GetClientRect')
++em.lea_rip('rcx',bsyms['preview_client_rect']); em.mov_r32_mreg('rax','rcx',8); em.sub_r32_imm8('rax',1); em.mov_ripmem_r32(bsyms['preview_bottom_point'],'rax')
++em.mov_r32_mreg('rax','rcx',12); em.sub_r32_imm8('rax',1); em.mov_ripmem_r32(bsyms['preview_bottom_point']+4,'rax')
++em.mov_r64_ripmem('rcx',bsyms['hwnd_preview']); em.mov_r32_imm('rdx',0x00D7); em.xor32('r8'); em.lea_rip('r9',bsyms['preview_bottom_point']); em.call_iat('SendMessageW')
++em.cmp_r32_imm('rax',0xFFFFFFFF); em.jcc(0x84,'visible_window_fallback')
++em.mov_r32_ripmem('r10',bsyms['view_top_pos']); em.cmp_r32_r32('rax','r10'); em.jcc(0x83,'visible_window_margin')
++em.label('visible_window_fallback'); em.mov_r32_ripmem('rax',bsyms['view_top_pos']); em.mov_r32_imm('r11',2000); em.add_r32_r32('rax','r11')
++em.label('visible_window_margin'); em.mov_r32_imm('r11',2000); em.add_r32_r32('rax','r11')
++em.mov_r32_ripmem('r9',bsyms['render_len']); em.cmp_r32_r32('rax','r9'); em.jcc(0x86,'visible_window_ok'); em.mov_r32_r32('rax','r9')
++em.label('visible_window_ok'); em.mov_ripmem_r32(bsyms['format_visible_end'],'rax'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
+ 
+ # Helper: lazily apply semantic Markdown styles in the current Preview viewport.
+ # Used both for theme maintenance and for first-time formatting of newly visited regions.
+ em.label('refresh_preview_visible_theme')
+ em.emit(0x48,0x83,0xEC,0x28)
+-em.mov_r32_ripmem('rax',bsyms['preview_flag']); em.test32('rax'); em.jcc(0x84,'refresh_visible_ret')
++em.mov_r32_ripmem('rax',bsyms['view_mode']); em.test32('rax'); em.jcc(0x84,'refresh_visible_ret')
+ em.mov_r32_ripmem('rax',bsyms['preview_theme_dirty']); em.test32('rax'); em.jcc(0x84,'refresh_visible_ret')
+ em.mov_r64_ripmem('rcx',bsyms['hwnd_preview']); em.call_label('capture_surface_state')
+ # Suppress all intermediate paints while selection/ranges are temporarily changed.
+@@ -1488,11 +1549,6 @@
+ em.mov_ripmem_imm32(bsyms['outline_scroll_visible'],0)
+ em.mov_ripmem_imm32(bsyms['outline_scroll_drag'],0)
+ em.mov_ripmem_imm32(bsyms['outline_scroll_drag_offset'],0)
+-em.mov_ripmem_imm32(bsyms['outline_scroll_thumb_top'],4)
+-em.mov_ripmem_imm32(bsyms['outline_scroll_thumb_h'],24)
+-em.mov_ripmem_imm32(bsyms['outline_scroll_track_h'],100)
+-em.mov_ripmem_imm32(bsyms['outline_visible_rows'],1)
+-em.mov_ripmem_imm32(bsyms['outline_max_top'],0)
+ em.label('resize_doc')
+ em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.test64('rcx'); em.jcc(0x84,'resize_preview_surface'); em.mov_r32_ripmem('rdx',bsyms['content_x']); em.xor32('r8'); em.mov_r32_ripmem('r9',bsyms['content_w']); em.mov_r32_ripmem('r11',bsyms['content_h']); em.mov_mrsp_reg32(0x20,'r11'); em.mov_mrsp_imm32(0x28,1,qword=True); em.call_iat('MoveWindow')
+ em.label('resize_preview_surface')
+@@ -1527,7 +1583,7 @@
+ # Capture exact selection in the currently visible document surface before zoom.
+ em.label('capture_zoom_anchor')
+ em.emit(0x48,0x83,0xEC,0x28)
+-em.mov_r32_ripmem('rax',bsyms['preview_flag']); em.test32('rax'); em.jcc(0x84,'zoom_anchor_source')
++em.mov_r32_ripmem('rax',bsyms['view_mode']); em.test32('rax'); em.jcc(0x84,'zoom_anchor_source')
+ em.mov_r64_ripmem('rax',bsyms['hwnd_preview']); em.jmp('zoom_anchor_ready')
+ em.label('zoom_anchor_source'); em.mov_r64_ripmem('rax',bsyms['hwnd_edit'])
+ em.label('zoom_anchor_ready'); em.mov_ripmem_r64(bsyms['view_hwnd'],'rax'); em.mov_r64_r64('rcx','rax'); em.mov_r32_imm('rdx',0x00B0); em.lea_rip('r8',bsyms['view_sel_start']); em.lea_rip('r9',bsyms['view_sel_end']); em.call_iat('SendMessageW')
+@@ -1702,15 +1758,13 @@
+ em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.test64('rcx'); em.jcc(0x84,'load_model_unsuppress')
+ # Hide the EDIT while the native control builds line/wrap structures for a large file.
+ # WM_SETREDRAW alone still allowed visible progressive layout on some Windows builds.
+-em.xor32('rdx'); em.call_iat('ShowWindow')
++em.call_label('suspend_view_surfaces')
+ em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.mov_r32_imm('rdx',0x000B); em.xor32('r8'); em.xor32('r9'); em.call_iat('SendMessageW')
+ em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.lea_rip('rdx',bsyms['document_model']); em.call_iat('SetWindowTextW')
+ # A newly opened document starts at its true beginning.
+ em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.mov_r32_imm('rdx',0x00B1); em.xor32('r8'); em.xor32('r9'); em.call_iat('SendMessageW')
+ em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.mov_r32_imm('rdx',0x000B); em.mov_r32_imm('r8',1); em.xor32('r9'); em.call_iat('SendMessageW')
+-# Only expose Source when Source mode is active; Preview mode keeps it hidden.
+-em.mov_r32_ripmem('rax',bsyms['preview_flag']); em.test32('rax'); em.jcc(0x85,'load_model_invalidate')
+-em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.mov_r32_imm('rdx',5); em.call_iat('ShowWindow')
++em.call_label('apply_view_visibility')
+ em.label('load_model_invalidate'); em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.xor32('rdx'); em.mov_r32_imm('r8',1); em.call_iat('InvalidateRect')
+ em.label('load_model_unsuppress'); em.mov_ripmem_imm32(bsyms['suppress_edit_change'],0)
+ em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
+@@ -1887,6 +1941,9 @@
+ em.mov_r32_ripmem('rax',bsyms['preview_visible_format_only']); em.test32('rax'); em.jcc(0x84,'style_range_send')
+ em.mov_r32_ripmem('rax',bsyms['view_top_pos']); em.cmp_r32_r32('r9','rax'); em.jcc(0x86,'style_next')
+ em.mov_r32_ripmem('rax',bsyms['format_visible_end']); em.cmp_r32_r32('r8','rax'); em.jcc(0x83,'style_next')
++# A single huge code block must not make viewport styling format the entire document.
++em.cmp_r32_r32('r9','rax'); em.jcc(0x86,'style_clip_end'); em.mov_r32_r32('r9','rax')
++em.label('style_clip_end'); em.mov_r32_ripmem('rax',bsyms['view_top_pos']); em.cmp_r32_r32('r8','rax'); em.jcc(0x83,'style_range_send'); em.mov_r32_r32('r8','rax')
+ em.label('style_range_send'); em.mov_r64_ripmem('rcx',bsyms['hwnd_preview']); em.mov_r32_imm('rdx',0x00B1); em.call_iat('SendMessageW')
+ em.lea_rip('r11',bsyms['charfmt']); em.mov_mreg_imm32('r11',0,116); em.mov_mreg_imm32('r11',8,0); em.mov_mreg_imm32('r11',96,0)
+ # Headings: size + bold + semantic blue/cyan/teal palette.
+@@ -1943,7 +2000,15 @@
+     em.lea_rip('rcx',bsyms['render_srcmap']); em.add_r64_r64('rcx','r10'); em.mov_ptr_r32('rcx','r12')
+ 
+ # Helper: rebuild Markdown render buffer, formatting spans and outline from source text.
++# Event-driven refresh: always sync Outline, render only in committed Preview mode.
+ em.label('update_preview')
++em.emit(0x48,0x83,0xEC,0x28)
++em.call_label('rebuild_outline')
++em.mov_r32_ripmem('rax',bsyms['view_mode']); em.test32('rax'); em.jcc(0x84,'update_preview_done')
++em.call_label('build_preview')
++em.label('update_preview_done'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
++
++em.label('build_preview')
+ em.emit(0x56); em.emit(0x57); em.emit(0x41,0x54); em.emit(0x41,0x55); em.emit(0x41,0x56); em.emit(0x41,0x57)
+ em.emit(0x48,0x83,0xEC,0x28)
+ # A full Preview rebuild is authoritative. Cancel any delayed viewport-theme timer
+@@ -1952,14 +2017,7 @@
+ # intermittent wrong code backgrounds/colors until Preview is toggled again.
+ em.mov_r64_ripmem('rcx',bsyms['hwnd_main']); em.test64('rcx'); em.jcc(0x84,'pv_timer_reset_done'); em.mov_r32_imm('rdx',0x4D); em.call_iat('KillTimer')
+ em.label('pv_timer_reset_done'); em.mov_ripmem_imm32(bsyms['preview_theme_dirty'],0); em.mov_ripmem_imm32(bsyms['preview_visible_format_only'],0)
+-# Read ONLY the canonical Document Model. Renderer is deliberately isolated from Source EDIT.
+-em.lea_rip('rcx',bsyms['document_model']); em.cmp_word_ptr_reg_zero('rcx');
+-# Outline always parses the same Document Model, independently of Preview formatting.
+-em.call_label('rebuild_outline')
+-# In source-edit mode the preview is hidden.  Keep the outline current, but do not
+-# parse/format the hidden RichEdit surface.  This also makes incomplete Markdown
+-# safe while the user is in the middle of typing it.
+-em.mov_r32_ripmem('rax',bsyms['preview_flag']); em.test32('rax'); em.jcc(0x84,'pv_render_ret')
++# RenderModel is built from DocumentModel; caller decides when to show it.
+ em.mov_ripmem_imm32(bsyms['style_count'],0); em.mov_ripmem_imm32(bsyms['heading_level'],0); em.mov_ripmem_imm32(bsyms['line_flags'],0); em.mov_ripmem_imm32(bsyms['heading_index'],0); em.mov_ripmem_imm32(bsyms['render_len'],0)
+ em.mov_ripmem_imm32(bsyms['bold_flag'],0); em.mov_ripmem_imm32(bsyms['italic_flag'],0); em.mov_ripmem_imm32(bsyms['inlinecode_flag'],0); em.mov_ripmem_imm32(bsyms['link_flag'],0)
+ em.lea_rip('rsi',bsyms['document_model']); em.lea_rip('rdi',bsyms['previewbuf']); em.xor32('r12'); em.xor32('r13'); em.mov_r32_imm('r14',1); em.xor32('r15')
+@@ -1991,7 +2049,10 @@
+ 
+ em.label('pv8_line_after_fence_check')
+ # Inside fenced code: no Markdown marker stripping, copy verbatim until next line-start fence.
+-em.test32('r15'); em.jcc(0x85,'pv8_codeblock_copy')
++em.test32('r15'); em.jcc(0x84,'pv8_outside_fence')
++# The marker probe must not consume indentation or run again inside this line.
++em.mov_r32_ripmem('r12',bsyms['line_src_start']); em.xor32('r14'); em.jmp('pv8_codeblock_copy')
++em.label('pv8_outside_fence')
+ # ATX heading: one to six #'s followed by a space.
+ em.cmp_r32_imm('rax',0x23); em.jcc(0x85,'pv8_line_quote')
+ em.xor32('r10'); em.mov_r32_r32('r11','r12')
+@@ -2107,22 +2168,19 @@
+ em.emit(0x48,0x83,0xEC,0x28)
+ em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.test64('rcx'); em.jcc(0x84,'navigate_ret'); em.mov_r32_imm('rdx',0x0188); em.xor32('r8'); em.xor32('r9'); em.call_iat('SendMessageW')
+ em.cmp_r32_imm('rax',0xFFFFFFFF); em.jcc(0x84,'navigate_ret'); em.cmp_r32_imm('rax',2048); em.jcc(0x83,'navigate_ret')
+-em.mov_r32_r32('r10','rax'); em.add_r32_r32('rax','rax'); em.add_r32_r32('rax','rax')
+-em.mov_r32_ripmem('r11',bsyms['preview_flag']); em.test32('r11'); em.jcc(0x84,'navigate_source')
+-# Defensive state reconciliation: only route navigation to Preview if that surface
+-# is actually visible. This prevents a stale logical flag from sending jumps into
+-# a hidden RichEdit while Source is on screen.
+-em.mov_r64_ripmem('rcx',bsyms['hwnd_preview']); em.call_iat('IsWindowVisible'); em.test32('rax'); em.jcc(0x84,'navigate_source')
+-# Preview navigation derives its target from the canonical source heading offset.
+-# outline_renderpos can be temporarily stale/zero during first large-file load; the
+-# current render_srcmap is authoritative once Preview exists.
+-em.lea_rip('rcx',bsyms['outline_srcpos']); em.add_r64_r64('rcx','rax'); em.mov_r32_ptr('r8','rcx'); em.call_label('map_source_to_render'); em.mov_r32_r32('r8','rax'); em.mov_r32_r32('r9','rax'); em.mov_r64_ripmem('rcx',bsyms['hwnd_preview']); em.mov_ripmem_r64(bsyms['nav_hwnd'],'rcx'); em.jmp('navigate_send')
+-em.label('navigate_source'); em.lea_rip('rcx',bsyms['outline_srcpos']); em.add_r64_r64('rcx','rax'); em.mov_r32_ptr('r8','rcx'); em.mov_r32_r32('r9','r8'); em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.mov_ripmem_r64(bsyms['nav_hwnd'],'rcx')
++em.add_r32_r32('rax','rax'); em.add_r32_r32('rax','rax')
++em.lea_rip('rcx',bsyms['outline_srcpos']); em.add_r64_r64('rcx','rax'); em.mov_r32_ptr('r8','rcx')
++em.mov_ripmem_r32(bsyms['nav_source_offset'],'r8'); em.mov_ripmem_r32(bsyms['nav_target_offset'],'r8')
++em.mov_r32_ripmem('rax',bsyms['view_mode']); em.test32('rax'); em.jcc(0x84,'navigate_source')
++em.call_label('map_source_to_render'); em.mov_ripmem_r32(bsyms['nav_target_offset'],'rax')
++em.label('navigate_source')
++em.call_label('active_view_hwnd'); em.mov_r64_r64('rcx','rax'); em.mov_ripmem_r64(bsyms['nav_hwnd'],'rax')
++em.mov_r32_ripmem('r8',bsyms['nav_target_offset']); em.mov_r32_r32('r9','r8')
+ em.label('navigate_send'); em.mov_r32_imm('rdx',0x00B1); em.call_iat('SendMessageW'); em.mov_r64_ripmem('rcx',bsyms['nav_hwnd']); em.mov_r32_imm('rdx',0x00B7); em.xor32('r8'); em.xor32('r9'); em.call_iat('SendMessageW'); em.mov_r64_ripmem('rcx',bsyms['nav_hwnd']); em.call_iat('SetFocus')
+ # A programmatic Outline jump can land in a never-before-formatted lazy Preview
+ # region. Format that viewport synchronously so headings/code/link colors are right
+ # on the first frame instead of only becoming correct after the user scrolls.
+-em.mov_r32_ripmem('rax',bsyms['preview_flag']); em.test32('rax'); em.jcc(0x84,'navigate_ret'); em.call_label('refresh_preview_visible_theme')
++em.mov_r32_ripmem('rax',bsyms['view_mode']); em.test32('rax'); em.jcc(0x84,'navigate_ret'); em.call_label('refresh_preview_visible_theme')
+ em.label('navigate_ret'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
+ 
+ # Helper: explicitly repaint the native non-client menu gap and bottom separator.
+@@ -2340,20 +2398,10 @@
+ em.mov_r64_ripmem('rcx',bsyms['paint_hdc']); em.lea_rip('rdx',bsyms['draw_rect']); em.mov_r64_ripmem('r8',bsyms['hbrush_outline']); em.call_iat('FillRect')
+ # Draw the thumb only while hover/drag state says it is visible.
+ em.mov_r32_ripmem('rax',bsyms['outline_scroll_visible']); em.test32('rax'); em.jcc(0x84,'sp_endpaint')
+-# Visual thumb width = clamp(clientWidth/2, 6..9), centered in the permanent gutter.
+-em.lea_rip('rcx',bsyms['draw_rect']); em.mov_r32_mreg('rax','rcx',8); em.cmp_r32_imm('rax',1); em.jcc(0x83,'sp_width_have'); em.mov_r32_imm('rax',1)
+-em.label('sp_width_have'); em.mov_r32_r32('rcx','rax'); em.mov_r32_imm('rdx',1); em.mov_r32_imm('r8',2); em.call_iat('MulDiv')
+-em.cmp_r32_imm('rax',6); em.jcc(0x83,'sp_w_min_ok'); em.mov_r32_imm('rax',6)
+-em.label('sp_w_min_ok'); em.cmp_r32_imm('rax',9); em.jcc(0x86,'sp_w_ok'); em.mov_r32_imm('rax',9)
+-em.label('sp_w_ok'); em.mov_r32_r32('r10','rax')
+-# Build thumb rectangle in draw_rect using the client rect already fetched above.
+-# Do NOT call another Win32 API after placing thumb width in volatile r10d.
+-em.lea_rip('rcx',bsyms['draw_rect']); em.mov_r32_mreg('rax','rcx',8); em.sub_r32_r32('rax','r10'); em.shr_r32_imm8('rax',1); em.mov_ptr_r32('rcx','rax')
+-em.mov_r32_ripmem('r11',bsyms['outline_scroll_thumb_top']); em.mov_mreg_reg32('rcx',4,'r11'); em.add_r32_r32('rax','r10'); em.mov_mreg_reg32('rcx',8,'rax')
+-em.mov_r32_ripmem('rax',bsyms['outline_scroll_thumb_h']); em.add_r32_r32('r11','rax'); em.mov_mreg_reg32('rcx',12,'r11')
++# Cached immutable geometry from OutlineController.
+ em.mov_r32_ripmem('rax',bsyms['outline_scroll_drag']); em.test32('rax'); em.jcc(0x84,'sp_brush_normal'); em.mov_r64_ripmem('r8',bsyms['hbrush_scroll_hot']); em.jmp('sp_fill_thumb')
+ em.label('sp_brush_normal'); em.mov_r64_ripmem('r8',bsyms['hbrush_scroll_thumb'])
+-em.label('sp_fill_thumb'); em.mov_r64_ripmem('rcx',bsyms['paint_hdc']); em.lea_rip('rdx',bsyms['draw_rect']); em.call_iat('FillRect')
++em.label('sp_fill_thumb'); em.mov_r64_ripmem('rcx',bsyms['paint_hdc']); em.lea_rip('rdx',bsyms['outline_thumb_rect']); em.call_iat('FillRect')
+ em.label('sp_endpaint'); em.mov_r64_ripmem('rcx',bsyms['scroll_paint_hwnd']); em.lea_rip('rdx',bsyms['ps_scroll']); em.call_iat('EndPaint')
+ em.label('sp_paint_end'); em.xor32('rax'); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
+ 
+@@ -2363,6 +2411,8 @@
+ em.label('wndproc')
+ em.emit(0x48,0x83,0xEC,0x38)
+ em.mov_r32_ripmem('r10',bsyms['findmsg_id']); em.cmp_r32_r32('rdx','r10'); em.jcc(0x84,'wp_findreplace')
++em.cmp_r32_imm('rdx',0x0215); em.jcc(0x84,'wp_capture_lost')
++em.cmp_r32_imm('rdx',0x001F); em.jcc(0x84,'wp_cancel_mode')
+ em.cmp_r32_imm('rdx',0x0111); em.jcc(0x84,'wp_command')      # WM_COMMAND
+ em.cmp_r32_imm('rdx',0x0005); em.jcc(0x84,'wp_size')         # WM_SIZE
+ em.cmp_r32_imm('rdx',0x0002); em.jcc(0x84,'wp_destroy')      # WM_DESTROY
+@@ -2379,26 +2429,9 @@
+ em.cmp_r32_imm('rdx',0x0138); em.jcc(0x84,'wp_ctlcolor_static') # WM_CTLCOLORSTATIC (corner cover)
+ em.label('wp_default'); em.call_iat('DefWindowProcW'); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
+ 
+-em.label('wp_vscroll')
+-# Handle only our independent Outline scrollbar; other controls keep default behavior.
+-em.mov_r64_ripmem('rax',bsyms['hwnd_outline_scroll']); em.cmp_r64_r64('r9','rax'); em.jcc(0x85,'wp_default')
+-# preserve wParam across API calls, then read current top index
+-em.mov_ripmem_r32(bsyms['vscroll_wparam'],'r8')
+-em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.mov_r32_imm('rdx',0x018E); em.xor32('r8'); em.xor32('r9'); em.call_iat('SendMessageW'); em.mov_r32_r32('r10','rax')
+-# code = LOWORD(wParam), track pos = HIWORD(wParam)
+-em.mov_r32_ripmem('rax',bsyms['vscroll_wparam']); em.and_r32_imm('rax',0xFFFF)
+-em.cmp_r32_imm('rax',4); em.jcc(0x84,'wp_vs_thumb'); em.cmp_r32_imm('rax',5); em.jcc(0x84,'wp_vs_thumb')
+-em.cmp_r32_imm('rax',0); em.jcc(0x84,'wp_vs_lineup'); em.cmp_r32_imm('rax',1); em.jcc(0x84,'wp_vs_linedown'); em.cmp_r32_imm('rax',2); em.jcc(0x84,'wp_vs_pageup'); em.cmp_r32_imm('rax',3); em.jcc(0x84,'wp_vs_pagedown'); em.jmp('wp_vs_apply')
+-em.label('wp_vs_thumb'); em.mov_r32_ripmem('r10',bsyms['vscroll_wparam']); em.shr_r32_imm8('r10',16); em.jmp('wp_vs_apply')
+-em.label('wp_vs_lineup'); em.test32('r10'); em.jcc(0x84,'wp_vs_apply'); em.sub_r32_imm8('r10',1); em.jmp('wp_vs_apply')
+-em.label('wp_vs_linedown'); em.add_r32_imm8('r10',1); em.jmp('wp_vs_clamp')
+-em.label('wp_vs_pageup'); em.cmp_r32_imm('r10',10); em.jcc(0x83,'wp_vs_pageup_sub'); em.xor32('r10'); em.jmp('wp_vs_apply')
+-em.label('wp_vs_pageup_sub'); em.sub_r32_imm8('r10',10); em.jmp('wp_vs_apply')
+-em.label('wp_vs_pagedown'); em.add_r32_imm8('r10',10)
+-em.label('wp_vs_clamp'); em.mov_r32_ripmem('r11',bsyms['outline_count']); em.test32('r11'); em.jcc(0x84,'wp_vs_zero'); em.sub_r32_imm8('r11',1); em.cmp_r32_r32('r10','r11'); em.jcc(0x86,'wp_vs_apply'); em.mov_r32_r32('r10','r11'); em.jmp('wp_vs_apply')
+-em.label('wp_vs_zero'); em.xor32('r10')
+-em.label('wp_vs_apply'); em.mov_ripmem_r32(bsyms['outline_scroll_top'],'r10'); em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.mov_r32_imm('rdx',0x0197); em.mov_r32_ripmem('r8',bsyms['outline_scroll_top']); em.xor32('r9'); em.call_iat('SendMessageW')
+-em.mov_r64_ripmem('rcx',bsyms['hwnd_outline_scroll']); em.mov_r32_imm('rdx',2); em.mov_r32_ripmem('r8',bsyms['outline_scroll_top']); em.mov_r32_imm('r9',1); em.call_iat('SetScrollPos')
++em.label('wp_cancel_mode'); em.call_iat('ReleaseCapture')
++em.label('wp_capture_lost')
++em.mov_ripmem_imm32(bsyms['outline_scroll_drag'],0); em.mov_ripmem_imm32(bsyms['splitter_drag'],0)
+ em.xor32('rax'); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
+ 
+ em.label('wp_command')
+@@ -2481,23 +2514,6 @@
+ em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r64_mreg('rcx','r9',32); em.mov_r64_r64('rdx','r9'); em.add_r64_imm8('rdx',40); em.mov_r64_ripmem('r8',bsyms['hbrush_outline']); em.call_iat('FillRect')
+ em.mov_r32_imm('rax',1); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
+ 
+-# Palette-driven overlay scrollbar.  The full gutter is always painted with the
+-# Outline surface; only the thumb appears on hover/drag, so theme behavior is deterministic.
+-em.label('wp_draw_scrollbar')
+-em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r64_mreg('rcx','r9',32); em.mov_r64_r64('rdx','r9'); em.add_r64_imm8('rdx',40); em.mov_r64_ripmem('r8',bsyms['hbrush_outline']); em.call_iat('FillRect')
+-em.mov_r32_ripmem('rax',bsyms['outline_scroll_visible']); em.test32('rax'); em.jcc(0x84,'wp_draw_scrollbar_done')
+-# Thumb visual width = clamp(scrollbar_w/3, 5..8), centered in gutter.
+-em.mov_r32_ripmem('rcx',bsyms['scrollbar_w']); em.mov_r32_imm('rdx',1); em.mov_r32_imm('r8',3); em.call_iat('MulDiv'); em.cmp_r32_imm('rax',5); em.jcc(0x83,'wp_scroll_w_min_ok'); em.mov_r32_imm('rax',5)
+-em.label('wp_scroll_w_min_ok'); em.cmp_r32_imm('rax',8); em.jcc(0x86,'wp_scroll_w_ok'); em.mov_r32_imm('rax',8)
+-em.label('wp_scroll_w_ok'); em.mov_r32_r32('r10','rax')
+-# Build thumb RECT in draw_rect: left=(gutterW-thumbW)/2, right=left+thumbW.
+-em.lea_rip('rcx',bsyms['draw_rect']); em.mov_r32_ripmem('rax',bsyms['scrollbar_w']); em.sub_r32_r32('rax','r10'); em.shr_r32_imm8('rax',1); em.mov_ptr_r32('rcx','rax'); em.mov_r32_ripmem('r11',bsyms['outline_scroll_thumb_top']); em.mov_mreg_reg32('rcx',4,'r11'); em.add_r32_r32('rax','r10'); em.mov_mreg_reg32('rcx',8,'rax'); em.mov_r32_ripmem('rax',bsyms['outline_scroll_thumb_h']); em.add_r32_r32('r11','rax'); em.mov_mreg_reg32('rcx',12,'r11')
+-# Dragging uses the hot brush; hover uses normal thumb brush.
+-em.mov_r32_ripmem('rax',bsyms['outline_scroll_drag']); em.test32('rax'); em.jcc(0x84,'wp_scroll_normal_brush'); em.mov_r64_ripmem('r8',bsyms['hbrush_scroll_hot']); em.jmp('wp_scroll_fill')
+-em.label('wp_scroll_normal_brush'); em.mov_r64_ripmem('r8',bsyms['hbrush_scroll_thumb'])
+-em.label('wp_scroll_fill'); em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r64_mreg('rcx','r9',32); em.lea_rip('rdx',bsyms['draw_rect']); em.call_iat('FillRect')
+-em.label('wp_draw_scrollbar_done'); em.mov_r32_imm('rax',1); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
+-
+ # Outline: 30px rows, per-level accent colors, selection surface, more breathing room.
+ em.label('wp_draw_outline')
+ em.mov_ripmem_imm32(bsyms['draw_old_font'],0)
+@@ -2510,7 +2526,7 @@
+ # V8.4.4 accidentally dereferenced that stale R9 here, crashing as soon as an
+ # outline item was owner-drawn (normally immediately after opening any file).
+ em.mov_r64_ripmem('r9',bsyms['drawitem_ptr'])
+-# V8.4.23: hard-isolate owner-drawn Outline rows from the native scrollbar gutter.
++# V8.4.24: hard-isolate owner-drawn Outline rows from the native scrollbar gutter.
+ # Clamping DrawText alone was insufficient because FillRect/selection painting could still
+ # cover an overlay-style themed scrollbar. Save the supplied HDC state, intersect its clip
+ # with the item content area to the LEFT of the scrollbar gutter, and keep that clip active
+@@ -2699,7 +2715,7 @@
+                            section_ptr, 0, 0, 0, 0, chars)
+ hdr[p:p+40] = shdr; p += 40
+ 
+-out = '/mnt/data/direct_pe_markdown_editor_x64_v8_4_23.exe'
++out = str(__import__('pathlib').Path(__file__).resolve().parents[2] / 'bin/stabilization/direct_pe_markdown_editor_x64_v8_4_24.exe')
+ with open(out, 'wb') as f:
+     f.write(hdr)
+     f.write(raw)

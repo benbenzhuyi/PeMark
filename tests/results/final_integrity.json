@@ -1,0 +1,9 @@
+{
+  "sha256": "a0342cd8f7bd8a6c4118241621e54fed7b4b83401c881fdfc73cc7e6633ee260",
+  "tests_passed": 12,
+  "failures": [],
+  "manifest_matched": 125,
+  "manifest_changed": [
+    "docs\\PE_MEMORY_MAP.md"
+  ]
+}

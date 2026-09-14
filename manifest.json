@@ -1,0 +1,41 @@
+{
+  "project": "PeMark",
+  "localized_name_zh_cn": "码记",
+  "tagline": "Direct-PE Markdown Editor",
+  "release_channel": "preview",
+  "license": "MIT",
+  "documentation_languages": ["en", "zh-CN"],
+  "current_snapshot": "V8.5.1",
+  "build_constraint": "Python directly emits PE32+ AMD64; no compiler, assembler or linker",
+  "current_generator": "src/current/generate_markdown_editor_v8_5_1.py",
+  "current_binary": "bin/current/pemark_x64_v8_5_1.exe",
+  "current_generator_sha256": "75e2312769cc398d73e39a4a67f80476bb3744a41ff26e45e5cd5a017f9e003c",
+  "current_exe_sha256": "b8b07fe43a20cb21e7e33d58a6300f4f2d388dcbc9a26e0306bdaa231f73a39f",
+  "current_exe_size": 77824,
+  "text_len": 27066,
+  "text_budget": 61440,
+  "text_headroom": 34374,
+  "bss_vsize": 121106432,
+  "validation": {
+    "machine_code_groups": "12/12",
+    "scrollbar_geometry_cases": "210/210",
+    "windows_smoke_checks": "17/17",
+    "clean_exit_runs": "5/5",
+    "deterministic_build": true
+  },
+  "known_release_gates": [
+    "Atomic Save and Save As",
+    "Short-write detection and recovery",
+    "Unsaved-document protection",
+    "Malformed and legacy encoding fallback",
+    "File-size and internal-capacity boundaries",
+    "Code signing, ASLR and separated PE section permissions"
+  ],
+  "documentation": [
+    "README.md",
+    "AGENTS.md",
+    "docs/V8_5_1_MERGE_RESULTS.md",
+    "docs/ARCHITECTURE_V8_5_TARGET.md",
+    "docs/WIN64_ABI_RULES.md"
+  ]
+}

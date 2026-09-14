@@ -1,0 +1,39 @@
+name: Bug report
+description: Report a reproducible Direct PE Markdown Editor problem
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Do not attach sensitive documents. Use a minimal reproduction file.
+  - type: input
+    id: version
+    attributes:
+      label: Version and SHA-256
+      placeholder: V8.5.1 / b8b07fe4...
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true

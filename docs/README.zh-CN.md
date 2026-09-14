@@ -1,0 +1,23 @@
+# PeMark · 码记文档
+
+[English](README.md) | 简体中文
+
+## 当前公开文档
+
+- [V8.5.1 Preview 中文发布说明](RELEASE_V8_5_1_PREVIEW.zh-CN.md)
+- [V8.5.1 合并与验证结果](V8_5_1_MERGE_RESULTS.md)
+- [V8.5 目标架构](ARCHITECTURE_V8_5_TARGET.md)
+- [Direct-PE 代码生成指南](DIRECT_PE_CODEGEN_GUIDE.md)
+- [Win64 ABI 规则](WIN64_ABI_RULES.md)
+- [Markdown 渲染器与位置映射](MARKDOWN_RENDERER_AND_POSITION_MAP.md)
+- [回归测试计划](REGRESSION_TEST_PLAN.md)
+- [中文发布检查表](PUBLISHING_CHECKLIST.zh-CN.md)
+
+项目首页、发布说明、安全策略、贡献指南、许可证说明和发布检查表均提供英文与
+简体中文版本。详细工程记录保留原始语言，因为其中的标识符、偏移、证据和历史
+表述属于技术记录的一部分。
+
+## 历史资料
+
+标题中明确标注 V8.4.23 或更早版本的文档作为历史证据保留，不覆盖当前
+V8.5.1 基线。

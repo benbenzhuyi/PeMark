@@ -1,0 +1,33 @@
+# GitHub 发布检查表
+
+[English](PUBLISHING_CHECKLIST.md) | 简体中文
+
+## 仓库
+
+- [x] 将 V8.5.1 提升至 `src/current/` 和 `bin/current/`。
+- [x] 将生成器路径改为项目相对路径。
+- [x] 添加 MIT License。
+- [x] 添加中英文 README、安全策略、贡献指南和发布说明。
+- [x] 添加 Git 属性、忽略规则、Issue 模板和 Windows CI。
+- [x] 更新 manifest 和全仓库 SHA-256 清单。
+- [ ] 创建 GitHub 仓库并设置简介和 Topics。
+- [ ] 开启私密漏洞报告。
+- [ ] 推送 `main` 并确认 Direct-PE validation 工作流通过。
+
+## V8.5.1 Preview
+
+- [ ] 创建带说明的 `v8.5.1` 标签。
+- [ ] 创建名为 `PeMark V8.5.1 Preview` 的 GitHub Pre-release。
+- [ ] 使用 `RELEASE_V8_5_1_PREVIEW.md` 或对应中文版本作为发布正文。
+- [ ] 只附加 `bin/current/pemark_x64_v8_5_1.exe`。
+- [ ] 确认附件 SHA-256 为
+  `b8b07fe43a20cb21e7e33d58a6300f4f2d388dcbc9a26e0306bdaa231f73a39f`。
+- [ ] 保持 GitHub 的 “Set as a pre-release” 选项开启。
+
+## 仓库设置
+
+- [ ] 默认分支设为 `main`。
+- [ ] 合并前要求 `build-and-test` 状态检查通过。
+- [ ] 禁止对 `main` 强制推送和删除分支。
+- [ ] 按需要开启 Discussions。
+- [ ] 选定公开截图后加入 README。

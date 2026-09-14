@@ -1,0 +1,15 @@
+* text=auto
+*.py text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.txt text eol=lf
+*.exe binary
+*.dll binary
+*.png binary
+*.ico binary
+tests/newline_cr.md binary
+tests/newline_crlf.md binary
+tests/newline_lf.md binary
+

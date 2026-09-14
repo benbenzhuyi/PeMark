@@ -1,0 +1,41 @@
+{
+  "pid": 25024,
+  "windows": "Windows-10-10.0.26200-SP0",
+  "generator": "src/stabilization/generate_markdown_editor_v8_4_24.py",
+  "state": {
+    "view_mode": 1,
+    "document_len": 887567,
+    "render_len": 696374,
+    "outline_count": 600,
+    "nav_source_offset": 878667,
+    "view_sel_start": 689397,
+    "view_top_pos": 688521,
+    "outline_scroll_count": 600,
+    "outline_scroll_top": 582,
+    "outline_visible_rows": 18,
+    "outline_max_top": 582,
+    "outline_scroll_visible": 0,
+    "outline_scroll_drag": 0,
+    "outline_scroll_thumb_top": 529,
+    "outline_scroll_thumb_h": 32,
+    "outline_scroll_track_h": 557,
+    "outline_scroll_travel": 525,
+    "theme_dark": 0,
+    "zoom_pct": 100,
+    "content_h": 565,
+    "outline_width": 228,
+    "style_count": 20600,
+    "outline_thumb_rect": [
+      4,
+      529,
+      12,
+      561
+    ],
+    "outline_track_rect": [
+      0,
+      4,
+      17,
+      561
+    ]
+  }
+}

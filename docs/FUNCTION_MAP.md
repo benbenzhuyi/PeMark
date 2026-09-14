@@ -1,0 +1,502 @@
+# Runtime Function / Label Map — V8.4.23
+
+Emitted labels found: 443. Line numbers refer to the captured generator source, not runtime addresses. Add a generated label->RVA map in the next architecture revision.
+
+## Message/event routing
+
+- `msg_loop` — generator line 786
+- `command` — generator line 913
+- `dispatch` — generator line 1277
+- `wndproc` — generator line 2363
+
+## View/mode
+
+- `cmd_preview` — generator line 1161
+- `preview_hide_active` — generator line 1168
+- `preview_show` — generator line 1184
+- `capture_surface_state` — generator line 1547
+- `restore_surface_state` — generator line 1559
+
+## Document/file
+
+- `cmd_open` — generator line 939
+- `decode_done` — generator line 983
+- `do_save` — generator line 1021
+- `sync_model_from_editor` — generator line 1689
+- `normalize_to_document_model` — generator line 1667
+
+## Markdown/render
+
+- `update_preview` — generator line 1946
+- `add_style` — generator line 1719
+- `apply_styles` — generator line 1875
+- `refresh_preview_visible_theme` — generator line 1412
+- `map_source_to_render` — generator line 1603
+- `map_render_to_source` — generator line 1615
+
+## Outline
+
+- `rebuild_outline` — generator line 1731
+- `navigate_outline` — generator line 2106
+- `sync_outline_scrollbar` — generator line 1316
+- `update_outline_hover` — generator line 1350
+- `outline_scroll_drag_move` — generator line 1378
+
+## Layout/UI
+
+- `resize_children` — generator line 1444
+- `splitter_drag_move` — generator line 1393
+- `repaint_splitter_surface` — generator line 1428
+- `apply_theme` — generator line 2156
+- `paint_menu_gaps` — generator line 2132
+- `update_status` — generator line 2277
+
+## Custom scrollbar
+
+- `scrollproc` — generator line 2326
+
+## All emitted labels
+
+- `scroll_metric_ready` — line 610
+- `darkapi_resolved` — line 622
+- `msg_loop` — line 786
+- `mousemove_event` — line 805
+- `mousemove_not_scroll_drag` — line 809
+- `mousemove_hover_only` — line 812
+- `lbuttondown_event` — line 814
+- `lbd_scroll_pageup` — line 834
+- `lbd_scroll_pageup_sub` — line 836
+- `lbd_scroll_pagedown` — line 837
+- `lbd_scroll_apply` — line 839
+- `lbd_test_splitter` — line 841
+- `lbuttonup_event` — line 848
+- `lbu_not_scroll` — line 851
+- `timer_event` — line 858
+- `document_changed_event` — line 863
+- `outline_select_event` — line 866
+- `mousewheel_event` — line 869
+- `outline_wheel_up` — line 886
+- `outline_wheel_up_sub` — line 888
+- `outline_wheel_down` — line 889
+- `outline_wheel_send` — line 892
+- `mousewheel_zoom` — line 894
+- `resize_event` — line 899
+- `findreplace_event` — line 903
+- `fr_dialogterm` — line 911
+- `command` — line 913
+- `cmd_new` — line 922
+- `cmd_open` — line 939
+- `decode_8bit` — line 974
+- `decode_utf8_call` — line 976
+- `decode_done` — line 983
+- `decode_empty` — line 989
+- `decode_utf16` — line 994
+- `too_large_close` — line 999
+- `read_fail_close` — line 1003
+- `err_open` — line 1006
+- `err_decode` — line 1009
+- `cmd_save` — line 1012
+- `cmd_saveas` — line 1015
+- `do_save` — line 1021
+- `save_zero_bytes` — line 1027
+- `save_create` — line 1028
+- `save_fail_close` — line 1035
+- `err_save` — line 1036
+- `cmd_copy` — line 1041
+- `cmd_selectall` — line 1042
+- `cmd_find` — line 1062
+- `cmd_replace` — line 1065
+- `cmd_findnext` — line 1068
+- `fr_findnext` — line 1072
+- `show_find_notfound` — line 1074
+- `fr_replace` — line 1077
+- `fr_replaceall` — line 1080
+- `replaceall_loop` — line 1083
+- `replaceall_done` — line 1087
+- `cmd_md_h1` — line 1093
+- `cmd_md_h2` — line 1094
+- `cmd_md_h3` — line 1095
+- `cmd_md_h4` — line 1096
+- `cmd_md_h5` — line 1097
+- `cmd_md_h6` — line 1098
+- `cmd_md_bold` — line 1099
+- `cmd_md_italic` — line 1100
+- `cmd_md_inline` — line 1101
+- `cmd_md_codeblock` — line 1102
+- `cmd_md_quote` — line 1103
+- `cmd_md_bullet` — line 1104
+- `cmd_md_link` — line 1105
+- `cmd_zoomin` — line 1108
+- `cmd_zoomout` — line 1111
+- `cmd_zoomreset` — line 1114
+- `cmd_wrap` — line 1117
+- `wrap_enable` — line 1121
+- `wrap_recreate` — line 1124
+- `wrap_style_off` — line 1132
+- `wrap_style_ready` — line 1133
+- `wrap_focus_source` — line 1145
+- `cmd_status` — line 1147
+- `status_show` — line 1154
+- `cmd_preview` — line 1161
+- `preview_hide_active` — line 1168
+- `preview_show` — line 1184
+- `cmd_outline` — line 1204
+- `outline_capture_source` — line 1210
+- `outline_capture_ready` — line 1211
+- `outline_show` — line 1227
+- `outline_layout` — line 1241
+- `cmd_light` — line 1250
+- `cmd_dark` — line 1251
+- `cmd_theme_toggle` — line 1252
+- `theme_toggle_dark` — line 1255
+- `theme_fast_apply` — line 1256
+- `theme_fast_source` — line 1271
+- `cmd_about` — line 1273
+- `cmd_exit` — line 1275
+- `dispatch` — line 1277
+- `dispatch_accel` — line 1282
+- `dispatch_translate` — line 1285
+- `dispatch_theme_schedule` — line 1300
+- `dispatch_theme_refresh_done` — line 1302
+- `dispatch_status_refresh` — line 1311
+- `dispatch_status_done` — line 1312
+- `sync_outline_scrollbar` — line 1316
+- `sync_rows_ok` — line 1324
+- `sync_have_maxtop` — line 1327
+- `sync_store_maxtop` — line 1328
+- `sync_track_ok` — line 1331
+- `sync_thumb_full` — line 1334
+- `sync_thumb_calc` — line 1335
+- `sync_thumb_store` — line 1336
+- `sync_thumb_store2` — line 1337
+- `sync_thumb_top_zero` — line 1342
+- `sync_thumb_top_store` — line 1343
+- `sync_os_ret` — line 1347
+- `update_outline_hover` — line 1350
+- `hover_show_custom` — line 1361
+- `hover_hide_custom` — line 1366
+- `hover_cursor_custom` — line 1371
+- `hover_done_custom` — line 1375
+- `outline_scroll_drag_move` — line 1378
+- `os_drag_after_top` — line 1384
+- `os_drag_pos_ok` — line 1386
+- `os_drag_zero` — line 1388
+- `os_drag_apply` — line 1389
+- `os_drag_ret` — line 1390
+- `splitter_drag_move` — line 1393
+- `split_drag_min_ok` — line 1398
+- `split_drag_max_ready` — line 1399
+- `split_drag_have_max` — line 1400
+- `split_drag_store` — line 1401
+- `split_drag_ret` — line 1402
+- `set_visible_format_window` — line 1406
+- `visible_window_ok` — line 1408
+- `refresh_preview_visible_theme` — line 1412
+- `refresh_visible_ret` — line 1423
+- `repaint_splitter_surface` — line 1428
+- `repaint_splitter_ret` — line 1440
+- `resize_children` — line 1444
+- `resize_content` — line 1456
+- `resize_scroll_hidden` — line 1482
+- `resize_sidebar_hidden` — line 1483
+- `resize_doc` — line 1496
+- `resize_preview_surface` — line 1498
+- `resize_ret` — line 1500
+- `apply_zoom` — line 1504
+- `font_preview_zoom` — line 1516
+- `font_ret` — line 1518
+- `apply_preview_zoom` — line 1521
+- `preview_zoom_ret` — line 1525
+- `capture_zoom_anchor` — line 1528
+- `zoom_anchor_source` — line 1532
+- `zoom_anchor_ready` — line 1533
+- `restore_zoom_anchor` — line 1537
+- `zoom_restore_ret` — line 1542
+- `capture_surface_state` — line 1547
+- `surface_capture_top_ok` — line 1554
+- `restore_surface_state` — line 1559
+- `surface_restore_preview_line` — line 1566
+- `surface_restore_line_ready` — line 1567
+- `capture_view_anchor` — line 1578
+- `restore_view_anchor` — line 1588
+- `view_line_ok` — line 1593
+- `view_col_ok` — line 1596
+- `view_restore_ret` — line 1599
+- `map_source_to_render` — line 1603
+- `msr_nonempty` — line 1605
+- `msr_loop` — line 1606
+- `msr_move_lo` — line 1610
+- `msr_done` — line 1611
+- `map_render_to_source` — line 1615
+- `mrs_nonempty` — line 1617
+- `mrs_inrange` — line 1618
+- `md_wrap_selection` — line 1621
+- `md_select_link_url` — line 1643
+- `md_prefix_line` — line 1652
+- `normalize_to_document_model` — line 1667
+- `doc_norm_loop` — line 1671
+- `doc_norm_cr` — line 1677
+- `doc_norm_emit_crlf` — line 1680
+- `doc_norm_lf` — line 1682
+- `doc_norm_done` — line 1684
+- `sync_model_from_editor` — line 1689
+- `sync_model_ret` — line 1695
+- `load_model_into_editor` — line 1699
+- `load_model_invalidate` — line 1714
+- `load_model_unsuppress` — line 1715
+- `add_style` — line 1719
+- `add_style_ret` — line 1726
+- `rebuild_outline` — line 1731
+- `outline_scan_loop` — line 1741
+- `outline_scan_not_lf` — line 1745
+- `outline_leadspace_loop` — line 1749
+- `outline_leadspace_done` — line 1750
+- `outline_hash_loop` — line 1754
+- `outline_hash_done` — line 1755
+- `outline_rb_indent` — line 1758
+- `outline_rb_copy_setup` — line 1759
+- `outline_rb_copy` — line 1760
+- `outline_rb_copy_done` — line 1761
+- `outline_after_add` — line 1772
+- `outline_mark_nonheading` — line 1775
+- `outline_scan_advance` — line 1776
+- `outline_rebuild_ret` — line 1777
+- `outline_rebuild_pop` — line 1781
+- `add_outline_heading` — line 1784
+- `outline_indent_loop` — line 1790
+- `outline_copy_setup` — line 1792
+- `outline_copy_loop` — line 1797
+- `outline_copy_done` — line 1800
+- `outline_add_ret` — line 1808
+- `prepare_preview_default` — line 1815
+- `preview_default_bg_light` — line 1820
+- `preview_default_bg_send` — line 1821
+- `preview_default_text_light` — line 1825
+- `preview_default_text_ready` — line 1826
+- `preview_default_ret` — line 1828
+- `apply_preview_base` — line 1831
+- `preview_bg_light` — line 1836
+- `preview_bg_send` — line 1837
+- `preview_text_light` — line 1842
+- `preview_text_ready` — line 1843
+- `preview_base_end_ok` — line 1847
+- `preview_base_all` — line 1850
+- `preview_base_ret` — line 1851
+- `apply_preview_theme_color` — line 1856
+- `preview_theme_bg_light` — line 1861
+- `preview_theme_bg_send` — line 1862
+- `preview_theme_text_light` — line 1867
+- `preview_theme_text_ready` — line 1868
+- `preview_theme_color_ret` — line 1869
+- `apply_styles` — line 1875
+- `style_loop` — line 1878
+- `style_range_send` — line 1890
+- `style_heading_size` — line 1911
+- `style_nonheading` — line 1913
+- `style_bold` — line 1922
+- `style_bold_light` — line 1922
+- `style_bold_face` — line 1922
+- `style_italic` — line 1924
+- `style_italic_light` — line 1924
+- `style_italic_face` — line 1924
+- `style_code` — line 1926
+- `style_code_light` — line 1926
+- `style_code_face` — line 1926
+- `style_quote` — line 1928
+- `style_quote_light` — line 1928
+- `style_link` — line 1930
+- `style_link_light` — line 1930
+- `style_codeblock` — line 1932
+- `style_codeblock_light` — line 1932
+- `style_codeblock_face` — line 1932
+- `style_send` — line 1933
+- `style_next` — line 1934
+- `styles_done` — line 1935
+- `update_preview` — line 1946
+- `pv_timer_reset_done` — line 1954
+- `pv8_loop` — line 1967
+- `pv8_leadspace_loop` — line 1977
+- `pv8_leadspace_done` — line 1978
+- `pv8_close_fence` — line 1986
+- `pv8_skip_fence_line` — line 1987
+- `pv8_fence_skip_loop` — line 1989
+- `pv8_fence_lf` — line 1990
+- `pv8_line_after_fence_check` — line 1992
+- `pv8_hash_count` — line 1998
+- `pv8_hash_done` — line 1999
+- `pv8_heading_map_done` — line 2002
+- `pv8_line_quote` — line 2005
+- `pv8_quote_ready` — line 2010
+- `pv8_line_bullet` — line 2012
+- `pv8_bullet_check` — line 2014
+- `pv8_bullet_ws_ok` — line 2015
+- `pv8_normal_line` — line 2016
+- `pv8_not_line_start` — line 2018
+- `pv8_after_cr_skip` — line 2025
+- `pv8_bold_probe` — line 2034
+- `pv8_bold_probe_next` — line 2035
+- `pv8_bold_probe_ok` — line 2036
+- `pv8_bold_close` — line 2037
+- `pv8_single_italic` — line 2039
+- `pv8_italic_probe` — line 2041
+- `pv8_italic_probe_ok` — line 2042
+- `pv8_italic_close` — line 2043
+- `pv8_inline_code_check` — line 2046
+- `pv8_code_probe` — line 2049
+- `pv8_code_probe_ok` — line 2050
+- `pv8_code_close` — line 2051
+- `pv8_link_open_check` — line 2054
+- `pv8_link_probe_text` — line 2058
+- `pv8_link_probe_paren` — line 2059
+- `pv8_link_probe_url` — line 2060
+- `pv8_link_probe_ok` — line 2061
+- `pv8_link_close_check` — line 2062
+- `pv8_url_skip` — line 2067
+- `pv8_url_done` — line 2068
+- `pv8_copy` — line 2070
+- `pv8_codeblock_copy` — line 2072
+- `pv8_codeblock_not_cr` — line 2073
+- `pv8_codeblock_plain` — line 2074
+- `pv8_lf` — line 2076
+- `pv8_lf_italic` — line 2079
+- `pv8_lf_code` — line 2080
+- `pv8_lf_heading` — line 2081
+- `pv8_lf_quote` — line 2082
+- `pv8_lf_copy` — line 2083
+- `pv8_eof` — line 2085
+- `pv8_eof_quote` — line 2088
+- `pv8_eof_codeblock` — line 2089
+- `pv8_finish` — line 2090
+- `pv_render_ret` — line 2103
+- `navigate_outline` — line 2106
+- `navigate_source` — line 2120
+- `navigate_send` — line 2121
+- `navigate_ret` — line 2126
+- `paint_menu_gaps` — line 2132
+- `paint_menu_gap_ret` — line 2153
+- `apply_theme` — line 2156
+- `theme_del_outline` — line 2160
+- `theme_del_splitter` — line 2161
+- `theme_del_status` — line 2162
+- `theme_del_menu` — line 2163
+- `theme_del_scroll_thumb` — line 2164
+- `theme_del_scroll_hot` — line 2165
+- `theme_make` — line 2166
+- `theme_make_light` — line 2168
+- `theme_controls` — line 2169
+- `theme_pref_light` — line 2178
+- `theme_pref_call` — line 2179
+- `theme_pref_done` — line 2180
+- `theme_child_themes` — line 2188
+- `theme_child_light_names` — line 2192
+- `theme_child_names_ready` — line 2193
+- `theme_menu_flush_done` — line 2201
+- `theme_status_light` — line 2204
+- `theme_status_send` — line 2205
+- `theme_dwm` — line 2206
+- `theme_dwm_light_colors` — line 2215
+- `theme_dwm_colors_done` — line 2216
+- `theme_light_unchecked` — line 2219
+- `theme_light_check` — line 2220
+- `theme_dark_unchecked` — line 2222
+- `theme_dark_check` — line 2223
+- `find_next_select` — line 2231
+- `find_case_first` — line 2241
+- `find_first_done` — line 2242
+- `find_case_wrap` — line 2248
+- `find_wrap_done` — line 2249
+- `find_got` — line 2250
+- `find_none` — line 2256
+- `find_ret` — line 2257
+- `replace_if_match` — line 2260
+- `replace_matchcase` — line 2270
+- `replace_compare` — line 2271
+- `replace_no` — line 2273
+- `replace_ret` — line 2274
+- `update_status` — line 2277
+- `enc_utf16` — line 2306
+- `enc_ansi` — line 2307
+- `enc_send` — line 2308
+- `status_ret` — line 2309
+- `exit` — line 2311
+- `exit_font_outline` — line 2313
+- `exit_font_status` — line 2314
+- `exit_brush_menu` — line 2315
+- `exit_brush_scroll` — line 2316
+- `exit_brush_scroll_hot` — line 2317
+- `exit_accel` — line 2318
+- `exit_now` — line 2319
+- `scrollproc` — line 2326
+- `sp_erase` — line 2331
+- `sp_paint` — line 2333
+- `sp_width_have` — line 2345
+- `sp_w_min_ok` — line 2347
+- `sp_w_ok` — line 2348
+- `sp_brush_normal` — line 2355
+- `sp_fill_thumb` — line 2356
+- `sp_endpaint` — line 2357
+- `sp_paint_end` — line 2358
+- `wndproc` — line 2363
+- `wp_default` — line 2380
+- `wp_vscroll` — line 2382
+- `wp_vs_thumb` — line 2392
+- `wp_vs_lineup` — line 2393
+- `wp_vs_linedown` — line 2394
+- `wp_vs_pageup` — line 2395
+- `wp_vs_pageup_sub` — line 2396
+- `wp_vs_pagedown` — line 2397
+- `wp_vs_clamp` — line 2398
+- `wp_vs_zero` — line 2399
+- `wp_vs_apply` — line 2400
+- `wp_command` — line 2404
+- `wp_cmd_outline_check` — line 2412
+- `wp_cmd_other_child` — line 2416
+- `wp_child_return` — line 2419
+- `wp_size` — line 2421
+- `wp_findreplace` — line 2426
+- `wp_ncpaint` — line 2432
+- `wp_activation` — line 2438
+- `wp_measureitem` — line 2445
+- `wp_drawitem` — line 2449
+- `wp_draw_status` — line 2453
+- `wp_status_text_light` — line 2459
+- `wp_status_text_send` — line 2460
+- `wp_draw_status_no_restore` — line 2465
+- `wp_draw_corner` — line 2469
+- `wp_draw_splitter` — line 2475
+- `wp_draw_gutter` — line 2480
+- `wp_draw_scrollbar` — line 2486
+- `wp_scroll_w_min_ok` — line 2491
+- `wp_scroll_w_ok` — line 2492
+- `wp_scroll_normal_brush` — line 2497
+- `wp_scroll_fill` — line 2498
+- `wp_draw_scrollbar_done` — line 2499
+- `wp_draw_outline` — line 2502
+- `outline_clip_right_ready` — line 2530
+- `wp_outline_fill_sel_light` — line 2539
+- `wp_outline_fill_normal` — line 2540
+- `wp_outline_text` — line 2541
+- `wp_outline_dark_h1` — line 2549
+- `wp_outline_dark_h2` — line 2550
+- `wp_outline_dark_h3` — line 2551
+- `wp_outline_color_light` — line 2552
+- `wp_outline_light_h1` — line 2553
+- `wp_outline_light_h2` — line 2554
+- `wp_outline_light_h3` — line 2555
+- `wp_outline_color_send` — line 2556
+- `wp_draw_outline_done` — line 2561
+- `wp_draw_outline_clip_restored` — line 2565
+- `wp_draw_outline_no_restore` — line 2568
+- `wp_uah_drawmenu` — line 2572
+- `wp_uah_drawitem` — line 2583
+- `wp_uah_item_normal` — line 2589
+- `wp_uah_item_text` — line 2590
+- `wp_erasebkgnd` — line 2598
+- `wp_ctlcolor_edit` — line 2604
+- `wp_edit_light` — line 2608
+- `wp_ctlcolor_list` — line 2611
+- `wp_list_light` — line 2615
+- `wp_ctlcolor_static` — line 2617
+- `wp_static_gutter_check` — line 2621
+- `wp_static_corner` — line 2623
+- `wp_destroy` — line 2625

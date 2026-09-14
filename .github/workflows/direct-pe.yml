@@ -1,0 +1,32 @@
+name: Direct-PE validation
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install test dependency
+        run: python -m pip install -r requirements-dev.txt
+      - name: Deterministic Direct-PE build
+        run: python tools/build_current.py
+      - name: Execute emitted-machine-code regressions
+        run: python tools/test_v8_5_1.py src/current/generate_markdown_editor_v8_5_1.py
+      - name: Inspect generated PE
+        run: python tools/inspect_pe.py bin/current/pemark_x64_v8_5_1.exe
+      - name: Verify release hash
+        shell: pwsh
+        run: |
+          $expected = "B8B07FE43A20CB21E7E33D58A6300F4F2D388DCBC9A26E0306BDAA231F73A39F"
+          $actual = (Get-FileHash -Algorithm SHA256 bin/current/pemark_x64_v8_5_1.exe).Hash
+          if ($actual -ne $expected) { throw "SHA-256 mismatch: $actual" }
