@@ -31,3 +31,12 @@ jobs:
           $expected = "B8B07FE43A20CB21E7E33D58A6300F4F2D388DCBC9A26E0306BDAA231F73A39F"
           $actual = (Get-FileHash -Algorithm SHA256 bin/current/pemark_x64_v8_5_1.exe).Hash
           if ($actual -ne $expected) { throw "SHA-256 mismatch: $actual" }
+      - name: Build and inspect V8.5.2 candidate when present
+        if: ${{ hashFiles('src/candidate/generate_markdown_editor_v8_5_2.py') != '' }}
+        run: |
+          python src/candidate/generate_markdown_editor_v8_5_2.py
+          python tools/test_v8_5_1.py src/candidate/generate_markdown_editor_v8_5_2.py
+          python tools/inspect_pe.py bin/candidate/pemark_x64_v8_5_2_candidate.exe
+      - name: Exercise V8.5.2 revision ownership when present
+        if: ${{ hashFiles('tools/test_v8_5_2_revision.py') != '' }}
+        run: python tools/test_v8_5_2_revision.py
