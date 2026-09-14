@@ -70,6 +70,9 @@
   Save preserves those byte-level choices, including BOM-only empty documents.
 - Added emitted-x64 execution checks for EOL detection/serialization and revision
   wraparound to the actual CI regression entrypoint.
+- Added a noninteractive 2600-heading capacity baseline to CI. It proves the
+  pre-arena candidate stops at Heading 2048 and records process resources without
+  treating machine-specific memory values as exact assertions.
 - Preserved all V8.5.1 machine-code and Windows GUI regression results.
 - Kept the V8.5.1 current/release generator and binary unchanged.
 

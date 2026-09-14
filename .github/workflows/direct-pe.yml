@@ -49,3 +49,6 @@ jobs:
       - name: Exercise V8.5.2 Open transaction and encoding matrix when present
         if: ${{ hashFiles('tools/test_v8_5_2_open_encoding.py') != '' }}
         run: python tools/test_v8_5_2_open_encoding.py
+      - name: Observe V8.5.2 pre-arena capacity baseline when present
+        if: ${{ hashFiles('tools/test_v8_5_2_capacity_baseline.py') != '' }}
+        run: python tools/test_v8_5_2_capacity_baseline.py

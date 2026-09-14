@@ -101,6 +101,9 @@ normal close exit code:                  = 0
 - Unicorn executes the emitted EOL detection/serialization helpers directly and
   verifies revision wraparound skips the reserved zero value. The check runs in
   the CI entrypoint rather than relying only on source inspection.
+- The pre-arena capacity test opens the frozen 2600-heading fixture and observes
+  exactly 2048 Outline entries, ending at Heading 2048. This converts the known
+  fixed-array truncation into a deterministic CI baseline for Phase E.
 - Candidate size: 77,824 bytes.
 - Emitted text: 28,713 bytes, 1,647 bytes above V8.5.1.
 - Candidate SHA-256:
