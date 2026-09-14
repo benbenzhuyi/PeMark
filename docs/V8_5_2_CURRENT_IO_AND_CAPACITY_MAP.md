@@ -1,6 +1,6 @@
 # V8.5.2 Current I/O and Capacity Map
 
-Status: verified from V8.5.1 generator; pre-implementation map
+Status: historical V8.5.1 baseline; V8.5.2 changes are tracked below
 
 ## Current load path
 
@@ -70,3 +70,12 @@ The first production change adds revision ownership only. It must not yet alter
 file bytes, encoding behavior, PE sections or allocation. Atomic save and arena
 migration follow as separate bounded changes.
 
+## V8.5.2 implemented delta
+
+- Open defers view, path, encoding and revision changes until one success point.
+- Empty files bypass a zero-length `ReadFile` call.
+- UTF-8 uses `MB_ERR_INVALID_CHARS`; ACP fallback has been removed.
+- UTF-8 BOM and UTF-16LE BOM remain explicit, and odd UTF-16 byte counts or
+  decoded embedded NULs fail transactionally.
+- Save uses the sibling staging and atomic-replacement transaction documented in
+  `V8_5_2_FILE_OPERATION_CONTRACTS.md` and `V8_5_2_RECOVERY_POLICY.md`.

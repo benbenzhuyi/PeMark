@@ -46,3 +46,6 @@ jobs:
       - name: Exercise V8.5.2 WriteFile injection variants when present
         if: ${{ hashFiles('tools/test_v8_5_2_write_injection.py') != '' }}
         run: python tools/test_v8_5_2_write_injection.py
+      - name: Exercise V8.5.2 Open transaction and encoding matrix when present
+        if: ${{ hashFiles('tools/test_v8_5_2_open_encoding.py') != '' }}
+        run: python tools/test_v8_5_2_open_encoding.py

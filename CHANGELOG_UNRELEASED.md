@@ -56,6 +56,12 @@
 - Defined the V8.5.2 recovery policy for interrupted-save artifacts. A
   preexisting `.pemark.tmp` is discovered through `CREATE_NEW`, preserved, and
   reported with an actionable message instead of the generic save error.
+- Removed the implicit ANSI fallback from Open. UTF-8 decoding now uses
+  `MB_ERR_INVALID_CHARS`; UTF-8, UTF-8 BOM and UTF-16LE BOM are explicit paths,
+  while malformed UTF-8, embedded NUL and odd-byte UTF-16 are rejected.
+- Consolidated Open success into one commit point. Failed decoding leaves the
+  prior model, path, revisions and view mode unchanged. Added a noninteractive,
+  build-time-only Open test command isolated to `bin/test/`.
 - Preserved all V8.5.1 machine-code and Windows GUI regression results.
 - Kept the V8.5.1 current/release generator and binary unchanged.
 

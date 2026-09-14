@@ -88,17 +88,19 @@ normal close exit code:                  = 0
 - A staging collision now has a dedicated recovery message and cancels the
   pending destructive transition. The normative ownership, discovery and
   manual recovery behavior is recorded in `V8_5_2_RECOVERY_POLICY.md`.
+- Open now has a single success commit point after read and encoding validation.
+  Strict UTF-8, UTF-8 BOM and UTF-16LE BOM pass through a noninteractive Windows
+  test build; malformed UTF-8, embedded NUL and odd-byte UTF-16 retain the old
+  model, path, revisions and Preview mode.
 - Candidate size: 77,824 bytes.
-- Emitted text: 27,950 bytes, 884 bytes above V8.5.1.
+- Emitted text: 27,977 bytes, 911 bytes above V8.5.1.
 - Candidate SHA-256:
-  `a8bb59d8b801e32c0511d4fdeea8658e9665611a0cdd8c5acc4c700749b2c550`.
+  `93e88de14d2194b2c0d63f30136718ac1241e33717cdb65e99f84c1f91109af6`.
 
 ## Remaining before promotion
 
-- Add end-to-end successful Open fixture automation. Existing-path Save is
-  covered through the real controller and disk bytes; Save As picker Cancel and
-  commit ordering are covered, while its injected write-failure path belongs to
-  the next failure-injection layer.
+- Replace the one-shot `ReadFile` with a checked complete-read loop and add
+  partial/zero/failure injection before calling Open transaction complete.
 - Add startup or Open-time recovery discovery only if later usability evidence
   justifies directory scanning beyond the current Save-time policy.
 - Independently inspect helper bytes and every revision call site.

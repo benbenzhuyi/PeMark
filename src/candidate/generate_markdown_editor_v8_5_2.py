@@ -4,12 +4,16 @@ try:
     WRITE_INJECTION_MODE
 except NameError:
     WRITE_INJECTION_MODE = 'release'
+try:
+    OPEN_TEST_BUILD
+except NameError:
+    OPEN_TEST_BUILD = False
 _WRITE_INJECTION_MODES = {'release', 'short_then_complete', 'zero_success',
                           'fail_first', 'late_failure', 'flush_failure',
                           'replace_failure', 'create_failure', 'close_failure'}
 if WRITE_INJECTION_MODE not in _WRITE_INJECTION_MODES:
     raise ValueError('unknown WRITE_INJECTION_MODE: %r' % WRITE_INJECTION_MODE)
-INJECTED_BUILD = WRITE_INJECTION_MODE != 'release'
+INJECTED_BUILD = WRITE_INJECTION_MODE != 'release' or OPEN_TEST_BUILD
 WRITE_CALL_INJECTED = WRITE_INJECTION_MODE in {
     'short_then_complete', 'zero_success', 'fail_first', 'late_failure'}
 
@@ -49,7 +53,8 @@ def astr(name,s): return add_bytes(name, s.encode('ascii')+b'\0', 1)
 wstr('class_static','STATIC')
 wstr('class_edit','EDIT')
 wstr('class_main','DirectPE_Notepad_Main')
-wstr('title', ('PeMark x64 V8.5.2 WRITE-INJECTION [%s]' % WRITE_INJECTION_MODE)
+wstr('title', ('PeMark x64 V8.5.2 OPEN-TRANSACTION TEST' if OPEN_TEST_BUILD
+               else 'PeMark x64 V8.5.2 WRITE-INJECTION [%s]' % WRITE_INJECTION_MODE)
      if INJECTED_BUILD else 'PeMark x64 V8.5.2 Candidate — Direct-PE Markdown Editor')
 wstr('empty','')
 wstr('menu_file','&File')
@@ -386,6 +391,8 @@ bss_alloc('inject_replace_call_count', 4, 4)
 bss_alloc('save_stage_path', 512*2, 16)         # append-only candidate state
 bss_alloc('inject_create_call_count', 4, 4)
 bss_alloc('inject_close_call_count', 4, 4)
+if OPEN_TEST_BUILD:
+    bss_alloc('open_decode_error_count', 4, 4)
 BSS_VSIZE = align(bss_off, 0x1000)
 
 # ---------------- IDATA ----------------
@@ -972,10 +979,13 @@ em.label('fr_dialogterm'); em.xor32('rax'); em.mov_ripmem_r64(bsyms['findreplace
 
 em.label('command')
 em.mov_eax_mr12(16); em.and_r32_imm('rax',0xFFFF)
-for cid,label in [(1001,'cmd_new'),(1002,'cmd_open'),(1003,'cmd_save'),(1004,'cmd_saveas'),(1005,'cmd_exit'),
+_command_routes = [(1001,'cmd_new'),(1002,'cmd_open'),(1003,'cmd_save'),(1004,'cmd_saveas'),(1005,'cmd_exit'),
                   (1101,'cmd_undo'),(1102,'cmd_cut'),(1103,'cmd_copy'),(1104,'cmd_paste'),(1105,'cmd_selectall'),(1106,'cmd_find'),(1107,'cmd_findnext'),(1108,'cmd_replace'),(1201,'cmd_about'),
                   (1301,'cmd_zoomin'),(1302,'cmd_zoomout'),(1303,'cmd_zoomreset'),(1304,'cmd_wrap'),(1305,'cmd_status'),(1306,'cmd_preview'),(1307,'cmd_outline'),(1310,'cmd_light'),(1311,'cmd_dark'),(1312,'cmd_theme_toggle'),
-                  (1401,'cmd_md_h1'),(1402,'cmd_md_h2'),(1410,'cmd_md_h3'),(1411,'cmd_md_h4'),(1412,'cmd_md_h5'),(1413,'cmd_md_h6'),(1403,'cmd_md_bold'),(1404,'cmd_md_italic'),(1405,'cmd_md_inline'),(1406,'cmd_md_codeblock'),(1407,'cmd_md_quote'),(1408,'cmd_md_bullet'),(1409,'cmd_md_link')]:
+                  (1401,'cmd_md_h1'),(1402,'cmd_md_h2'),(1410,'cmd_md_h3'),(1411,'cmd_md_h4'),(1412,'cmd_md_h5'),(1413,'cmd_md_h6'),(1403,'cmd_md_bold'),(1404,'cmd_md_italic'),(1405,'cmd_md_inline'),(1406,'cmd_md_codeblock'),(1407,'cmd_md_quote'),(1408,'cmd_md_bullet'),(1409,'cmd_md_link')]
+if OPEN_TEST_BUILD:
+    _command_routes.append((1901, 'cmd_open_selected'))
+for cid,label in _command_routes:
     em.cmp_r32_imm('rax',cid); em.jcc(0x84,label)
 em.jmp('dispatch')
 
@@ -999,10 +1009,7 @@ em.label('cmd_open_dialog')
 em.lea_rip('rax',bsyms['temp_path']); em.mov_word_ptr_reg_zero('rax')
 em.emit(*[]) ; emit_ofn('open_title',0x00081804)
 em.mov_r64_r64('rcx','r12'); em.call_iat('GetOpenFileNameW'); em.test32('rax'); em.jcc(0x84,'destructive_cancel')
-# A newly opened document always starts in Source mode. Reconcile logical state,
-# actual window visibility, menu state, and any pending Preview timer BEFORE load.
-em.mov_r64_ripmem('rcx',bsyms['hwnd_main']); em.mov_r32_imm('rdx',0x4D); em.call_iat('KillTimer'); em.mov_ripmem_imm32(bsyms['preview_theme_dirty'],0)
-em.xor32('r8'); em.call_label('set_view_mode')
+em.label('cmd_open_selected')  # build-time-only command 1901 bypasses only the picker
 # CreateFileW(temp, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, NORMAL, 0)
 em.lea_rip('rcx',bsyms['temp_path']); em.mov_r32_imm('rdx',0x80000000); em.mov_r32_imm('r8',1); em.xor32('r9')
 em.mov_mrsp_imm32(0x20,3); em.mov_mrsp_imm32(0x28,0x80); em.mov_mrsp_imm32(0x30,0,qword=True); em.call_iat('CreateFileW'); em.cmp_rax_neg1(); em.jcc(0x84,'err_open'); em.mov_r64_r64('r12','rax')
@@ -1012,7 +1019,9 @@ em.emit(0xC7,0x00,u32(0))
 em.mov_r64_r64('rcx','r12'); em.lea_rip('rdx',bsyms['size_high']); em.call_iat('GetFileSize'); em.mov_r32_r32('r13','rax')
 em.lea_rip('rax',bsyms['size_high']); em.mov_eax_ptr('rax'); em.test32('rax'); em.jcc(0x85,'too_large_close')
 em.cmp_r32_imm('r13',MAX_FILE_BYTES); em.jcc(0x87,'too_large_close')
+em.test32('r13'); em.jcc(0x85,'read_nonempty'); em.mov_r64_r64('rcx','r12'); em.call_iat('CloseHandle'); em.jmp('decode_empty')
 # ReadFile
+em.label('read_nonempty')
 em.mov_r64_r64('rcx','r12'); em.lea_rip('rdx',bsyms['bytebuf']); em.mov_r32_r32('r8','r13'); em.lea_rip('r9',bsyms['io_count']); em.mov_mrsp_imm32(0x20,0,qword=True); em.call_iat('ReadFile'); em.test32('rax'); em.jcc(0x84,'read_fail_close')
 em.mov_r32_ripmem('r13',bsyms['io_count'])
 em.mov_r64_r64('rcx','r12'); em.call_iat('CloseHandle')
@@ -1030,26 +1039,30 @@ em.add_r64_imm8('r14',3); em.mov_r32_r32('r15','r13'); em.sub_r32_imm8('r15',3);
 em.label('decode_8bit')
 em.lea_rip('r14',bsyms['bytebuf']); em.mov_r32_r32('r15','r13')
 em.label('decode_utf8_call')
-em.mov_ripmem_imm32(bsyms['encoding_state'],0)
-# MultiByteToWideChar(CP_UTF8,0,src,len,widebuf,WIDE_CHARS)
-em.mov_r32_imm('rcx',65001); em.xor32('rdx'); em.mov_r64_r64('r8','r14'); em.mov_r32_r32('r9','r15'); em.lea_rip('rax',bsyms['widebuf']); em.mov_mrsp_reg64(0x20,'rax'); em.mov_mrsp_imm32(0x28,WIDE_CHARS); em.call_iat('MultiByteToWideChar'); em.test32('rax'); em.jcc(0x85,'decode_done')
-# fallback CP_ACP
-em.mov_ripmem_imm32(bsyms['encoding_state'],2)
-em.xor32('rcx'); em.xor32('rdx'); em.mov_r64_r64('r8','r14'); em.mov_r32_r32('r9','r15'); em.lea_rip('rax',bsyms['widebuf']); em.mov_mrsp_reg64(0x20,'rax'); em.mov_mrsp_imm32(0x28,WIDE_CHARS); em.call_iat('MultiByteToWideChar'); em.test32('rax'); em.jcc(0x84,'err_decode')
+# Strict UTF-8 only. MB_ERR_INVALID_CHARS rejects malformed byte sequences;
+# legacy code-page fallback is deliberately outside the V8.5.2 contract.
+em.mov_r32_imm('rcx',65001); em.mov_r32_imm('rdx',8); em.mov_r64_r64('r8','r14'); em.mov_r32_r32('r9','r15'); em.lea_rip('rax',bsyms['widebuf']); em.mov_mrsp_reg64(0x20,'rax'); em.mov_mrsp_imm32(0x28,WIDE_CHARS); em.call_iat('MultiByteToWideChar'); em.test32('rax'); em.jcc(0x84,'err_decode')
 em.label('decode_done')
-em.lea_rip('rdx',bsyms['widebuf']); em.mov_word_index2_zero('rdx','rax')
+em.mov_r32_r32('r15','rax'); em.lea_rip('rdx',bsyms['widebuf']); em.mov_word_index2_zero('rdx','r15')
+em.lea_rip('rcx',bsyms['widebuf']); em.mov_r32_r32('rdx','r15'); em.call_label('validate_wide_no_nul'); em.test32('rax'); em.jcc(0x84,'err_decode')
+em.mov_ripmem_imm32(bsyms['encoding_state'],0)
 em.lea_rip('rcx',bsyms['widebuf']); em.call_label('normalize_to_document_model'); em.call_label('load_model_into_editor')
-# copy successful path
-em.lea_rip('rcx',bsyms['current_path']); em.lea_rip('rdx',bsyms['temp_path']); em.call_iat('lstrcpyW'); em.call_label('commit_clean_document'); em.call_label('update_preview'); em.call_label('update_status'); em.jmp('msg_loop')
+em.jmp('open_commit')
 
 em.label('decode_empty')
 em.mov_ripmem_imm32(bsyms['encoding_state'],0)
 em.lea_rip('rax',bsyms['document_model']); em.mov_word_ptr_reg_zero('rax'); em.mov_ripmem_imm32(bsyms['document_len'],0); em.call_label('load_model_into_editor')
-em.lea_rip('rcx',bsyms['current_path']); em.lea_rip('rdx',bsyms['temp_path']); em.call_iat('lstrcpyW'); em.call_label('commit_clean_document'); em.call_label('update_preview'); em.call_label('update_status'); em.jmp('msg_loop')
+em.jmp('open_commit')
 
 em.label('decode_utf16')
+em.mov_r32_r32('r15','r13'); em.sub_r32_imm8('r15',2); em.mov_r32_r32('rax','r15'); em.and_r32_imm('rax',1); em.test32('rax'); em.jcc(0x85,'err_decode'); em.shr_r32_imm8('r15',1)
+em.lea_rip('rcx',bsyms['bytebuf']); em.add_r64_imm8('rcx',2); em.mov_r32_r32('rdx','r15'); em.call_label('validate_wide_no_nul'); em.test32('rax'); em.jcc(0x84,'err_decode')
 em.mov_ripmem_imm32(bsyms['encoding_state'],1)
 em.lea_rip('rcx',bsyms['bytebuf']); em.add_r64_imm8('rcx',2); em.call_label('normalize_to_document_model'); em.call_label('load_model_into_editor')
+em.label('open_commit')
+# Only a fully read and validated candidate may change visible/document state.
+em.mov_r64_ripmem('rcx',bsyms['hwnd_main']); em.mov_r32_imm('rdx',0x4D); em.call_iat('KillTimer'); em.mov_ripmem_imm32(bsyms['preview_theme_dirty'],0)
+em.xor32('r8'); em.call_label('set_view_mode')
 em.lea_rip('rcx',bsyms['current_path']); em.lea_rip('rdx',bsyms['temp_path']); em.call_iat('lstrcpyW'); em.call_label('commit_clean_document'); em.call_label('update_preview'); em.call_label('update_status'); em.jmp('msg_loop')
 
 em.label('too_large_close')
@@ -1063,7 +1076,10 @@ em.label('err_open')
 em.mov_r64_r64('rcx','rbx'); em.lea_rip('rdx',rsyms['err_open']); em.lea_rip('r8',rsyms['err_title']); em.mov_r32_imm('r9',0x10); em.call_iat('MessageBoxW'); em.jmp('msg_loop')
 
 em.label('err_decode')
-em.mov_r64_r64('rcx','rbx'); em.lea_rip('rdx',rsyms['err_decode']); em.lea_rip('r8',rsyms['err_title']); em.mov_r32_imm('r9',0x10); em.call_iat('MessageBoxW'); em.jmp('msg_loop')
+if OPEN_TEST_BUILD:
+    em.mov_r32_ripmem('rax',bsyms['open_decode_error_count']); em.add_r32_imm8('rax',1); em.mov_ripmem_r32(bsyms['open_decode_error_count'],'rax'); em.jmp('msg_loop')
+else:
+    em.mov_r64_r64('rcx','rbx'); em.lea_rip('rdx',rsyms['err_decode']); em.lea_rip('r8',rsyms['err_title']); em.mov_r32_imm('r9',0x10); em.call_iat('MessageBoxW'); em.jmp('msg_loop')
 
 em.label('cmd_save')
 em.mov_ripmem_imm32(bsyms['save_target_is_temp'],0); em.lea_rip('rax',bsyms['current_path']); em.cmp_word_ptr_reg_zero('rax'); em.jcc(0x84,'cmd_saveas'); em.jmp('do_save')
@@ -1912,6 +1928,13 @@ em.mov_r64_ripmem('rax',bsyms['document_revision']); em.mov_ripmem_r64(bsyms['sa
 em.label('is_document_dirty')
 em.mov_r64_ripmem('rax',bsyms['document_revision']); em.mov_r64_ripmem('r10',bsyms['saved_revision']); em.cmp_r64_r64('rax','r10'); em.jcc(0x85,'is_document_dirty_true'); em.xor32('rax'); em.emit(0xC3)
 em.label('is_document_dirty_true'); em.xor32('rax'); em.add_r32_imm8('rax',1); em.emit(0xC3)
+
+# validate_wide_no_nul(rcx=buffer, edx=count) -> eax 1 valid, 0 embedded NUL.
+# The terminating NUL is outside count and is therefore accepted.
+em.label('validate_wide_no_nul'); em.xor32('r8')
+em.label('validate_wide_loop'); em.cmp_r32_r32('r8','rdx'); em.jcc(0x83,'validate_wide_ok'); em.movzx_r32_word_index2('rax','rcx','r8'); em.test32('rax'); em.jcc(0x84,'validate_wide_bad'); em.add_r32_imm8('r8',1); em.jmp('validate_wide_loop')
+em.label('validate_wide_ok'); em.mov_r32_imm('rax',1); em.emit(0xC3)
+em.label('validate_wide_bad'); em.xor32('rax'); em.emit(0xC3)
 
 if WRITE_CALL_INJECTED:
     em.label('injected_WriteFile')
@@ -3224,8 +3247,8 @@ assert _doc_rev_writers == {'advance_document_revision_store'}, \
     f'document_revision 唯一写者违规：{_doc_rev_writers}'
 assert _saved_rev_writers == {'mark_document_saved'}, \
     f'saved_revision 唯一写者违规：{_saved_rev_writers}'
-assert _call_counts.get('commit_clean_document', 0) == 4, \
-    f"New + 3 个 Open 成功分支应提交 clean revision，实际 {_call_counts.get('commit_clean_document', 0)}"
+assert _call_counts.get('commit_clean_document', 0) == 2, \
+    f"New + Open 统一提交点应各提交一次 clean revision，实际 {_call_counts.get('commit_clean_document', 0)}"
 assert _call_counts.get('advance_document_revision', 0) == 2, \
     f"用户 EN_CHANGE 与 clean helper 应各调用一次 revision advance，实际 {_call_counts.get('advance_document_revision', 0)}"
 assert _call_counts.get('mark_document_saved', 0) == 2, \
@@ -3235,11 +3258,7 @@ assert _call_counts.get('mark_document_saved', 0) == 2, \
 assert bss_sizes['document_revision'] == 8 and bss_sizes['saved_revision'] == 8, \
     'document/saved revision 必须保持 64-bit'
 _dirty0 = em.labels['is_document_dirty']
-_dirty1 = min(em.labels[name] for name in
-              ('injected_WriteFile', 'injected_FlushFileBuffers',
-               'injected_MoveFileExW', 'injected_CreateFileW',
-               'injected_CloseHandle', 'commit_clean_document')
-              if name in em.labels)
+_dirty1 = em.labels['validate_wide_no_nul']
 _dirty_code = bytes(_code[_dirty0:_dirty1])
 assert _dirty_code.count(b'\xC3') == 2 and bytes.fromhex('4c39d0') in _dirty_code, \
     'is_document_dirty 必须比较完整 64-bit revision 并保留 clean/dirty 两个叶出口'
@@ -3300,6 +3319,15 @@ assert "em.label('save_create_failed'); em.call_iat('GetLastError')" in _recover
 assert "em.cmp_r32_imm('rax',80)" in _recovery_src and "em.cmp_r32_imm('rax',183)" in _recovery_src
 assert "lea_rip('rdx',rsyms['err_recovery_exists'])" in _recovery_src, \
     'staging collision 必须保留恢复文件并显示专用可行动提示'
+_open_src = _production_source[_production_source.index("em.label('cmd_open_dialog')"):
+                               _production_source.index("em.label('cmd_save')")]
+assert "em.mov_r32_imm('rcx',65001); em.mov_r32_imm('rdx',8)" in _open_src
+assert "fallback CP_ACP" not in _open_src and "em.xor32('rcx'); em.xor32('rdx')" not in _open_src
+assert _open_src.count("em.label('open_commit')") == 1 and \
+       _open_src.count("call_label('commit_clean_document')") == 1
+assert "call_label('validate_wide_no_nul')" in _open_src
+assert ((1901, 'cmd_open_selected') in _command_routes) == OPEN_TEST_BUILD, \
+    'Open picker bypass command must exist only in the explicit test build'
 # (M) Entry point begins with the fixed Win64 stack frame used by the main flow.
 _e0 = em.labels['entry_first_run']
 assert _e0 == 0 and _code.startswith(bytes.fromhex('4881ec88000000')), \
@@ -3396,8 +3424,9 @@ hdr[p:p+40] = shdr; p += 40
 
 _build_channel = os.path.basename(os.path.dirname(os.path.abspath(__file__)))
 _output_channel = 'test' if INJECTED_BUILD else _build_channel
-_output_name = ('pemark_x64_v8_5_2_write_%s.exe' % WRITE_INJECTION_MODE
-                if INJECTED_BUILD else 'pemark_x64_v8_5_2_candidate.exe')
+_output_name = ('pemark_x64_v8_5_2_open_transaction_test.exe' if OPEN_TEST_BUILD
+                else ('pemark_x64_v8_5_2_write_%s.exe' % WRITE_INJECTION_MODE
+                      if INJECTED_BUILD else 'pemark_x64_v8_5_2_candidate.exe'))
 out = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'bin',
                                    _output_channel, _output_name))
 os.makedirs(os.path.dirname(out), exist_ok=True)
