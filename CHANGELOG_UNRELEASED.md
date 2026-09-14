@@ -1,5 +1,15 @@
 # PeMark V8.5.1 Preview
 
+## V8.5.2 preparation
+
+- Established normative file-operation contracts and a verified current I/O and
+  fixed-capacity map.
+- Defined build-time-only failure injection for file I/O and arena allocation.
+- Added deterministic UTF-8, BOM, UTF-16LE, malformed-input, embedded-NUL and
+  boundary fixtures with SHA-256 records.
+- Added a 30-run Windows launch/resource/clean-exit baseline harness.
+- No production generator or executable behavior changed in this preparation step.
+
 V8.5.1 is the current public Preview baseline. Existing V8.4.23, V8.4.24 and the
 external V8.5.0 reference remain frozen.
 

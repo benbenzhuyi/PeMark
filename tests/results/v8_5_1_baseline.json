@@ -1,0 +1,306 @@
+{
+  "schema": 1,
+  "kind": "PeMark V8.5.1 pre-V8.5.2 baseline",
+  "environment": {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "processor": "",
+    "machine": "",
+    "logical_cpus": 32
+  },
+  "artifact": {
+    "path": "bin\\current\\pemark_x64_v8_5_1.exe",
+    "size": 77824,
+    "sha256": "b8b07fe43a20cb21e7e33d58a6300f4f2d388dcbc9a26e0306bdaa231f73a39f"
+  },
+  "protocol": {
+    "runs": 30,
+    "idle_ms": 250,
+    "classification": "warm/mixed; OS cache not flushed"
+  },
+  "summary": {
+    "launch_ms_p50": 13.888449999999999,
+    "launch_ms_p95": 15.223394999999996,
+    "launch_ms_p99": 16.192563000000003,
+    "working_set_median": 32724992.0,
+    "peak_working_set_median": 32733184.0,
+    "private_commit_median": 130672640.0,
+    "handle_count_median": 326.0,
+    "all_exit_zero": true
+  },
+  "samples": [
+    {
+      "run": 1,
+      "launch_to_window_ms": 15.6279,
+      "exit_code": 0,
+      "working_set": 32743424,
+      "peak_working_set": 32751616,
+      "private_commit": 130658304,
+      "handle_count": 325
+    },
+    {
+      "run": 2,
+      "launch_to_window_ms": 14.3445,
+      "exit_code": 0,
+      "working_set": 32894976,
+      "peak_working_set": 32903168,
+      "private_commit": 131985408,
+      "handle_count": 326
+    },
+    {
+      "run": 3,
+      "launch_to_window_ms": 14.0647,
+      "exit_code": 0,
+      "working_set": 32661504,
+      "peak_working_set": 32669696,
+      "private_commit": 131596288,
+      "handle_count": 325
+    },
+    {
+      "run": 4,
+      "launch_to_window_ms": 13.402,
+      "exit_code": 0,
+      "working_set": 32641024,
+      "peak_working_set": 32649216,
+      "private_commit": 131608576,
+      "handle_count": 326
+    },
+    {
+      "run": 5,
+      "launch_to_window_ms": 13.9676,
+      "exit_code": 0,
+      "working_set": 32641024,
+      "peak_working_set": 32649216,
+      "private_commit": 130543616,
+      "handle_count": 326
+    },
+    {
+      "run": 6,
+      "launch_to_window_ms": 13.3765,
+      "exit_code": 0,
+      "working_set": 32731136,
+      "peak_working_set": 32739328,
+      "private_commit": 130666496,
+      "handle_count": 325
+    },
+    {
+      "run": 7,
+      "launch_to_window_ms": 14.1072,
+      "exit_code": 0,
+      "working_set": 32825344,
+      "peak_working_set": 32833536,
+      "private_commit": 130719744,
+      "handle_count": 326
+    },
+    {
+      "run": 8,
+      "launch_to_window_ms": 13.6546,
+      "exit_code": 0,
+      "working_set": 32944128,
+      "peak_working_set": 32952320,
+      "private_commit": 131067904,
+      "handle_count": 326
+    },
+    {
+      "run": 9,
+      "launch_to_window_ms": 13.6539,
+      "exit_code": 0,
+      "working_set": 32710656,
+      "peak_working_set": 32718848,
+      "private_commit": 130535424,
+      "handle_count": 326
+    },
+    {
+      "run": 10,
+      "launch_to_window_ms": 13.9628,
+      "exit_code": 0,
+      "working_set": 32874496,
+      "peak_working_set": 32882688,
+      "private_commit": 130707456,
+      "handle_count": 325
+    },
+    {
+      "run": 11,
+      "launch_to_window_ms": 14.729,
+      "exit_code": 0,
+      "working_set": 32702464,
+      "peak_working_set": 32710656,
+      "private_commit": 130674688,
+      "handle_count": 326
+    },
+    {
+      "run": 12,
+      "launch_to_window_ms": 13.6733,
+      "exit_code": 0,
+      "working_set": 32739328,
+      "peak_working_set": 32747520,
+      "private_commit": 131678208,
+      "handle_count": 326
+    },
+    {
+      "run": 13,
+      "launch_to_window_ms": 14.5432,
+      "exit_code": 0,
+      "working_set": 32862208,
+      "peak_working_set": 32870400,
+      "private_commit": 130727936,
+      "handle_count": 325
+    },
+    {
+      "run": 14,
+      "launch_to_window_ms": 13.3279,
+      "exit_code": 0,
+      "working_set": 32882688,
+      "peak_working_set": 32890880,
+      "private_commit": 130752512,
+      "handle_count": 326
+    },
+    {
+      "run": 15,
+      "launch_to_window_ms": 13.8813,
+      "exit_code": 0,
+      "working_set": 32681984,
+      "peak_working_set": 32690176,
+      "private_commit": 130568192,
+      "handle_count": 325
+    },
+    {
+      "run": 16,
+      "launch_to_window_ms": 13.5662,
+      "exit_code": 0,
+      "working_set": 32768000,
+      "peak_working_set": 32776192,
+      "private_commit": 130641920,
+      "handle_count": 325
+    },
+    {
+      "run": 17,
+      "launch_to_window_ms": 13.8956,
+      "exit_code": 0,
+      "working_set": 32817152,
+      "peak_working_set": 32825344,
+      "private_commit": 130715648,
+      "handle_count": 325
+    },
+    {
+      "run": 18,
+      "launch_to_window_ms": 14.6158,
+      "exit_code": 0,
+      "working_set": 32620544,
+      "peak_working_set": 32628736,
+      "private_commit": 130576384,
+      "handle_count": 326
+    },
+    {
+      "run": 19,
+      "launch_to_window_ms": 13.6813,
+      "exit_code": 0,
+      "working_set": 32776192,
+      "peak_working_set": 32784384,
+      "private_commit": 130723840,
+      "handle_count": 326
+    },
+    {
+      "run": 20,
+      "launch_to_window_ms": 14.588,
+      "exit_code": 0,
+      "working_set": 32710656,
+      "peak_working_set": 32718848,
+      "private_commit": 130568192,
+      "handle_count": 325
+    },
+    {
+      "run": 21,
+      "launch_to_window_ms": 13.5869,
+      "exit_code": 0,
+      "working_set": 32571392,
+      "peak_working_set": 32579584,
+      "private_commit": 130469888,
+      "handle_count": 325
+    },
+    {
+      "run": 22,
+      "launch_to_window_ms": 14.666,
+      "exit_code": 0,
+      "working_set": 32620544,
+      "peak_working_set": 32628736,
+      "private_commit": 131620864,
+      "handle_count": 326
+    },
+    {
+      "run": 23,
+      "launch_to_window_ms": 13.6953,
+      "exit_code": 0,
+      "working_set": 32661504,
+      "peak_working_set": 32669696,
+      "private_commit": 130580480,
+      "handle_count": 325
+    },
+    {
+      "run": 24,
+      "launch_to_window_ms": 16.4232,
+      "exit_code": 0,
+      "working_set": 32641024,
+      "peak_working_set": 32649216,
+      "private_commit": 130560000,
+      "handle_count": 326
+    },
+    {
+      "run": 25,
+      "launch_to_window_ms": 13.5945,
+      "exit_code": 0,
+      "working_set": 32600064,
+      "peak_working_set": 32608256,
+      "private_commit": 130531328,
+      "handle_count": 326
+    },
+    {
+      "run": 26,
+      "launch_to_window_ms": 13.9935,
+      "exit_code": 0,
+      "working_set": 32694272,
+      "peak_working_set": 32702464,
+      "private_commit": 130584576,
+      "handle_count": 325
+    },
+    {
+      "run": 27,
+      "launch_to_window_ms": 13.567,
+      "exit_code": 0,
+      "working_set": 32772096,
+      "peak_working_set": 32780288,
+      "private_commit": 131682304,
+      "handle_count": 326
+    },
+    {
+      "run": 28,
+      "launch_to_window_ms": 13.7738,
+      "exit_code": 0,
+      "working_set": 32735232,
+      "peak_working_set": 32743424,
+      "private_commit": 131719168,
+      "handle_count": 326
+    },
+    {
+      "run": 29,
+      "launch_to_window_ms": 13.5814,
+      "exit_code": 0,
+      "working_set": 32718848,
+      "peak_working_set": 32727040,
+      "private_commit": 130646016,
+      "handle_count": 326
+    },
+    {
+      "run": 30,
+      "launch_to_window_ms": 13.9626,
+      "exit_code": 0,
+      "working_set": 32759808,
+      "peak_working_set": 32759808,
+      "private_commit": 130670592,
+      "handle_count": 325
+    }
+  ],
+  "validity_limits": [
+    "FindWindow marks window creation, not first painted frame",
+    "This initial script captures launch/idle/close only"
+  ]
+}
