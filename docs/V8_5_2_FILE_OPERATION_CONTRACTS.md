@@ -83,9 +83,16 @@ must not silently pass through ACP fallback. Any legacy fallback is a separate,
 visible policy. Internal CRLF normalization and preferred output EOL are stored
 separately. Round-trip expectations are fixture-specific and explicit.
 
+The committed encoding values are UTF-8 without BOM, UTF-16LE with BOM, and
+UTF-8 with BOM. The preferred EOL values are CRLF, LF, and CR. Open selects the
+first line terminator in the decoded file; a file with no terminator defaults to
+CRLF. Mixed-EOL input is normalized internally and Save emits one consistent
+preferred EOL. Save and Save As preserve the committed encoding and EOL values,
+including BOM-only empty documents. New documents default to BOM-less UTF-8 and
+CRLF.
+
 ## Acceptance evidence
 
 Each contract requires a deterministic routine test, a Windows integration case
 and post-operation verification of model/path/revisions, destination bytes,
 temporary artifacts and live handles.
-

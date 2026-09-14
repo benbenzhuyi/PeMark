@@ -95,15 +95,16 @@ normal close exit code:                  = 0
 - The Open path now loops until the file-size snapshot is completely read.
   Seven-byte short reads complete successfully; zero progress, first-call
   failure and partial-then-failure preserve the full prior transaction.
+- Open commits encoding and preferred EOL with the document. Noninteractive
+  delete-and-recreate tests prove byte-identical Save round-trips for UTF-8,
+  UTF-8 BOM, UTF-16LE BOM, CRLF, LF, CR, and BOM-only empty files.
 - Candidate size: 77,824 bytes.
-- Emitted text: 28,019 bytes, 953 bytes above V8.5.1.
+- Emitted text: 28,713 bytes, 1,647 bytes above V8.5.1.
 - Candidate SHA-256:
-  `775df8a501b267eb7d03cd6648a002ab9e698a5f05bfebed556ec7e3f64e25a0`.
+  `2212018e259b38df73dd9d207851e1d02e0981e6f3214b05cb332a4f26c3823c`.
 
 ## Remaining before promotion
 
-- Add encoding/EOL metadata preservation so supported inputs have an explicit
-  byte-level round-trip policy instead of always saving as BOM-less UTF-8 CRLF.
 - Add startup or Open-time recovery discovery only if later usability evidence
   justifies directory scanning beyond the current Save-time policy.
 - Independently inspect helper bytes and every revision call site.

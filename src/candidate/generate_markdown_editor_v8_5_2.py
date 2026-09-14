@@ -136,9 +136,11 @@ wstr('fmt_replaced','Replaced %u occurrence(s).')
 wstr('find_not_found','Cannot find the requested text.')
 wstr('findmsgstring','commdlg_FindReplace')
 wstr('status_crlf','Windows (CRLF)')
+wstr('status_lf','Unix (LF)')
+wstr('status_cr','Classic Mac (CR)')
 wstr('status_utf8','UTF-8')
+wstr('status_utf8_bom','UTF-8 BOM')
 wstr('status_utf16','UTF-16 LE')
-wstr('status_ansi','ANSI')
 add_bytes('status_parts', struct.pack('<iiiiii', 210, 330, 455, 545, 690, -1), 4)
 
 # In-memory accelerator table (ACCEL is 6 bytes: BYTE, pad, WORD, WORD).
@@ -406,6 +408,9 @@ bss_alloc('inject_replace_call_count', 4, 4)
 bss_alloc('save_stage_path', 512*2, 16)         # append-only candidate state
 bss_alloc('inject_create_call_count', 4, 4)
 bss_alloc('inject_close_call_count', 4, 4)
+bss_alloc('eol_state', 4, 4)                 # 0 CRLF, 1 LF, 2 CR
+bss_alloc('candidate_encoding_state', 4, 4)  # Open scratch; committed at open_commit
+bss_alloc('candidate_eol_state', 4, 4)
 if OPEN_TEST_BUILD:
     bss_alloc('open_decode_error_count', 4, 4)
     bss_alloc('open_read_error_count', 4, 4)
@@ -669,6 +674,7 @@ em.mov_ripmem_imm32(bsyms['preview_theme_dirty'],0)
 em.mov_ripmem_imm32(bsyms['theme_dark'],0)
 em.mov_ripmem_imm32(bsyms['zoom_pct'],100)
 em.mov_ripmem_imm32(bsyms['encoding_state'],0)
+em.mov_ripmem_imm32(bsyms['eol_state'],0)
 em.mov_ripmem_imm32(bsyms['find_flags'],1)
 em.mov_ripmem_imm32(bsyms['search_wrap_flag'],1)
 em.mov_ripmem_imm32(bsyms['client_w'],884)
@@ -1010,7 +1016,7 @@ em.label('cmd_new'); em.mov_ripmem_imm32(bsyms['pending_destructive_action'],1);
 em.label('cmd_new_commit')
 em.xor32('r8'); em.call_label('set_view_mode')
 em.lea_rip('rax',bsyms['document_model']); em.mov_word_ptr_reg_zero('rax'); em.mov_ripmem_imm32(bsyms['document_len'],0); em.call_label('load_model_into_editor')
-em.lea_rip('rax',bsyms['current_path']); em.mov_word_ptr_reg_zero('rax'); em.mov_ripmem_imm32(bsyms['encoding_state'],0); em.call_label('commit_clean_document'); em.call_label('update_preview'); em.call_label('update_status'); em.jmp('msg_loop')
+em.lea_rip('rax',bsyms['current_path']); em.mov_word_ptr_reg_zero('rax'); em.mov_ripmem_imm32(bsyms['encoding_state'],0); em.mov_ripmem_imm32(bsyms['eol_state'],0); em.call_label('commit_clean_document'); em.call_label('update_preview'); em.call_label('update_status'); em.jmp('msg_loop')
 
 # Initialize OFN common fields macro
 def emit_ofn(title_sym, flags):
@@ -1058,33 +1064,40 @@ em.lea_rip('r14',bsyms['bytebuf']); em.cmp_r32_imm('r13',2); em.jcc(0x82,'decode
 em.movzx_eax_word_ptr('r14'); em.cmp_r32_imm('rax',0xFEFF); em.jcc(0x84,'decode_utf16')
 em.cmp_r32_imm('r13',3); em.jcc(0x82,'decode_8bit')
 em.mov_eax_ptr('r14'); em.and_r32_imm('rax',0x00FFFFFF); em.cmp_r32_imm('rax',0x00BFBBEF); em.jcc(0x85,'decode_8bit')
-em.add_r64_imm8('r14',3); em.mov_r32_r32('r15','r13'); em.sub_r32_imm8('r15',3); em.jmp('decode_utf8_call')
+em.add_r64_imm8('r14',3); em.mov_r32_r32('r15','r13'); em.sub_r32_imm8('r15',3); em.mov_ripmem_imm32(bsyms['candidate_encoding_state'],2); em.jmp('decode_utf8_call')
 
 em.label('decode_8bit')
-em.lea_rip('r14',bsyms['bytebuf']); em.mov_r32_r32('r15','r13')
+em.lea_rip('r14',bsyms['bytebuf']); em.mov_r32_r32('r15','r13'); em.mov_ripmem_imm32(bsyms['candidate_encoding_state'],0)
 em.label('decode_utf8_call')
 # Strict UTF-8 only. MB_ERR_INVALID_CHARS rejects malformed byte sequences;
 # legacy code-page fallback is deliberately outside the V8.5.2 contract.
+em.test32('r15'); em.jcc(0x84,'decode_empty_utf8_bom')
 em.mov_r32_imm('rcx',65001); em.mov_r32_imm('rdx',8); em.mov_r64_r64('r8','r14'); em.mov_r32_r32('r9','r15'); em.lea_rip('rax',bsyms['widebuf']); em.mov_mrsp_reg64(0x20,'rax'); em.mov_mrsp_imm32(0x28,WIDE_CHARS); em.call_iat('MultiByteToWideChar'); em.test32('rax'); em.jcc(0x84,'err_decode')
 em.label('decode_done')
 em.mov_r32_r32('r15','rax'); em.lea_rip('rdx',bsyms['widebuf']); em.mov_word_index2_zero('rdx','r15')
 em.lea_rip('rcx',bsyms['widebuf']); em.mov_r32_r32('rdx','r15'); em.call_label('validate_wide_no_nul'); em.test32('rax'); em.jcc(0x84,'err_decode')
-em.mov_ripmem_imm32(bsyms['encoding_state'],0)
+em.lea_rip('rcx',bsyms['widebuf']); em.mov_r32_r32('rdx','r15'); em.call_label('detect_preferred_eol'); em.mov_ripmem_r32(bsyms['candidate_eol_state'],'rax')
 em.lea_rip('rcx',bsyms['widebuf']); em.call_label('normalize_to_document_model'); em.call_label('load_model_into_editor')
 em.jmp('open_commit')
 
+em.label('decode_empty_utf8_bom')
+em.lea_rip('rax',bsyms['widebuf']); em.mov_word_ptr_reg_zero('rax'); em.mov_ripmem_imm32(bsyms['candidate_eol_state'],0)
+em.lea_rip('rax',bsyms['document_model']); em.mov_word_ptr_reg_zero('rax'); em.mov_ripmem_imm32(bsyms['document_len'],0); em.call_label('load_model_into_editor'); em.jmp('open_commit')
+
 em.label('decode_empty')
-em.mov_ripmem_imm32(bsyms['encoding_state'],0)
+em.mov_ripmem_imm32(bsyms['candidate_encoding_state'],0); em.mov_ripmem_imm32(bsyms['candidate_eol_state'],0)
 em.lea_rip('rax',bsyms['document_model']); em.mov_word_ptr_reg_zero('rax'); em.mov_ripmem_imm32(bsyms['document_len'],0); em.call_label('load_model_into_editor')
 em.jmp('open_commit')
 
 em.label('decode_utf16')
 em.mov_r32_r32('r15','r13'); em.sub_r32_imm8('r15',2); em.mov_r32_r32('rax','r15'); em.and_r32_imm('rax',1); em.test32('rax'); em.jcc(0x85,'err_decode'); em.shr_r32_imm8('r15',1)
 em.lea_rip('rcx',bsyms['bytebuf']); em.add_r64_imm8('rcx',2); em.mov_r32_r32('rdx','r15'); em.call_label('validate_wide_no_nul'); em.test32('rax'); em.jcc(0x84,'err_decode')
-em.mov_ripmem_imm32(bsyms['encoding_state'],1)
+em.mov_ripmem_imm32(bsyms['candidate_encoding_state'],1)
+em.lea_rip('rcx',bsyms['bytebuf']); em.add_r64_imm8('rcx',2); em.mov_r32_r32('rdx','r15'); em.call_label('detect_preferred_eol'); em.mov_ripmem_r32(bsyms['candidate_eol_state'],'rax')
 em.lea_rip('rcx',bsyms['bytebuf']); em.add_r64_imm8('rcx',2); em.call_label('normalize_to_document_model'); em.call_label('load_model_into_editor')
 em.label('open_commit')
 # Only a fully read and validated candidate may change visible/document state.
+em.mov_r32_ripmem('rax',bsyms['candidate_encoding_state']); em.mov_ripmem_r32(bsyms['encoding_state'],'rax'); em.mov_r32_ripmem('rax',bsyms['candidate_eol_state']); em.mov_ripmem_r32(bsyms['eol_state'],'rax')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_main']); em.mov_r32_imm('rdx',0x4D); em.call_iat('KillTimer'); em.mov_ripmem_imm32(bsyms['preview_theme_dirty'],0)
 em.xor32('r8'); em.call_label('set_view_mode')
 em.lea_rip('rcx',bsyms['current_path']); em.lea_rip('rdx',bsyms['temp_path']); em.call_iat('lstrcpyW'); em.call_label('commit_clean_document'); em.call_label('update_preview'); em.call_label('update_status'); em.jmp('msg_loop')
@@ -1120,10 +1133,18 @@ em.mov_ripmem_imm32(bsyms['save_target_is_temp'],1)
 
 em.label('do_save')
 # Persist only the canonical Document Model. Synchronize once in case a queued EN_CHANGE is pending.
-em.call_label('sync_model_from_editor'); em.mov_r32_ripmem('r13',bsyms['document_len']); em.cmp_r32_imm('r13',WIDE_CHARS-1); em.jcc(0x87,'err_save')
-# Convert if nonempty
+em.call_label('sync_model_from_editor'); em.call_label('serialize_preferred_eol'); em.mov_r32_r32('r13','rax'); em.cmp_r32_imm('r13',WIDE_CHARS-1); em.jcc(0x87,'err_save')
+# Encode the EOL-adjusted UTF-16 scratch according to committed document metadata.
+em.mov_r32_ripmem('rax',bsyms['encoding_state']); em.cmp_r32_imm('rax',1); em.jcc(0x84,'save_encode_utf16'); em.cmp_r32_imm('rax',2); em.jcc(0x84,'save_encode_utf8_bom')
 em.test32('r13'); em.jcc(0x84,'save_zero_bytes')
-em.mov_r32_imm('rcx',65001); em.xor32('rdx'); em.lea_rip('r8',bsyms['document_model']); em.mov_r32_r32('r9','r13'); em.lea_rip('rax',bsyms['bytebuf']); em.mov_mrsp_reg64(0x20,'rax'); em.mov_mrsp_imm32(0x28,BYTE_CAP); em.mov_mrsp_imm32(0x30,0,qword=True); em.mov_mrsp_imm32(0x38,0,qword=True); em.call_iat('WideCharToMultiByte'); em.test32('rax'); em.jcc(0x84,'err_save'); em.mov_r32_r32('r13','rax'); em.jmp('save_create')
+em.mov_r32_imm('rcx',65001); em.xor32('rdx'); em.lea_rip('r8',bsyms['widebuf']); em.mov_r32_r32('r9','r13'); em.lea_rip('rax',bsyms['bytebuf']); em.mov_mrsp_reg64(0x20,'rax'); em.mov_mrsp_imm32(0x28,BYTE_CAP); em.mov_mrsp_imm32(0x30,0,qword=True); em.mov_mrsp_imm32(0x38,0,qword=True); em.call_iat('WideCharToMultiByte'); em.test32('rax'); em.jcc(0x84,'err_save'); em.mov_r32_r32('r13','rax'); em.jmp('save_create')
+em.label('save_encode_utf8_bom')
+em.mov_r32_imm('rcx',65001); em.xor32('rdx'); em.lea_rip('r8',bsyms['widebuf']); em.mov_r32_r32('r9','r13'); em.lea_rip('rax',bsyms['bytebuf']); em.add_r64_imm8('rax',3); em.mov_mrsp_reg64(0x20,'rax'); em.mov_mrsp_imm32(0x28,BYTE_CAP-3); em.mov_mrsp_imm32(0x30,0,qword=True); em.mov_mrsp_imm32(0x38,0,qword=True); em.call_iat('WideCharToMultiByte'); em.test32('r13'); em.jcc(0x84,'save_utf8_bom_prefix'); em.test32('rax'); em.jcc(0x84,'err_save')
+em.label('save_utf8_bom_prefix'); em.mov_r32_r32('r13','rax'); em.add_r32_imm8('r13',3); em.lea_rip('rcx',bsyms['bytebuf']); em.mov_byte_ptr_imm8('rcx',0xEF); em.add_r64_imm8('rcx',1); em.mov_byte_ptr_imm8('rcx',0xBB); em.add_r64_imm8('rcx',1); em.mov_byte_ptr_imm8('rcx',0xBF); em.jmp('save_create')
+em.label('save_encode_utf16')
+em.lea_rip('rcx',bsyms['bytebuf']); em.xor32('r8'); em.mov_word_index2_imm16('rcx','r8',0xFEFF); em.lea_rip('rdx',bsyms['widebuf']); em.xor32('r8'); em.mov_r32_imm('r9',1)
+em.label('save_utf16_copy'); em.cmp_r32_r32('r8','r13'); em.jcc(0x83,'save_utf16_done'); em.movzx_r32_word_index2('rax','rdx','r8'); em.mov_word_index2_reg('rcx','r9','rax'); em.add_r32_imm8('r8',1); em.add_r32_imm8('r9',1); em.jmp('save_utf16_copy')
+em.label('save_utf16_done'); em.shl_r32_imm8('r13',1); em.add_r32_imm8('r13',2); em.jmp('save_create')
 em.label('save_zero_bytes'); em.xor32('r13')
 em.label('save_create')
 # Freeze the destination for this transaction in nonvolatile r14. Save As keeps
@@ -1171,7 +1192,7 @@ if WRITE_INJECTION_MODE == 'replace_failure': em.call_label('injected_MoveFileEx
 else: em.call_iat('MoveFileExW')
 em.test32('rax'); em.jcc(0x84,'save_fail_delete')
 em.mov_r32_ripmem('rax',bsyms['save_target_is_temp']); em.test32('rax'); em.jcc(0x84,'save_path_committed'); em.lea_rip('rcx',bsyms['current_path']); em.lea_rip('rdx',bsyms['temp_path']); em.call_iat('lstrcpyW')
-em.label('save_path_committed'); em.mov_ripmem_imm32(bsyms['save_target_is_temp'],0); em.mov_ripmem_imm32(bsyms['encoding_state'],0); em.call_label('mark_document_saved'); em.call_label('update_preview'); em.call_label('update_status'); em.jmp('destructive_continue')
+em.label('save_path_committed'); em.mov_ripmem_imm32(bsyms['save_target_is_temp'],0); em.call_label('mark_document_saved'); em.call_label('update_preview'); em.call_label('update_status'); em.jmp('destructive_continue')
 
 em.label('save_fail_close'); em.mov_r64_r64('rcx','r12'); em.call_iat('CloseHandle')
 em.jmp('save_fail_delete')
@@ -2012,6 +2033,21 @@ em.emit(0x48,0x83,0xEC,0x28)
 em.call_label('advance_document_revision'); em.call_label('mark_document_saved')
 em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
 
+# detect_preferred_eol(rcx=UTF-16 text, edx=length): first terminator wins;
+# documents without a terminator use the new-document CRLF default.
+em.label('detect_preferred_eol')
+em.xor32('r8')
+em.label('detect_eol_loop')
+em.cmp_r32_r32('r8','rdx'); em.jcc(0x83,'detect_eol_crlf')
+em.movzx_r32_word_index2('r9','rcx','r8'); em.cmp_r32_imm('r9',0x0A); em.jcc(0x84,'detect_eol_lf')
+em.cmp_r32_imm('r9',0x0D); em.jcc(0x85,'detect_eol_next')
+em.mov_r32_r32('r10','r8'); em.add_r32_imm8('r10',1); em.cmp_r32_r32('r10','rdx'); em.jcc(0x83,'detect_eol_cr')
+em.movzx_r32_word_index2('r9','rcx','r10'); em.cmp_r32_imm('r9',0x0A); em.jcc(0x84,'detect_eol_crlf'); em.jmp('detect_eol_cr')
+em.label('detect_eol_next'); em.add_r32_imm8('r8',1); em.jmp('detect_eol_loop')
+em.label('detect_eol_lf'); em.mov_r32_imm('rax',1); em.emit(0xC3)
+em.label('detect_eol_cr'); em.mov_r32_imm('rax',2); em.emit(0xC3)
+em.label('detect_eol_crlf'); em.xor32('rax'); em.emit(0xC3)
+
 # normalize_to_document_model(rcx = NUL-terminated UTF-16 source): normalize CRLF/LF/CR -> CRLF.
 em.label('normalize_to_document_model')
 em.emit(0x56); em.emit(0x57); em.emit(0x41,0x54); em.emit(0x41,0x55)
@@ -2033,6 +2069,18 @@ em.add_r32_imm8('r12',1); em.mov_word_index2_imm16('rdi','r13',0x0D); em.add_r32
 em.label('doc_norm_done')
 em.mov_word_index2_zero('rdi','r13'); em.mov_ripmem_r32(bsyms['document_len'],'r13')
 em.add_r64_imm8('rsp',0x28); em.emit(0x41,0x5D); em.emit(0x41,0x5C); em.emit(0x5F); em.emit(0x5E); em.emit(0xC3)
+
+# DocumentModel is canonical CRLF. Produce UTF-16 scratch using preferred_eol:
+# 0 keeps CRLF, 1 writes LF, 2 writes CR. Returns output UTF-16 length in eax.
+em.label('serialize_preferred_eol')
+em.lea_rip('rcx',bsyms['document_model']); em.lea_rip('rdx',bsyms['widebuf']); em.mov_r32_ripmem('r11',bsyms['eol_state']); em.mov_r32_ripmem('r10',bsyms['document_len']); em.xor32('r8'); em.xor32('r9')
+em.label('serialize_eol_loop'); em.cmp_r32_r32('r8','r10'); em.jcc(0x83,'serialize_eol_done'); em.movzx_r32_word_index2('rax','rcx','r8')
+em.test32('r11'); em.jcc(0x84,'serialize_eol_copy'); em.cmp_r32_imm('rax',0x0D); em.jcc(0x85,'serialize_eol_copy')
+em.cmp_r32_imm('r11',1); em.jcc(0x84,'serialize_eol_emit_lf'); em.mov_r32_imm('rax',0x0D); em.jmp('serialize_eol_emit')
+em.label('serialize_eol_emit_lf'); em.mov_r32_imm('rax',0x0A)
+em.label('serialize_eol_emit'); em.mov_word_index2_reg('rdx','r9','rax'); em.add_r32_imm8('r9',1); em.add_r32_imm8('r8',2); em.jmp('serialize_eol_loop')
+em.label('serialize_eol_copy'); em.mov_word_index2_reg('rdx','r9','rax'); em.add_r32_imm8('r9',1); em.add_r32_imm8('r8',1); em.jmp('serialize_eol_loop')
+em.label('serialize_eol_done'); em.mov_word_index2_zero('rdx','r9'); em.mov_r32_r32('rax','r9'); em.emit(0xC3)
 
 # Source Editor -> Document Model. Standard multiline EDIT returns canonical CRLF.
 em.label('sync_model_from_editor')
@@ -2652,11 +2700,14 @@ em.mov_r64_ripmem('rcx',bsyms['hwnd_status']); em.mov_r32_imm('rdx',0x040B); em.
 em.lea_rip('rcx',bsyms['status_zoombuf']); em.lea_rip('rdx',rsyms['fmt_zoom']); em.mov_r32_ripmem('r8',bsyms['zoom_pct']); em.call_iat('wsprintfW')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_status']); em.mov_r32_imm('rdx',0x040B); em.mov_r32_imm('r8',0x1103); em.lea_rip('r9',bsyms['status_zoombuf']); em.call_iat('SendMessageW')
 # line endings
-em.mov_r64_ripmem('rcx',bsyms['hwnd_status']); em.mov_r32_imm('rdx',0x040B); em.mov_r32_imm('r8',0x1104); em.lea_rip('r9',rsyms['status_crlf']); em.call_iat('SendMessageW')
+em.mov_r32_ripmem('rax',bsyms['eol_state']); em.cmp_r32_imm('rax',1); em.jcc(0x84,'eol_lf'); em.cmp_r32_imm('rax',2); em.jcc(0x84,'eol_cr'); em.lea_rip('r9',rsyms['status_crlf']); em.jmp('eol_send')
+em.label('eol_lf'); em.lea_rip('r9',rsyms['status_lf']); em.jmp('eol_send')
+em.label('eol_cr'); em.lea_rip('r9',rsyms['status_cr'])
+em.label('eol_send'); em.mov_r64_ripmem('rcx',bsyms['hwnd_status']); em.mov_r32_imm('rdx',0x040B); em.mov_r32_imm('r8',0x1104); em.call_iat('SendMessageW')
 # encoding
-em.mov_r32_ripmem('rax',bsyms['encoding_state']); em.cmp_r32_imm('rax',1); em.jcc(0x84,'enc_utf16'); em.cmp_r32_imm('rax',2); em.jcc(0x84,'enc_ansi'); em.lea_rip('r9',rsyms['status_utf8']); em.jmp('enc_send')
+em.mov_r32_ripmem('rax',bsyms['encoding_state']); em.cmp_r32_imm('rax',1); em.jcc(0x84,'enc_utf16'); em.cmp_r32_imm('rax',2); em.jcc(0x84,'enc_utf8_bom'); em.lea_rip('r9',rsyms['status_utf8']); em.jmp('enc_send')
 em.label('enc_utf16'); em.lea_rip('r9',rsyms['status_utf16']); em.jmp('enc_send')
-em.label('enc_ansi'); em.lea_rip('r9',rsyms['status_ansi'])
+em.label('enc_utf8_bom'); em.lea_rip('r9',rsyms['status_utf8_bom'])
 em.label('enc_send'); em.mov_r64_ripmem('rcx',bsyms['hwnd_status']); em.mov_r32_imm('rdx',0x040B); em.mov_r32_imm('r8',0x1105); em.call_iat('SendMessageW')
 em.label('status_ret'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
 
@@ -3366,6 +3417,11 @@ assert "em.mov_r32_imm('rcx',65001); em.mov_r32_imm('rdx',8)" in _open_src
 assert "fallback CP_ACP" not in _open_src and "em.xor32('rcx'); em.xor32('rdx')" not in _open_src
 assert _open_src.count("em.label('open_commit')") == 1 and \
        _open_src.count("call_label('commit_clean_document')") == 1
+assert "candidate_encoding_state" in _open_src and "candidate_eol_state" in _open_src
+_open_commit_src = _open_src[_open_src.index("em.label('open_commit')"):]
+assert "mov_ripmem_r32(bsyms['encoding_state'],'rax')" in _open_commit_src and \
+       "mov_ripmem_r32(bsyms['eol_state'],'rax')" in _open_commit_src, \
+    'Open must commit encoding and EOL metadata only at open_commit'
 assert "call_label('validate_wide_no_nul')" in _open_src
 assert ((1901, 'cmd_open_selected') in _command_routes) == OPEN_TEST_BUILD, \
     'Open picker bypass command must exist only in the explicit test build'
@@ -3375,6 +3431,13 @@ assert "mov_r32_ripmem('rax',bsyms['io_count']); em.test32('rax'); em.jcc(0x84,'
 assert "em.cmp_r32_r32('rax','r15'); em.jcc(0x87,'read_fail_close')" in _read_src
 assert "em.add_r64_r64('r14','rax'); em.sub_r32_r32('r15','rax'); em.jmp('open_read_loop')" in _read_src
 assert ('injected_ReadFile' in em.labels) == (OPEN_READ_INJECTION_MODE != 'release')
+_save_encode_src = _production_source[_production_source.index("em.label('do_save')"):
+                                      _production_source.index("em.label('save_create')")]
+assert "call_label('serialize_preferred_eol')" in _save_encode_src
+assert "em.label('save_encode_utf8_bom')" in _save_encode_src and \
+       "em.label('save_encode_utf16')" in _save_encode_src
+assert "mov_ripmem_imm32(bsyms['encoding_state'],0)" not in _save_commit_src, \
+    'Save commit must preserve the document encoding metadata'
 # (M) Entry point begins with the fixed Win64 stack frame used by the main flow.
 _e0 = em.labels['entry_first_run']
 assert _e0 == 0 and _code.startswith(bytes.fromhex('4881ec88000000')), \

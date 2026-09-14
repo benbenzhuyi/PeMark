@@ -65,6 +65,9 @@
 - Replaced Open's one-shot read with a complete-read loop. Test-only wrappers
   verify repeated seven-byte reads, zero-progress rejection, first-call failure
   and partial-then-failure without changing the active document transaction.
+- Added committed encoding and preferred-EOL metadata. Open distinguishes UTF-8,
+  UTF-8 BOM and UTF-16LE BOM, records CRLF/LF/CR from the first terminator, and
+  Save preserves those byte-level choices, including BOM-only empty documents.
 - Preserved all V8.5.1 machine-code and Windows GUI regression results.
 - Kept the V8.5.1 current/release generator and binary unchanged.
 

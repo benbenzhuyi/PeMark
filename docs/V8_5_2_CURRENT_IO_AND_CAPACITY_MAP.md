@@ -79,5 +79,8 @@ migration follow as separate bounded changes.
 - UTF-8 uses `MB_ERR_INVALID_CHARS`; ACP fallback has been removed.
 - UTF-8 BOM and UTF-16LE BOM remain explicit, and odd UTF-16 byte counts or
   decoded embedded NULs fail transactionally.
+- Encoding and preferred EOL are committed with the opened document. Save
+  preserves UTF-8, UTF-8 BOM, or UTF-16LE BOM and emits CRLF, LF, or CR according
+  to the first terminator observed at Open; no-terminator input defaults CRLF.
 - Save uses the sibling staging and atomic-replacement transaction documented in
   `V8_5_2_FILE_OPERATION_CONTRACTS.md` and `V8_5_2_RECOVERY_POLICY.md`.
