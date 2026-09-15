@@ -15,9 +15,8 @@
 3. 增加或更新确定性的机器码回归测试；
 4. 运行 `python tools/build_current.py`；
 5. 运行 `python tools/test_v8_5_1.py
-   src/current/generate_markdown_editor_v8_5_1.py`；
+   src/current/generate_markdown_editor_v8_5_2.py`；
 6. GUI 修改必须在 Windows 上运行 `python tools/smoke_test_v8_5_1.py`；
 7. 更新变更记录和受影响的架构文档。
 
 Pull Request 应保持范围集中，并说明修改的机器码不变量、触发问题和验证结果。
-

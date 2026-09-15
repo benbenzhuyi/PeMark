@@ -11,10 +11,13 @@ The production executable is built without a compiler, assembler, linker,
 .NET compiler, interpreter packager, or embedded Python runtime. Python is used
 only at build and test time.
 
-> **V8.5.1 Preview** is the current public candidate. Core editor, Preview,
-> Outline, theme, wrap, large-document navigation and clean shutdown paths have
-> passed the documented regression suite. File-safety work listed below remains
-> open, so this release should be treated as a preview.
+> **V8.5.2 Preview** is the current public release. Core editing, Preview,
+> Outline, theme, wrap and large-document navigation pass the documented
+> regression suite, and unsaved work is now protected: dirty state is derived
+> from document revisions, destructive transitions share one Save / Discard /
+> Cancel controller, saving replaces the target atomically through a sibling
+> staging file, and opening is transactional. The remaining limitations are
+> listed below, so this release is still a preview.
 
 ## Highlights
 
@@ -28,13 +31,12 @@ only at build and test time.
 
 ## Download
 
-Download `pemark_x64_v8_5_1.exe` from GitHub Releases when
-the V8.5.1 Preview release is published.
+Download `pemark_x64_v8_5_2.exe` from GitHub Releases.
 
 Expected SHA-256:
 
 ```text
-b8b07fe43a20cb21e7e33d58a6300f4f2d388dcbc9a26e0306bdaa231f73a39f
+2c105660dbac96b7de18614f43753073b3b5613e22bba160ceb8058646040e30
 ```
 
 The executable is unsigned. Windows SmartScreen or security products may show a
@@ -62,20 +64,20 @@ python -m pip install unicorn
 From the repository root:
 
 ```powershell
-python .\src\current\generate_markdown_editor_v8_5_1.py
+python .\src\current\generate_markdown_editor_v8_5_2.py
 ```
 
 The generator writes
-`bin/current/pemark_x64_v8_5_1.exe`. No native compiler,
+`bin/current/pemark_x64_v8_5_2.exe`. No native compiler,
 assembler or linker is invoked.
 
 ## Verify
 
 ```powershell
-python .\tools\test_v8_5_1.py .\src\current\generate_markdown_editor_v8_5_1.py
-python .\tools\inspect_pe.py .\bin\current\pemark_x64_v8_5_1.exe
-python .\tools\smoke_test_v8_5_1.py .\bin\current\pemark_x64_v8_5_1.exe
-Get-FileHash -Algorithm SHA256 .\bin\current\pemark_x64_v8_5_1.exe
+python .\tools\test_v8_5_1.py .\src\current\generate_markdown_editor_v8_5_2.py
+python .\tools\inspect_pe.py .\bin\current\pemark_x64_v8_5_2.exe
+python .\tools\smoke_test_v8_5_1.py .\bin\current\pemark_x64_v8_5_2.exe
+Get-FileHash -Algorithm SHA256 .\bin\current\pemark_x64_v8_5_2.exe
 ```
 
 The smoke test controls the real GUI and must run in an interactive Windows
@@ -83,21 +85,23 @@ desktop session.
 
 Current evidence:
 
-- 12/12 emitted-x64 behavior groups passed.
+- 13/13 emitted-x64 behavior groups passed.
 - 210/210 Outline scrollbar geometry combinations passed.
 - 17/17 Windows GUI smoke checks passed.
 - 5/5 ordinary WM_CLOSE runs exited with code 0.
+- Open/encoding transaction matrix and atomic-save fault injection passed.
+- Arena allocation-failure and 140,000-span capacity cases passed.
 - Two consecutive builds produced the expected SHA-256.
 
-See [V8.5.1 merge results](docs/V8_5_1_MERGE_RESULTS.md) and
-[the unreleased changelog](CHANGELOG_UNRELEASED.md). The
+See [V8.5.2 release notes](docs/RELEASE_V8_5_2_PREVIEW.md) and
+[V8.5.2 validation results](docs/V8_5_2_RELEASE_RESULTS.md). The
 [documentation index](docs/README.md) separates current guidance from
 historical engineering evidence.
 
 ## Repository layout
 
 ```text
-src/current/        current V8.5.1 Direct-PE generator
+src/current/        current V8.5.2 Direct-PE generator
 bin/current/        matching generated executable
 src/stabilization/  retained stabilization candidates
 archive/            historical generator and binary lineage
@@ -111,14 +115,15 @@ Direct-PE production constraint and Win64 ABI rules are mandatory.
 
 ## Known limitations
 
-V8.5.1 has not completed the release gates for:
+V8.5.2 has not completed the release gates for:
 
-- atomic Save and Save As;
-- short-write detection and recovery;
-- unsaved-document close/open protection;
-- malformed or legacy encoding fallback;
-- all file-size and internal-capacity boundaries;
-- code signing, ASLR and separated RX/R/RW PE sections.
+- dynamic capacity for the document, render, position-map and encoded-output
+  buffers, which still have fixed sizes and reject oversized input explicitly;
+- legacy code-page fallback, which was intentionally removed, so non-UTF-8
+  documents must be converted first;
+- long-running memory and handle plateau measurement;
+- code signing, ASLR and separated RX/R/RW PE sections;
+- workspace, advanced editing and AI features.
 
 Avoid using this preview as the sole copy of important documents.
 

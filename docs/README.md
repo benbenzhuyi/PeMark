@@ -9,6 +9,8 @@ English | [简体中文](README.zh-CN.md)
 - [Milestone plan](MILESTONE_PLAN.md)
 - [Cross-architecture feature contract V1](CROSS_ARCH_FEATURE_CONTRACT_V1.md)
 - [Cross-architecture benchmark specification V1](BENCHMARK_SPEC_V1.md)
+- [V8.5.2 Preview release notes](RELEASE_V8_5_2_PREVIEW.md)
+- [V8.5.2 release validation results](V8_5_2_RELEASE_RESULTS.md)
 - [V8.5.2 file-operation contracts](V8_5_2_FILE_OPERATION_CONTRACTS.md)
 - [V8.5.2 current I/O and capacity map](V8_5_2_CURRENT_IO_AND_CAPACITY_MAP.md)
 - [V8.5.2 failure-injection design](V8_5_2_FAILURE_INJECTION_DESIGN.md)
@@ -30,4 +32,4 @@ offsets, evidence and historical wording are part of the technical record.
 ## Historical material
 
 Documents whose titles name V8.4.23 or earlier are preserved as historical
-evidence. They do not override the V8.5.1 current baseline.
+evidence. They do not override the V8.5.2 current baseline.

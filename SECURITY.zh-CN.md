@@ -16,8 +16,8 @@ GitHub 的 **Settings → Security → Private vulnerability reporting** 中开�
 报告请包含版本和 SHA-256、Windows 版本、可复现步骤、预期与实际行为，以及
 问题是否可能造成文档损坏或泄露。预览阶段的确认和修复时间为尽力而为。
 
-V8.5.1 Preview EXE 的 SHA-256：
+V8.5.2 Preview EXE 的 SHA-256：
 
 ```text
-b8b07fe43a20cb21e7e33d58a6300f4f2d388dcbc9a26e0306bdaa231f73a39f
+2c105660dbac96b7de18614f43753073b3b5613e22bba160ceb8058646040e30
 ```

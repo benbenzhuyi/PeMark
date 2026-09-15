@@ -129,6 +129,10 @@ normal close exit code:                  = 0
 - Candidate SHA-256:
   `e134e6d2419574aacf975b217a610aebbb6a5070e36f20ef25d83d3e6ce1857a`.
 
+That hash belongs to the development channel before release promotion. The
+published V8.5.2 binary, its release-channel title text and its final hashes are
+recorded in `V8_5_2_RELEASE_RESULTS.md`.
+
 ## Promotion path
 
 V8.5.2 is scoped to document safety (see `MILESTONE_PLAN.md`). Dynamic capacity

@@ -9,6 +9,8 @@
 - [清晰里程碑计划](MILESTONE_PLAN.md)
 - [跨架构功能契约 V1](CROSS_ARCH_FEATURE_CONTRACT_V1.md)
 - [跨架构基准测试规范 V1](BENCHMARK_SPEC_V1.md)
+- [V8.5.2 Preview 中文发布说明](RELEASE_V8_5_2_PREVIEW.zh-CN.md)
+- [V8.5.2 发布验证结果](V8_5_2_RELEASE_RESULTS.md)
 - [V8.5.2 文件操作契约](V8_5_2_FILE_OPERATION_CONTRACTS.md)
 - [V8.5.2 当前 I/O 与容量地图](V8_5_2_CURRENT_IO_AND_CAPACITY_MAP.md)
 - [V8.5.2 故障注入设计](V8_5_2_FAILURE_INJECTION_DESIGN.md)
@@ -29,4 +31,4 @@
 ## 历史资料
 
 标题中明确标注 V8.4.23 或更早版本的文档作为历史证据保留，不覆盖当前
-V8.5.1 基线。
+V8.5.2 基线。

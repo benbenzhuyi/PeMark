@@ -1,7 +1,7 @@
 # Handoff Checklist
 
 > Historical V8.4.23 takeover checklist. Use `CODEX_START_HERE.md` for the
-> current V8.5.1 Preview workflow.
+> current V8.5.2 Preview workflow.
 
 ## Package integrity
 

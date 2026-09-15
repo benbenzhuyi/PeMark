@@ -121,8 +121,8 @@ Always test:
 
 ## 8. Binary size/layout discipline
 
-V8.5.1 uses the expanded layout documented in
-`docs/PE_MEMORY_MAP_V8_5_1.md`. A code-overlap exception remains a
+V8.5.2 uses the expanded layout documented in
+`docs/PE_MEMORY_MAP_V8_5_2.md`. A code-overlap exception remains a
 build-layout failure and must never be bypassed.
 
 Long-term prefer a PE layout allocator and multiple sections while remaining direct-generated.
@@ -131,8 +131,9 @@ Long-term prefer a PE layout allocator and multiple sections while remaining dir
 
 - V8.4.23: frozen handoff snapshot.
 - V8.4.24: stabilization only.
-- V8.5.1: current public Preview baseline.
-- Later V8.5.x: file-safety and PE-hardening work.
+- V8.5.1: previous public Preview baseline.
+- V8.5.2: current public Preview baseline (document safety).
+- V8.5.3: dynamic capacity. V8.5.4: PE hardening.
 
 Do not label a build 'stable' unless the regression matrix has actually passed on Windows.
 

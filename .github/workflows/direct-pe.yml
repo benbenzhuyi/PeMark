@@ -22,42 +22,38 @@ jobs:
       - name: Deterministic Direct-PE build
         run: python tools/build_current.py
       - name: Execute emitted-machine-code regressions
-        run: python tools/test_v8_5_1.py src/current/generate_markdown_editor_v8_5_1.py
+        run: python tools/test_v8_5_1.py src/current/generate_markdown_editor_v8_5_2.py
       - name: Inspect generated PE
-        run: python tools/inspect_pe.py bin/current/pemark_x64_v8_5_1.exe
+        run: python tools/inspect_pe.py bin/current/pemark_x64_v8_5_2.exe
       - name: Verify release hash
         shell: pwsh
         run: |
-          $expected = "B8B07FE43A20CB21E7E33D58A6300F4F2D388DCBC9A26E0306BDAA231F73A39F"
-          $actual = (Get-FileHash -Algorithm SHA256 bin/current/pemark_x64_v8_5_1.exe).Hash
+          $expected = "2C105660DBAC96B7DE18614F43753073B3B5613E22BBA160CEB8058646040E30"
+          $actual = (Get-FileHash -Algorithm SHA256 bin/current/pemark_x64_v8_5_2.exe).Hash
           if ($actual -ne $expected) { throw "SHA-256 mismatch: $actual" }
-      - name: Build and inspect V8.5.2 candidate when present
-        if: ${{ hashFiles('src/candidate/generate_markdown_editor_v8_5_2.py') != '' }}
+      - name: Build and inspect the next candidate when present
+        if: ${{ hashFiles('src/candidate/generate_markdown_editor_v8_5_3.py') != '' }}
         run: |
-          python src/candidate/generate_markdown_editor_v8_5_2.py
-          python tools/test_v8_5_1.py src/candidate/generate_markdown_editor_v8_5_2.py
-          python tools/inspect_pe.py bin/candidate/pemark_x64_v8_5_2_candidate.exe
-      - name: Exercise V8.5.2 revision ownership when present
-        if: ${{ hashFiles('tools/test_v8_5_2_revision.py') != '' }}
-        run: python tools/test_v8_5_2_revision.py
-      - name: Exercise V8.5.2 destructive transition matrix when present
+          python src/candidate/generate_markdown_editor_v8_5_3.py
+          python tools/test_v8_5_1.py src/candidate/generate_markdown_editor_v8_5_3.py
+          python tools/inspect_pe.py bin/candidate/pemark_x64_v8_5_3_candidate.exe
+      - name: Exercise V8.5.2 document-safety gates
         if: ${{ hashFiles('tools/test_v8_5_2_destructive.py') != '' }}
-        run: python tools/test_v8_5_2_destructive.py
-      - name: Exercise V8.5.2 WriteFile injection variants when present
-        if: ${{ hashFiles('tools/test_v8_5_2_write_injection.py') != '' }}
-        run: python tools/test_v8_5_2_write_injection.py
-      - name: Exercise V8.5.2 Open transaction and encoding matrix when present
-        if: ${{ hashFiles('tools/test_v8_5_2_open_encoding.py') != '' }}
-        run: python tools/test_v8_5_2_open_encoding.py
-      - name: Observe V8.5.2 pre-arena capacity baseline when present
+        env:
+          PEMARK_GENERATOR: ${{ github.workspace }}/src/current/generate_markdown_editor_v8_5_2.py
+          PEMARK_EXE: ${{ github.workspace }}/bin/current/pemark_x64_v8_5_2.exe
+        run: |
+          python tools/test_v8_5_2_revision.py
+          python tools/test_v8_5_2_open_encoding.py
+          python tools/test_v8_5_2_write_injection.py
+          python tools/test_v8_5_2_destructive.py
+      - name: Exercise V8.5.2 capacity gates
         if: ${{ hashFiles('tools/test_v8_5_2_capacity_baseline.py') != '' }}
-        run: python tools/test_v8_5_2_capacity_baseline.py
-      - name: Exercise V8.5.2 Outline allocation failure when present
-        if: ${{ hashFiles('tools/test_v8_5_2_outline_alloc_injection.py') != '' }}
-        run: python tools/test_v8_5_2_outline_alloc_injection.py
-      - name: Exercise V8.5.2 style-arena allocation failure when present
-        if: ${{ hashFiles('tools/test_v8_5_2_style_alloc_injection.py') != '' }}
-        run: python tools/test_v8_5_2_style_alloc_injection.py
-      - name: Verify the retired style-span cap when present
-        if: ${{ hashFiles('tools/test_v8_5_2_style_capacity.py') != '' }}
-        run: python tools/test_v8_5_2_style_capacity.py
+        env:
+          PEMARK_GENERATOR: ${{ github.workspace }}/src/current/generate_markdown_editor_v8_5_2.py
+          PEMARK_EXE: ${{ github.workspace }}/bin/current/pemark_x64_v8_5_2.exe
+        run: |
+          python tools/test_v8_5_2_capacity_baseline.py
+          python tools/test_v8_5_2_outline_alloc_injection.py
+          python tools/test_v8_5_2_style_alloc_injection.py
+          python tools/test_v8_5_2_style_capacity.py

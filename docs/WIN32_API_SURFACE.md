@@ -1,4 +1,4 @@
-# Win32 API Surface — V8.5.2 Candidate
+# Win32 API Surface — V8.5.2
 
 Current imported APIs. When adding/removing imports, update this file and run PE inspection.
 

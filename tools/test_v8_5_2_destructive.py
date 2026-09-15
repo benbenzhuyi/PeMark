@@ -2,6 +2,7 @@
 """Windows matrix for the V8.5.2 shared destructive-transition controller."""
 import ctypes as c
 from ctypes import wintypes as w
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -11,8 +12,11 @@ import time
 from test_stabilization import load_generator
 
 ROOT = Path(__file__).resolve().parents[1]
-GEN = ROOT / "src/candidate/generate_markdown_editor_v8_5_2.py"
-EXE = ROOT / "bin/candidate/pemark_x64_v8_5_2_candidate.exe"
+# 默认验证开发通道。发布验证可用环境变量指向 src/current 与发布二进制。
+GEN = Path(os.environ.get(
+    "PEMARK_GENERATOR", ROOT / "src/candidate/generate_markdown_editor_v8_5_2.py"))
+EXE = Path(os.environ.get(
+    "PEMARK_EXE", ROOT / "bin/candidate/pemark_x64_v8_5_2_candidate.exe"))
 WM_COMMAND, WM_SETTEXT, WM_GETTEXT, WM_CLOSE = 0x0111, 0x000C, 0x000D, 0x0010
 BM_CLICK, EN_CHANGE = 0x00F5, 0x0300
 CMD_NEW, CMD_OPEN, CMD_SAVEAS = 1001, 1002, 1004

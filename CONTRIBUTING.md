@@ -18,7 +18,7 @@ For each change:
 2. Treat all Win64 volatile registers as clobbered across every API call.
 3. Add or update a deterministic emitted-machine-code regression.
 4. Run `python tools/build_current.py`.
-5. Run `python tools/test_v8_5_1.py src/current/generate_markdown_editor_v8_5_1.py`.
+5. Run `python tools/test_v8_5_1.py src/current/generate_markdown_editor_v8_5_2.py`.
 6. For GUI changes, run `python tools/smoke_test_v8_5_1.py` on Windows.
 7. Update `CHANGELOG_UNRELEASED.md` and affected architecture documents.
 

@@ -1,7 +1,7 @@
 # Handoff to Codex and Other Agents
 
-> Historical V8.4.23 handoff context. For the current V8.5.1 Preview baseline,
-> start with `CODEX_START_HERE.md` and `docs/V8_5_1_MERGE_RESULTS.md`.
+> Historical V8.4.23 handoff context. For the current V8.5.2 Preview baseline,
+> start with `CODEX_START_HERE.md` and `docs/V8_5_2_RELEASE_RESULTS.md`.
 
 ## Executive summary
 

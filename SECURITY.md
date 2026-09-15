@@ -22,8 +22,8 @@ project remains a preview.
 
 ## Binary verification
 
-The V8.5.1 Preview executable is unsigned. Its expected SHA-256 is:
+The V8.5.2 Preview executable is unsigned. Its expected SHA-256 is:
 
 ```text
-b8b07fe43a20cb21e7e33d58a6300f4f2d388dcbc9a26e0306bdaa231f73a39f
+2c105660dbac96b7de18614f43753073b3b5613e22bba160ceb8058646040e30
 ```
