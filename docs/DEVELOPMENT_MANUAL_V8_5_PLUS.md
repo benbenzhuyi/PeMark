@@ -147,6 +147,8 @@ Agent 给出的根因在独立证据支持前都只是待验证假说。
 
 ## 5. 测试层级
 
+Tier 是能力清单，不是每次提交都要跑满的矩阵。每次跑多少由 5.1 的 gate 决定。
+
 ### Tier 0：Generator 与 PE
 
 - Python 语法、两次生成一致；
@@ -188,7 +190,42 @@ Agent 给出的根因在独立证据支持前都只是待验证假说。
 - 重复 rebuild 后内存达到稳定平台；
 - 冷热场景分别记录 p50/p95/p99。
 
+### 5.1 三级验证 gate
+
+### Commit gate（每个有界变更）
+
+```powershell
+python src/candidate/generate_markdown_editor_v8_5_2.py   # 或当前通道生成器
+python tools/test_v8_5_1.py <当前生成器>                   # 机器码与结构回归
+python tools/inspect_pe.py <当前候选 EXE>                  # 涉及 PE 时
+```
+
+- 只跑与该变更相关的 Tier 0–1 断言；
+- 涉及 UI/关闭/控件重建时补一次 Windows 冒烟；
+- 更新 changelog 与相关测试，不允许长期红灯。
+
+### Milestone gate（候选版与发布版）
+
+- Commit gate 全绿；
+- 适用的 Tier 2–4：退出码、Open/编码事务、破坏性转换矩阵、GUI 冒烟；
+- 容量类变更补 Tier 5 的边界用例；
+- 两次构建哈希一致；
+- 记录已知限制。
+
+### Release / Research gate（正式发布、性能专项、对照实验）
+
+- Milestone gate 全绿；
+- Tier 5 分布：p50/p95/p99、内存、commit、process、handle；
+- 30 样本与 outlier 规则；
+- 独立复核与 manifest 哈希。
+
+没有理由时不要提前执行更高级别的 gate。把发布级指标压到每个提交上，会
+挤掉真实功能开发的预算。
+
 ## 6. 性能测量规范
+
+本节只在 Release/Research gate 生效。日常提交记录 EXE 大小和测试通过情况即可，
+不必采集分布数据。
 
 每条 benchmark 记录：
 
@@ -252,13 +289,26 @@ I/O 和 UI thread 最长阻塞。
 
 ## 10. Definition of Done
 
-工作项只有同时满足下列条件才完成：
+完成标准按 gate 分级，见 5.1。
+
+Commit 级工作项：
 
 - 契约在目标 Windows 环境通过；
-- 新旧相关 regression tiers 全部通过；
-- failure/cancel 路径保留数据和状态；
-- deterministic build 与 PE inspection 通过；
-- 性能未超出声明预算；
-- 文档描述实际实现；
-- 独立审查无未解决 P0/P1；
-- 证据与候选 EXE hash 可追溯。
+- 与本次变更相关的 regression 通过，未引入已知红灯；
+- failure/cancel 路径保留数据和状态（涉及文件或数据时）；
+- deterministic build 通过；
+- 文档描述实际实现，证据与候选 EXE hash 可追溯。
+
+Milestone 级在 Commit 级之上追加：
+
+- 适用的 Tier 2–4 全部通过；
+- 已知限制写入 release note 或 changelog；
+- 独立审查无未解决 P0/P1。
+
+Release/Research 级再追加：
+
+- 性能未超出声明预算，分布数据齐全；
+- manifest 完整，工作负载与样本可复现。
+
+不为尚未证实的风险预先添加阻塞条件；如果某项检查要成为阻塞条件，先说明它
+对应哪个已观察到的失败模式。

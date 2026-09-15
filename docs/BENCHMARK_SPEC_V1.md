@@ -3,6 +3,9 @@
 状态：实验规范草案  
 目的：公平比较 Electron、Direct-PE 与 native control
 
+启用时机：V8.8 对照实验、正式发布验证或专项性能调查。日常提交只记录 EXE
+大小与测试结果，不采集分布数据；把本规范压到每个提交上会挤掉功能开发预算。
+
 ## 1. 分别回答的问题
 
 1. 相同行为下的启动、交互和文档处理性能；
@@ -130,4 +133,3 @@ oversized response。测量 request setup、decode、queue/backpressure、render
 4. 自动化没有实现专属捷径；
 5. schema 能表达 timeout、failure 与 unsupported；
 6. 测量重复性达到预先声明容差。
-

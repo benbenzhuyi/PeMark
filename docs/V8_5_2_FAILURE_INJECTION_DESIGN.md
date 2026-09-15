@@ -26,6 +26,9 @@ result.
 
 ## Required file modes
 
+以下模式已全部实现。新增模式只在发现了对应的真实失败场景时加入，不要求
+预先覆盖全部理论组合。
+
 - CreateFile failure with invalid handle and chosen error;
 - ReadFile failure before bytes, after partial bytes and after full bytes;
 - WriteFile failure, short success, zero success and eventual completion;
@@ -59,11 +62,16 @@ preserved and causes a safe failure instead of being truncated.
 
 ## Required allocation modes
 
-- reserve failure;
-- first commit failure;
-- growth commit failure;
-- scratch allocation failure after active model exists;
-- parser-derived arena failure independently for render/map/style/outline.
+不是每个理论组合都要实现。按风险排序，优先覆盖能破坏文档状态的分支：
+
+| 模式 | 何时必须实现 |
+|---|---|
+| 有活动文档时的 growth failure | 该 arena 的容量由文档长度推导 |
+| 首次分配失败 | 该 arena 在启动或 Open 早期建立 |
+| 分配后清理重试 | 失败路径会释放或复用旧块 |
+| scratch allocation failure | 实现真的引入了 scratch 提交模型 |
+
+只为已经观察到的失败模式添加阻塞性注入分支。其余组合在引入对应机制时再补。
 
 ## Implemented Outline allocation slice
 

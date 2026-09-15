@@ -37,7 +37,11 @@ change.
 
 ## Current priorities
 
-The next release gates are atomic Save/Save As, short-write recovery,
-unsaved-document protection, encoding fallback, capacity boundaries and PE
-section/security hardening. Work on one ownership boundary at a time and add a
+V8.5.2 (document safety) already implements atomic Save/Save As, short-write
+recovery, unsaved-document protection and strict encoding. What remains for that
+release is evidence, not new mechanism: rerun the commit and milestone gates on
+the release commit and record the known limits.
+
+Dynamic capacity continues as V8.5.3 (one arena slice at a time), then PE
+hardening as V8.5.4. Work on one ownership boundary at a time and add a
 deterministic regression for every fix.

@@ -129,12 +129,16 @@ normal close exit code:                  = 0
 - Candidate SHA-256:
   `e134e6d2419574aacf975b217a610aebbb6a5070e36f20ef25d83d3e6ce1857a`.
 
-## Remaining before promotion
+## Promotion path
 
-- Complete Phase E dynamic arenas: migrate the remaining fixed document, render,
-  position-map and encoded-output buffers, extend allocation-failure coverage to
-  those arenas, and demonstrate stable memory across repeated Open/parse/Close
-  cycles. Until then this remains a document safety candidate rather than the
-  V8.5.2 release.
-- Add startup or Open-time recovery discovery only if later usability evidence
-  justifies directory scanning beyond the current Save-time policy.
+V8.5.2 is scoped to document safety (see `MILESTONE_PLAN.md`). Dynamic capacity
+continues as V8.5.3, so the remaining arena migrations no longer block this
+release.
+
+Before promotion:
+
+- rerun the Commit and Milestone gates on the release commit;
+- record the known limits: the document, render and position-map buffers are
+  still fixed, oversized input is rejected explicitly rather than truncated, and
+  interrupted-save recovery follows `V8_5_2_RECOVERY_POLICY.md`;
+- keep the V8.5.1 baseline binaries untouched.

@@ -8,6 +8,12 @@
 里程碑按依赖与风险排序，不按功能吸引力排序。只有验收证据齐全才算推进；日期、
 代码量和完成百分比不能替代 release gate。
 
+每一步只实现解决当前已证实问题所必需的最小机制。“可以再加一个检查”不是
+实施的充分理由；局部合理的机制累积起来也可能不经济。
+
+本文的版本顺序是当前假设，不是必须执行的命令。当实现证据表明某个后续阶段
+应该提前，或某项设计不可行时，先修改本文再改代码。
+
 前三阶段先建立安全的原生核心，随后才进入 Workspace、高级编辑和 AI。
 
 ## 2. 当前基线：V8.5.1 Preview
@@ -26,11 +32,15 @@
 公开限制：保存非原子、短写处理不完整、没有未保存保护、存在固定容量、虚拟 BSS
 很大、PE 仍是单一 RWX section。
 
-## 3. V8.5.2：Document Safety and Dynamic Capacity
+## 3. V8.5.2：Document Safety（当前发布目标）
 
-### 总目标
+### 范围
 
-首先让用户数据转换可预测、可恢复，再移除固定容量架构，同时保持当前可见编辑模型。
+只包含已被证据证实的数据安全问题：未保存保护、事务化保存、编码保真。
+动态容量与 PE 加固不属于本版本，它们分别是 V8.5.3 与 V8.5.4。
+
+理由：把五组工作绑进一个里程碑，会让一个功能上已经可用的安全版本长期
+无法发布。文件安全与动态容量之间只有弱依赖，可以分批交付。
 
 ### Phase A：规格与观测基础
 
@@ -91,31 +101,49 @@ Exit gate：
 - malformed input 行为明确；
 - 无静默替换、截断或半更新 DocumentModel。
 
-### Phase E：Dynamic arenas
-
-- 封装 VirtualAlloc/VirtualFree；
-- 迁移 document、encoded output、render、map、styles、outline；
-- scratch-build + commit-swap；
-- 移除 active 2048 Outline 和 131072 style caps；
-- 降低初始 commit 与 working set。
-
-Exit gate：
-
-- 2600 headings 全部显示且导航正确；
-- growth boundaries 与 allocation failures 全部通过；
-- 重复 open/parse/close 后内存达到稳定平台；
-- 无旧固定 buffer 继续承担独立事实源；
-- 最大输入政策已测试且能安全拒绝。
-
 ### V8.5.2 Release gate
 
-- 无已知可复现数据丢失、退出崩溃或容量 P0；
-- Tier 0–5 在目标 Windows 环境通过；
+- 无已知可复现数据丢失或退出崩溃；
+- Commit/Milestone 两级 gate 在目标 Windows 环境通过：确定性构建、机器码
+  回归、Open/编码事务、破坏性转换矩阵、Windows GUI 冒烟与退出码；
 - 两次构建二进制一致；
-- manifest 记录安全和容量边界；
-- 独立复核接受 file transaction 与 allocation cleanup。
+- manifest 记录已知限制；
+- 独立复核接受 file transaction。
 
-## 4. V8.5.3：Direct-PE Hardening
+性能分布、内存平台与 handle 长跑属于 Release/Research gate，不作为本版本的
+阻塞条件。
+
+## 4. V8.5.3：Dynamic Capacity
+
+原 V8.5.2 的 Phase E。它在 V8.5.2 发布之后独立进行，避免继续阻塞安全版本。
+
+### 目标
+
+移除随文档规模静默截断的固定容量，并让分配失败不破坏当前文档。降低初始
+commit 与 working set 是期望结果，不是硬性验收条件。
+
+### 已完成的切片
+
+- Outline 三表（srcpos/renderpos/level）迁入动态 arena；
+- 样式三列（start/end/type）迁入动态 arena，131072 项上限已退役；
+- 两个 arena 都在 Open 提交边界之前预留，增长失败保持旧文档与旧 arena 完整；
+- 分配失败注入覆盖两个 arena；140000 跨度用例证明不再截断。
+
+### 剩余范围
+
+- 按风险逐个迁移 document、encoded output、render、map 缓冲区；
+- 迁移时保留最小必要不变式：单一事实源、提交点、失败不破坏旧模型；
+- 完成重复 open/parse/close 的内存平台观察；
+- 声明并测试最大输入与安全拒绝行为。
+
+### Exit gate
+
+- 保留的固定数组不再承担独立事实源；
+- 每个已迁移 arena 的分配失败不会改变当前文档状态；
+- 大规模输入不再静默截断；
+- 重复 open/parse/close 后内存与 handle 有界。
+
+## 5. V8.5.4：Direct-PE Hardening
 
 ### 目标
 
@@ -140,7 +168,7 @@ Exit gate：
 - V8.5.2 数据完整性和 GUI 套件不变通过；
 - 分节对启动、内存的影响已测量且无未解释回归。
 
-## 5. V8.6：Workspace Foundation
+## 6. V8.6：Workspace Foundation
 
 ### 目标
 
@@ -164,7 +192,7 @@ Exit gate：
 - idle CPU 与 handle 有界；
 - 递归扫描不会无限阻塞 UI。
 
-## 6. V8.7：Advanced Editing and Markdown Fidelity
+## 7. V8.7：Advanced Editing and Markdown Fidelity
 
 ### 目标
 
@@ -191,7 +219,7 @@ RichEdit 并不预设需要替换。只有独立 ADR 和原型测量证明其不
 - IME 与 multilingual matrix 通过；
 - malformed Markdown 不会崩溃或产生非法 PositionMap。
 
-## 7. V8.8：Cross-Architecture Experiment Baseline
+## 8. V8.8：Cross-Architecture Experiment Baseline
 
 ### 目标
 
@@ -217,7 +245,7 @@ RichEdit 并不预设需要替换。只有独立 ADR 和原型测量证明其不
 
 规格工作可与 V8.5.2 并行，但在测量方法冻结前不得作正式比较结论。
 
-## 8. V9：AI Native
+## 9. V9：AI Native
 
 ### Phase A：Transport laboratory
 
@@ -251,7 +279,7 @@ RichEdit 并不预设需要替换。只有独立 ADR 和原型测量证明其不
 - mock benchmark 将客户端开销与模型延迟分离；
 - V8.5 文件安全套件持续通过。
 
-## 9. 明确延后
+## 10. 明确延后
 
 以下想法需要独立提案，不由本路线图自动授权：
 
@@ -264,38 +292,54 @@ RichEdit 并不预设需要替换。只有独立 ADR 和原型测量证明其不
 - GPU rendering；
 - 全量 Rabbit 功能身份复制。
 
-## 10. 每个 Milestone Snapshot
+## 11. Milestone Snapshot 分级
 
-候选版和发布版都记录：
+不同层级的记录要求不同。不要对每个日常提交套用发布级清单。
+
+Commit 级（每个有界变更）：
+
+```text
+source commit
+generator/EXE SHA-256
+相关测试的 pass/fail
+新增或更新的 known issue
+binary size
+```
+
+Milestone 级（候选版与发布版）追加：
 
 ```text
 version/channel
-source commit
-generator/EXE SHA-256
 tested Windows environments
 feature contract version/parity score
+full regression pass/fail counts
+已知限制与未解决发现
+review identity
+```
+
+Release/Research 级（正式发布、性能专项、V8.8 对照实验）追加：
+
+```text
 workload hashes
-test pass/fail counts
-known issues
-binary/shipped size
 startup/open/preview p50/p95/p99
 idle/peak memory and commit
 process/handle counts
 Agent sessions/human interventions
-review identity/unresolved findings
 ```
 
-## 11. 立即执行顺序
+跨越同一 milestone 的连续小提交可以共享一次 Milestone 级快照，不要求逐条
+维护发布级指标。
 
-在修改 V8.5.1 generator 之前：
+## 12. 立即执行顺序
 
-1. 起草 V8.5.2 file-operation contracts；
-2. 冻结 safety/encoding/capacity fixtures；
-3. 定义 file I/O 与 VirtualAlloc failure injection；
-4. 采集 V8.5.1 timing/memory/process/handle baseline；
-5. 完成现有 load/save/buffer/ownership map；
-6. 起草 atomic replacement、encoding preservation、arena growth ADR；
-7. 复核首个实现项：document revision 与 dirty-state ownership。
+当前只做两件事，按顺序：
 
-只有第 7 项进入 generator 行为修改。
+1. 收尾 V8.5.2 Document Safety 的发布门禁：确认 Commit/Milestone 两级证据齐全，
+   记录已知限制，发布 V8.5.2。
+2. 发布之后再决定 V8.5.3 Dynamic Capacity 的下一批 arena 切片，一次一个。
 
+期间不新增长期架构文档、不预先实现后续版本需要的机制。新需求先回答
+“这一步最低必要工程量是什么”，再决定是否进入计划。
+
+历史准备步骤（契约、fixture、failure injection、baseline、ownership map）
+已在 V8.5.2 前期完成，不再重复执行。

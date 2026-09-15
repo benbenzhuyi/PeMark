@@ -1,5 +1,25 @@
 # PeMark V8.5.1 Preview
 
+## Scope and process correction (no executable change)
+
+- Split the former combined milestone: V8.5.2 is now Document Safety only, so the
+  safety work already implemented can ship without waiting for the arena
+  migration. Dynamic capacity becomes V8.5.3 and PE hardening shifts to V8.5.4.
+- Replaced the single release-level Definition of Done with three gates
+  (commit / milestone / release-research) in the development manual, so
+  distribution metrics, 30-sample benchmarks and full failure matrices are no
+  longer implied requirements for every change.
+- Marked the long-term architecture as constraints and target state rather than
+  an execution order, and marked the benchmark specification as
+  release/research-only.
+- Replaced the enumerated allocation-injection checklist with a risk-ordered
+  table: implement the branch that can damage document state, defer the rest
+  until the mechanism actually exists.
+- Added the minimum-sufficient-engineering and gate-by-level rules to
+  `AGENTS.md`.
+
+No generator, binary or runtime behavior changed in this step.
+
 ## V8.5.2 preparation
 
 - Established normative file-operation contracts and a verified current I/O and

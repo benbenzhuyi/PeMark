@@ -45,6 +45,14 @@ historical evidence unless a current document explicitly adopts their finding.
 10. Do not perform RichEdit full-document per-span formatting on large documents.
 11. Do not claim a GUI bug fixed without Windows execution. Linux/container static checks are necessary but insufficient.
 12. Every fix must add/update a deterministic regression case.
+13. **Minimum sufficient engineering.** Implement the smallest mechanism that
+    solves a demonstrated problem. Plans and architecture documents describe
+    intent; they do not authorize building future infrastructure early. Before
+    adding a check, contract, ADR, gate or fixture, name the failure it prevents
+    and why a cheaper option is insufficient.
+14. **Gate by level.** Apply commit-level, milestone-level or release-level
+    verification as defined in `docs/DEVELOPMENT_MANUAL_V8_5_PLUS.md` 5.1. Do not
+    apply release-level process to every change.
 
 ## Change discipline
 
