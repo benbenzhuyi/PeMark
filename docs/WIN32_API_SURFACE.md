@@ -4,7 +4,9 @@ Current imported APIs. When adding/removing imports, update this file and run PE
 
 ## KERNEL32.dll
 
-`ExitProcess`, `CreateFileW`, `ReadFile`, `WriteFile`, `FlushFileBuffers`, `CloseHandle`, `MoveFileExW`, `DeleteFileW`, `GetLastError`, `GetFileSize`, `MultiByteToWideChar`, `WideCharToMultiByte`, `lstrcpyW`, `lstrlenW`, `GetModuleHandleW`, `CompareStringOrdinal`, `LoadLibraryW`, `GetProcAddress`, `MulDiv`
+`ExitProcess`, `CreateFileW`, `ReadFile`, `WriteFile`, `FlushFileBuffers`, `CloseHandle`, `VirtualAlloc`, `VirtualFree`, `MoveFileExW`, `DeleteFileW`, `GetLastError`, `GetFileSize`, `MultiByteToWideChar`, `WideCharToMultiByte`, `lstrcpyW`, `lstrlenW`, `GetModuleHandleW`, `CompareStringOrdinal`, `LoadLibraryW`, `GetProcAddress`, `MulDiv`
+
+`VirtualAlloc` and `VirtualFree` own the V8.5.2 dynamic Outline arena.
 
 ## USER32.dll
 

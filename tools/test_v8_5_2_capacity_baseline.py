@@ -15,6 +15,7 @@ FIXTURE = ROOT / "tests/outline_2600_headings.md"
 CMD_OPEN_SELECTED = 1901
 k32 = c.windll.kernel32
 psapi = c.windll.psapi
+u32 = c.windll.user32
 
 
 class PROCESS_MEMORY_COUNTERS_EX(c.Structure):
@@ -50,6 +51,12 @@ def resource_sample(app):
             "handle_count": handles.value}
 
 
+def selected_range(app):
+    start, end = w.DWORD(), w.DWORD()
+    u32.SendMessageW(app.edit, 0x00B0, c.addressof(start), c.addressof(end))
+    return start.value, end.value
+
+
 def main():
     raw = FIXTURE.read_bytes()
     text = raw.decode("utf-8")
@@ -58,7 +65,7 @@ def main():
     assert len(headings) == 2600
     canonical = text.replace("\r\n", "\n").replace("\r", "\n").replace(
         "\n", "\r\n")
-    expected_last_offset = canonical.index("### Heading 2048")
+    expected_last_offset = canonical.index("### Heading 2600")
     ns, exe = build_test_candidate()
     app = App(ns, exe)
     try:
@@ -66,26 +73,43 @@ def main():
         app.post_command(CMD_OPEN_SELECTED)
         deadline = time.perf_counter() + 10
         while time.perf_counter() < deadline:
-            if app.read_path() == str(FIXTURE) and app.read32("outline_count"):
+            if (app.read_path() == str(FIXTURE) and
+                    app.read32("outline_count") == len(headings)):
                 break
             time.sleep(.05)
         actual = app.read32("outline_count")
-        assert actual == 2048, f"pre-arena baseline changed: {actual}"
-        array = app.base + app.bsyms["outline_srcpos"]
+        assert actual == 2600, f"dynamic Outline capacity failed: {actual}"
+        array = app.read64("outline_srcpos")
+        assert array
         last_offset = read_u32(app, array + (actual - 1) * 4)
         assert last_offset == expected_last_offset, (last_offset,
                                                       expected_last_offset)
+        outline_hwnd = app.read64("hwnd_outline")
+        for index, heading in ((0, 1), (1299, 1300), (2599, 2600)):
+            marker = canonical.index(f" Heading {heading}\r\n")
+            expected = canonical.rfind("\n", 0, marker) + 1
+            stored = read_u32(app, array + index * 4)
+            assert stored == expected, (index, stored, expected)
+            u32.SendMessageW(outline_hwnd, 0x0186, index, 0)  # LB_SETCURSEL
+            u32.SendMessageW(app.main, 0x0111, (1 << 16) | 3, outline_hwnd)
+            deadline = time.perf_counter() + 3
+            while time.perf_counter() < deadline:
+                if selected_range(app)[0] == expected:
+                    break
+                time.sleep(.03)
+            assert selected_range(app)[0] == expected, \
+                (index, selected_range(app), expected)
         result = {"schema": 1, "candidate_sha256": hashlib.sha256(
                       EXE.read_bytes()).hexdigest(),
                   "fixture": str(FIXTURE.relative_to(ROOT)).replace("\\", "/"),
                   "working_tree_fixture_sha256": hashlib.sha256(raw).hexdigest(),
                   "fixture_headings": len(headings),
-                  "outline_capacity": 2048,
+                  "outline_capacity": app.read32("outline_capacity"),
                   "observed_outline_count": actual,
-                  "last_observed_heading": 2048,
+                  "last_observed_heading": 2600,
                   "last_observed_source_offset": last_offset,
                   "resources": resource_sample(app),
-                  "status": "KNOWN_CAPACITY_FAILURE"}
+                  "status": "PASS"}
         print(json.dumps(result, ensure_ascii=False, indent=2))
         app.post_close()
         assert app.proc.wait(timeout=5) == 0

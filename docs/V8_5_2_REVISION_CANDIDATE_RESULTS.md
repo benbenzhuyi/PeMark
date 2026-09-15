@@ -104,15 +104,19 @@ normal close exit code:                  = 0
 - The pre-arena capacity test opens the frozen 2600-heading fixture and observes
   exactly 2048 Outline entries, ending at Heading 2048. This converts the known
   fixed-array truncation into a deterministic CI baseline for Phase E.
-- Candidate size: 77,824 bytes.
-- Emitted text: 28,713 bytes, 1,647 bytes above V8.5.1.
+- The first Phase E slice replaces `outline_srcpos`, `outline_renderpos`, and
+  `outline_level` with pointers into one dynamically sized arena. The same test
+  now requires 2600 entries and verifies first/middle/last stored offsets and
+  actual Source navigation.
+- Candidate size: 78,336 bytes.
+- Emitted text: 28,941 bytes, 1,875 bytes above V8.5.1.
 - Candidate SHA-256:
-  `2212018e259b38df73dd9d207851e1d02e0981e6f3214b05cb332a4f26c3823c`.
+  `eae2a41f6045d4cf4c84cab9270ee8e9b98e6b80c5c756d5030c6b054dfd0d30`.
 
 ## Remaining before promotion
 
-- Complete Phase E dynamic arenas: remove the active 2048-outline and 131072-style
-  caps, test 2600 headings and allocation failures, and demonstrate stable memory
+- Complete Phase E dynamic arenas: remove the active 131072-style cap, add
+  allocation-failure coverage, and demonstrate stable memory
   across repeated Open/parse/Close cycles. Until then this remains a document
   safety candidate rather than the V8.5.2 release.
 - Add startup or Open-time recovery discovery only if later usability evidence

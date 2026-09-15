@@ -354,9 +354,6 @@ bss_alloc('style_count', 4, 4)
 bss_alloc('style_start', STYLE_CAP*4, 16)
 bss_alloc('style_end', STYLE_CAP*4, 16)
 bss_alloc('style_type', STYLE_CAP*4, 16)
-bss_alloc('outline_srcpos', 2048*4, 16)
-bss_alloc('outline_renderpos', 2048*4, 16)
-bss_alloc('outline_level', 2048*4, 16)
 bss_alloc('outline_titlebuf', 512*2, 16)
 bss_alloc('menu_textbuf', 256*2, 16)
 bss_alloc('line_src_start', 4, 4)
@@ -411,6 +408,10 @@ bss_alloc('inject_close_call_count', 4, 4)
 bss_alloc('eol_state', 4, 4)                 # 0 CRLF, 1 LF, 2 CR
 bss_alloc('candidate_encoding_state', 4, 4)  # Open scratch; committed at open_commit
 bss_alloc('candidate_eol_state', 4, 4)
+bss_alloc('outline_srcpos', 8, 8)       # dynamic arena table pointers
+bss_alloc('outline_renderpos', 8, 8)
+bss_alloc('outline_level', 8, 8)
+bss_alloc('outline_capacity', 4, 4)
 if OPEN_TEST_BUILD:
     bss_alloc('open_decode_error_count', 4, 4)
     bss_alloc('open_read_error_count', 4, 4)
@@ -420,7 +421,7 @@ BSS_VSIZE = align(bss_off, 0x1000)
 # ---------------- IDATA ----------------
 imports = {
     'KERNEL32.dll': [
-        'ExitProcess','CreateFileW','ReadFile','WriteFile','FlushFileBuffers','CloseHandle',
+        'ExitProcess','CreateFileW','ReadFile','WriteFile','FlushFileBuffers','CloseHandle','VirtualAlloc','VirtualFree',
         'MoveFileExW','DeleteFileW','GetLastError','GetFileSize',
         'MultiByteToWideChar','WideCharToMultiByte','lstrcpyW','lstrlenW','GetModuleHandleW','CompareStringOrdinal','LoadLibraryW','GetProcAddress','MulDiv'
     ],
@@ -2123,6 +2124,21 @@ em.lea_rip('rcx',bsyms['style_type']); em.add_r64_r64('rcx','rax'); em.mov_ptr_r
 em.add_r32_imm8('r11',1); em.mov_ripmem_r32(bsyms['style_count'],'r11')
 em.label('add_style_ret'); em.emit(0xC3)
 
+# Ensure one contiguous Outline arena: [srcpos][renderpos][level]. Capacity is
+# derived from canonical document length (minimum heading representation is four
+# UTF-16 units) and never shrinks during the process lifetime.
+em.label('ensure_outline_arena')
+em.emit(0x41,0x54); em.emit(0x41,0x55); em.emit(0x41,0x56); em.emit(0x41,0x57); em.emit(0x48,0x83,0xEC,0x28)
+em.mov_r32_ripmem('r13',bsyms['document_len']); em.shr_r32_imm8('r13',2); em.add_r32_imm8('r13',1); em.cmp_r32_imm('r13',4096); em.jcc(0x83,'outline_need_ready'); em.mov_r32_imm('r13',4096)
+em.label('outline_need_ready'); em.mov_r32_ripmem('rax',bsyms['outline_capacity']); em.cmp_r32_r32('rax','r13'); em.jcc(0x83,'outline_arena_ok')
+em.mov_r32_r32('r14','r13'); em.shl_r32_imm8('r14',2); em.mov_r32_r32('rdx','r14'); em.mov_r32_r32('rax','r14'); em.add_r32_r32('rdx','rax'); em.add_r32_r32('rdx','rax')
+em.xor32('rcx'); em.mov_r32_imm('r8',0x3000); em.mov_r32_imm('r9',4); em.call_iat('VirtualAlloc'); em.test64('rax'); em.jcc(0x84,'outline_arena_fail'); em.mov_r64_r64('r15','rax')
+em.mov_r64_ripmem('r12',bsyms['outline_srcpos']); em.test64('r12'); em.jcc(0x84,'outline_arena_commit'); em.mov_r64_r64('rcx','r12'); em.xor32('rdx'); em.mov_r32_imm('r8',0x8000); em.call_iat('VirtualFree')
+em.label('outline_arena_commit'); em.mov_ripmem_r64(bsyms['outline_srcpos'],'r15'); em.mov_r64_r64('rax','r15'); em.add_r64_r64('rax','r14'); em.mov_ripmem_r64(bsyms['outline_renderpos'],'rax'); em.add_r64_r64('rax','r14'); em.mov_ripmem_r64(bsyms['outline_level'],'rax'); em.mov_ripmem_r32(bsyms['outline_capacity'],'r13')
+em.label('outline_arena_ok'); em.mov_r32_imm('rax',1); em.jmp('outline_arena_ret')
+em.label('outline_arena_fail'); em.xor32('rax')
+em.label('outline_arena_ret'); em.add_r64_imm8('rsp',0x28); em.emit(0x41,0x5F); em.emit(0x41,0x5E); em.emit(0x41,0x5D); em.emit(0x41,0x5C); em.emit(0xC3)
+
 # ---------------- V8.4.25 统一扫描：大纲条目推送例程 ----------------
 # 契约：统一扫描器（update_preview 的 pv8 循环）在围栏代码块之外识别出
 # ATX 标题行时调用，当场完成该大纲行的文本构建、ListBox 登记与三表写入。
@@ -2138,9 +2154,9 @@ em.label('add_style_ret'); em.emit(0xC3)
 em.label('outline_push')
 em.emit(0x48,0x83,0xEC,0x48)  # sub rsp,0x48：栈对齐 + 32 字节影子空间 + 三个参数槽
 em.mov_mrsp_reg32(0x30,'r8'); em.mov_mrsp_reg32(0x38,'r9'); em.mov_mrsp_reg32(0x40,'r10')
-# 大纲窗口不存在或条目已达 2048 上限：跳过登记（与旧版容量语义一致）。
+# 大纲窗口不存在或动态 arena 已满：跳过登记。
 em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.test64('rcx'); em.jcc(0x84,'outline_push_ret')
-em.mov_r32_ripmem('r11',bsyms['outline_count']); em.cmp_r32_imm('r11',2048); em.jcc(0x83,'outline_push_ret')
+em.mov_r32_ripmem('r11',bsyms['outline_count']); em.mov_r32_ripmem('rax',bsyms['outline_capacity']); em.cmp_r32_r32('r11','rax'); em.jcc(0x83,'outline_push_ret')
 # 可见标题文本：每低一级缩进两个空格（与旧版一致），随后拷贝源标题至行尾。
 em.lea_rip('rcx',bsyms['outline_titlebuf']); em.xor32('rdx')
 em.label('outline_push_indent'); em.cmp_r32_imm('r10',1); em.jcc(0x8E,'outline_push_copy')
@@ -2155,11 +2171,11 @@ em.mov_word_index2_reg('rcx','rdx','r10'); em.add_r32_imm8('rdx',1); em.add_r32_
 em.label('outline_push_copy_done'); em.mov_word_index2_zero('rcx','rdx')
 # 登记到 ListBox，按返回索引写三张大纲表（与旧版语义一致）。
 em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.mov_r32_imm('rdx',0x0180); em.xor32('r8'); em.lea_rip('r9',bsyms['outline_titlebuf']); em.call_iat('SendMessageW')
-em.cmp_r32_imm('rax',0xFFFFFFFF); em.jcc(0x84,'outline_push_ret'); em.cmp_r32_imm('rax',2048); em.jcc(0x83,'outline_push_ret')
+em.cmp_r32_imm('rax',0xFFFFFFFF); em.jcc(0x84,'outline_push_ret'); em.mov_r32_ripmem('r10',bsyms['outline_capacity']); em.cmp_r32_r32('rax','r10'); em.jcc(0x83,'outline_push_ret')
 em.mov_r32_r32('r11','rax'); em.add_r32_r32('rax','rax'); em.add_r32_r32('rax','rax')
-em.emit(0x44,0x8B,0x44,0x24,0x30); em.lea_rip('rcx',bsyms['outline_srcpos']); em.add_r64_r64('rcx','rax'); em.mov_ptr_r32('rcx','r8')
-em.emit(0x44,0x8B,0x44,0x24,0x38); em.lea_rip('rcx',bsyms['outline_renderpos']); em.add_r64_r64('rcx','rax'); em.mov_ptr_r32('rcx','r8')
-em.emit(0x44,0x8B,0x44,0x24,0x40); em.lea_rip('rcx',bsyms['outline_level']); em.add_r64_r64('rcx','rax'); em.mov_ptr_r32('rcx','r8')
+em.emit(0x44,0x8B,0x44,0x24,0x30); em.mov_r64_ripmem('rcx',bsyms['outline_srcpos']); em.add_r64_r64('rcx','rax'); em.mov_ptr_r32('rcx','r8')
+em.emit(0x44,0x8B,0x44,0x24,0x38); em.mov_r64_ripmem('rcx',bsyms['outline_renderpos']); em.add_r64_r64('rcx','rax'); em.mov_ptr_r32('rcx','r8')
+em.emit(0x44,0x8B,0x44,0x24,0x40); em.mov_r64_ripmem('rcx',bsyms['outline_level']); em.add_r64_r64('rcx','rax'); em.mov_ptr_r32('rcx','r8')
 em.mov_r32_ripmem('r11',bsyms['outline_count']); em.add_r32_imm8('r11',1); em.mov_ripmem_r32(bsyms['outline_count'],'r11')
 em.label('outline_push_ret'); em.emit(0x48,0x83,0xC4,0x48); em.emit(0xC3)
 
@@ -2304,6 +2320,7 @@ def emit_render_map_current_source():
 em.label('update_preview')
 em.emit(0x56); em.emit(0x57); em.emit(0x41,0x54); em.emit(0x41,0x55); em.emit(0x41,0x56); em.emit(0x41,0x57)
 em.emit(0x48,0x83,0xEC,0x28)
+em.call_label('ensure_outline_arena'); em.test32('rax'); em.jcc(0x84,'pv_render_ret')
 # A full Preview rebuild is authoritative. Cancel any delayed viewport-theme timer
 # left over from a previous Light/Dark scroll cycle; otherwise that stale timer can
 # fire after the new render and re-apply ranges using old viewport state, producing
@@ -2507,9 +2524,9 @@ em.label('navigate_have_surface'); em.mov_ripmem_r64(bsyms['nav_hwnd'],'rcx')
 # 2）选中索引：先做边界检查，再缩放并立即消费，中间没有任何
 #    API 调用，因此不会有 volatile 寄存器携带该偏移存活。
 em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.test64('rcx'); em.jcc(0x84,'navigate_ret'); em.mov_r32_imm('rdx',0x0188); em.xor32('r8'); em.xor32('r9'); em.call_iat('SendMessageW')
-em.cmp_r32_imm('rax',0xFFFFFFFF); em.jcc(0x84,'navigate_ret'); em.cmp_r32_imm('rax',2048); em.jcc(0x83,'navigate_ret')
+em.cmp_r32_imm('rax',0xFFFFFFFF); em.jcc(0x84,'navigate_ret'); em.mov_r32_ripmem('r10',bsyms['outline_count']); em.cmp_r32_r32('rax','r10'); em.jcc(0x83,'navigate_ret')
 em.add_r32_r32('rax','rax'); em.add_r32_r32('rax','rax')
-em.lea_rip('rcx',bsyms['outline_srcpos']); em.add_r64_r64('rcx','rax'); em.mov_r32_ptr('r8','rcx')
+em.mov_r64_ripmem('rcx',bsyms['outline_srcpos']); em.add_r64_r64('rcx','rax'); em.mov_r32_ptr('r8','rcx')
 # Preview 导航的目标位置由规范的源码标题偏移推导而来。
 # outline_renderpos 在大文件首次加载期间可能暂时过期/为零；
 # Preview 一旦存在，当前的 render_srcmap 才是权威。
@@ -2954,7 +2971,7 @@ em.label('wp_outline_text')
 # Fetch item text from LISTBOX.
 em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r32_mreg('r10','r9',8); em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.mov_r32_imm('rdx',0x0189); em.mov_r32_r32('r8','r10'); em.lea_rip('r9',bsyms['outline_titlebuf']); em.call_iat('SendMessageW')
 # level = outline_level[itemID]
-em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r32_mreg('rax','r9',8); em.add_r32_r32('rax','rax'); em.add_r32_r32('rax','rax'); em.lea_rip('rcx',bsyms['outline_level']); em.add_r64_r64('rcx','rax'); em.mov_r32_ptr('r10','rcx')
+em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r32_mreg('rax','r9',8); em.add_r32_r32('rax','rax'); em.add_r32_r32('rax','rax'); em.mov_r64_ripmem('rcx',bsyms['outline_level']); em.add_r64_r64('rcx','rax'); em.mov_r32_ptr('r10','rcx')
 # Select color by depth and theme.
 em.mov_r32_ripmem('rax',bsyms['theme_dark']); em.test32('rax'); em.jcc(0x84,'wp_outline_color_light')
 em.cmp_r32_imm('r10',1); em.jcc(0x84,'wp_outline_dark_h1'); em.cmp_r32_imm('r10',2); em.jcc(0x84,'wp_outline_dark_h2'); em.cmp_r32_imm('r10',3); em.jcc(0x84,'wp_outline_dark_h3'); em.mov_r32_imm('rdx',0x00AFAFAF); em.jmp('wp_outline_color_send')
@@ -3431,6 +3448,17 @@ assert "mov_r32_ripmem('rax',bsyms['io_count']); em.test32('rax'); em.jcc(0x84,'
 assert "em.cmp_r32_r32('rax','r15'); em.jcc(0x87,'read_fail_close')" in _read_src
 assert "em.add_r64_r64('r14','rax'); em.sub_r32_r32('r15','rax'); em.jmp('open_read_loop')" in _read_src
 assert ('injected_ReadFile' in em.labels) == (OPEN_READ_INJECTION_MODE != 'release')
+assert all(bss_sizes[name] == 8 for name in
+           ('outline_srcpos','outline_renderpos','outline_level'))
+assert 'VirtualAlloc' in IAT and 'VirtualFree' in IAT
+_outline_dynamic_src = _production_source[
+    _production_source.index("em.label('ensure_outline_arena')"):
+    _production_source.index("em.label('prepare_preview_default')")]
+assert "call_iat('VirtualAlloc')" in _outline_dynamic_src and \
+       "call_iat('VirtualFree')" in _outline_dynamic_src
+for _outline_table in ('outline_srcpos','outline_renderpos','outline_level'):
+    assert "lea_rip('rcx',bsyms['%s'])" % _outline_table not in _production_source, \
+        '%s must be accessed through its dynamic pointer' % _outline_table
 _save_encode_src = _production_source[_production_source.index("em.label('do_save')"):
                                       _production_source.index("em.label('save_create')")]
 assert "call_label('serialize_preferred_eol')" in _save_encode_src

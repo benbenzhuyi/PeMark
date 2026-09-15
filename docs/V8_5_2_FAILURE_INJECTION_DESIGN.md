@@ -1,6 +1,6 @@
 # V8.5.2 Failure Injection Design
 
-Status: transactional save and ReadFile injection implemented; allocation modes remain design gates
+Status: transactional save and ReadFile injection implemented; Outline allocation injection is the next design gate
 
 ## Principle
 

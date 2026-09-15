@@ -2,9 +2,9 @@
 
 布局（V8.5.0-pre 扩展）：text @ 0x1000（预算 0xf000 字节）、rdata @ 0x10000、idata @ 0x13000、BSS @ 0x14000（virtual-only 尾部）。
 
-本次构建：text 实际 28713 字节（余量 32727 字节）；BSS 符号 171 个，最终虚拟 BSS 121106432 字节。
+本次构建：text 实际 28941 字节（余量 32499 字节）；BSS 符号 172 个，最终虚拟 BSS 121081856 字节。
 
-SHA-256：`2212018e259b38df73dd9d207851e1d02e0981e6f3214b05cb332a4f26c3823c`
+SHA-256：`eae2a41f6045d4cf4c84cab9270ee8e9b98e6b80c5c756d5030c6b054dfd0d30`
 
 | Symbol | RVA | Size |
 |---|---:|---:|
@@ -136,46 +136,47 @@ SHA-256：`2212018e259b38df73dd9d207851e1d02e0981e6f3214b05cb332a4f26c3823c`
 | `style_start` | `0x153F0` | 524288 |
 | `style_end` | `0x953F0` | 524288 |
 | `style_type` | `0x1153F0` | 524288 |
-| `outline_srcpos` | `0x1953F0` | 8192 |
-| `outline_renderpos` | `0x1973F0` | 8192 |
-| `outline_level` | `0x1993F0` | 8192 |
-| `outline_titlebuf` | `0x19B3F0` | 1024 |
-| `menu_textbuf` | `0x19B7F0` | 512 |
-| `line_src_start` | `0x19B9F0` | 4 |
-| `heading_out_start` | `0x19B9F4` | 4 |
-| `heading_out_end` | `0x19B9F8` | 4 |
-| `heading_level` | `0x19B9FC` | 4 |
-| `quote_out_start` | `0x19BA00` | 4 |
-| `bold_out_start` | `0x19BA04` | 4 |
-| `italic_out_start` | `0x19BA08` | 4 |
-| `code_out_start` | `0x19BA0C` | 4 |
-| `link_out_start` | `0x19BA10` | 4 |
-| `codeblock_out_start` | `0x19BA14` | 4 |
-| `inline_flags` | `0x19BA18` | 4 |
-| `line_flags` | `0x19BA1C` | 4 |
-| `bold_flag` | `0x19BA20` | 4 |
-| `italic_flag` | `0x19BA24` | 4 |
-| `inlinecode_flag` | `0x19BA28` | 4 |
-| `link_flag` | `0x19BA2C` | 4 |
-| `codeblock_flag` | `0x19BA30` | 4 |
-| `document_len` | `0x19BA34` | 4 |
-| `suppress_edit_change` | `0x19BA38` | 4 |
-| `render_len` | `0x19BA3C` | 4 |
-| `render_srcmap` | `0x19BA40` | 34000000 |
-| `document_model` | `0x22086C0` | 17000000 |
-| `widebuf` | `0x323ED00` | 17000000 |
-| `previewbuf` | `0x4275340` | 17000000 |
-| `bytebuf` | `0x52AB980` | 34500016 |
-| `document_revision` | `0x7392730` | 8 |
-| `saved_revision` | `0x7392738` | 8 |
-| `pending_destructive_action` | `0x7392740` | 4 |
-| `save_target_is_temp` | `0x7392744` | 4 |
-| `inject_write_call_count` | `0x7392748` | 4 |
-| `inject_flush_call_count` | `0x739274C` | 4 |
-| `inject_replace_call_count` | `0x7392750` | 4 |
-| `save_stage_path` | `0x7392760` | 1024 |
-| `inject_create_call_count` | `0x7392B60` | 4 |
-| `inject_close_call_count` | `0x7392B64` | 4 |
-| `eol_state` | `0x7392B68` | 4 |
-| `candidate_encoding_state` | `0x7392B6C` | 4 |
-| `candidate_eol_state` | `0x7392B70` | 4 |
+| `outline_titlebuf` | `0x1953F0` | 1024 |
+| `menu_textbuf` | `0x1957F0` | 512 |
+| `line_src_start` | `0x1959F0` | 4 |
+| `heading_out_start` | `0x1959F4` | 4 |
+| `heading_out_end` | `0x1959F8` | 4 |
+| `heading_level` | `0x1959FC` | 4 |
+| `quote_out_start` | `0x195A00` | 4 |
+| `bold_out_start` | `0x195A04` | 4 |
+| `italic_out_start` | `0x195A08` | 4 |
+| `code_out_start` | `0x195A0C` | 4 |
+| `link_out_start` | `0x195A10` | 4 |
+| `codeblock_out_start` | `0x195A14` | 4 |
+| `inline_flags` | `0x195A18` | 4 |
+| `line_flags` | `0x195A1C` | 4 |
+| `bold_flag` | `0x195A20` | 4 |
+| `italic_flag` | `0x195A24` | 4 |
+| `inlinecode_flag` | `0x195A28` | 4 |
+| `link_flag` | `0x195A2C` | 4 |
+| `codeblock_flag` | `0x195A30` | 4 |
+| `document_len` | `0x195A34` | 4 |
+| `suppress_edit_change` | `0x195A38` | 4 |
+| `render_len` | `0x195A3C` | 4 |
+| `render_srcmap` | `0x195A40` | 34000000 |
+| `document_model` | `0x22026C0` | 17000000 |
+| `widebuf` | `0x3238D00` | 17000000 |
+| `previewbuf` | `0x426F340` | 17000000 |
+| `bytebuf` | `0x52A5980` | 34500016 |
+| `document_revision` | `0x738C730` | 8 |
+| `saved_revision` | `0x738C738` | 8 |
+| `pending_destructive_action` | `0x738C740` | 4 |
+| `save_target_is_temp` | `0x738C744` | 4 |
+| `inject_write_call_count` | `0x738C748` | 4 |
+| `inject_flush_call_count` | `0x738C74C` | 4 |
+| `inject_replace_call_count` | `0x738C750` | 4 |
+| `save_stage_path` | `0x738C760` | 1024 |
+| `inject_create_call_count` | `0x738CB60` | 4 |
+| `inject_close_call_count` | `0x738CB64` | 4 |
+| `eol_state` | `0x738CB68` | 4 |
+| `candidate_encoding_state` | `0x738CB6C` | 4 |
+| `candidate_eol_state` | `0x738CB70` | 4 |
+| `outline_srcpos` | `0x738CB78` | 8 |
+| `outline_renderpos` | `0x738CB80` | 8 |
+| `outline_level` | `0x738CB88` | 8 |
+| `outline_capacity` | `0x738CB90` | 4 |

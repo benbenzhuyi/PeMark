@@ -10,11 +10,11 @@
 - Outline entries: 2048
 - total virtual BSS: ~115.5 MiB
 
-The V8.5.2 pre-arena Windows baseline opens the frozen 2600-heading fixture but
-registers exactly 2048 entries; the last stored source offset identifies Heading
-2048. One 2026-09-15 observation used about 34.7 MB working set and 132.1 MB
-private/pagefile usage with 317 handles. Resource values are observations rather
-than portable thresholds; the deterministic failure is the 2048-entry cutoff.
+The frozen V8.5.2 pre-arena baseline registered exactly 2048 of 2600 headings.
+The first Phase E migration replaces the three fixed Outline arrays with one
+contiguous `VirtualAlloc` block. Capacity is derived from canonical document
+length with a 4096-entry minimum and retained for reuse. The 2600-heading fixture
+now registers all entries and passes first/middle/last Source navigation.
 
 ## Lessons from V8.4.x
 

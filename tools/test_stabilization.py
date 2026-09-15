@@ -26,6 +26,7 @@ class Machine:
         self.u.mem_write(self.base + ns['TEXT_RVA'], bytes(ns['raw']))
         self.u.mem_map(0x100000, 0x20000)
         self.u.mem_map(0x200000, 0x10000)
+        self.u.mem_map(0x300000, 0x4000000)
         self.api = {}
         for i, (name, rva) in enumerate(ns['IAT'].items()):
             addr = 0x200000 + i * 16
@@ -57,6 +58,8 @@ class Machine:
             self.create_instances.append(int.from_bytes(u.mem_read(u.reg_read(x.UC_X86_REG_RSP)+0x58,8),'little'))
         if name == 'ExitProcess':
             u.emu_stop(); return
+        if name == 'VirtualAlloc': result = 0x300000
+        if name == 'VirtualFree': result = 1
         if name == 'IsWindow': result = 0
         if name == 'SendMessageW':
             result = {0x188:self.selection,0x18b:self.count,0x18e:self.top,0xd7:1500}.get(a[1],0)
@@ -94,8 +97,10 @@ def checks(ns):
         m=Machine(ns)
         mode='view_mode' if 'view_mode' in ns['bsyms'] else 'preview_flag'
         m.put(mode,1); m.visible[2]=True; m.put('document_len',1000); m.put('render_len',1000)
-        start=m.base+ns['bsyms']['outline_srcpos']
+        start=0x300000
+        m.u.mem_write(m.base+ns['bsyms']['outline_srcpos'],struct.pack('<Q',start))
         m.u.mem_write(start,struct.pack('<III',0,100,200))
+        m.put('outline_capacity',4096); m.put('outline_count',3)
         m.u.mem_write(m.base+ns['bsyms']['render_srcmap'],struct.pack('<1000I',*range(1000)))
         m.run('navigate_outline')
         sels=[a for n,a in m.calls if n=='SendMessageW' and a[1]==0xb1]

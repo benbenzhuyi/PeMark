@@ -73,6 +73,9 @@
 - Added a noninteractive 2600-heading capacity baseline to CI. It proves the
   pre-arena candidate stops at Heading 2048 and records process resources without
   treating machine-specific memory values as exact assertions.
+- Migrated the three Outline tables from fixed 2048-entry BSS arrays to one
+  contiguous `VirtualAlloc` arena. The 2600-heading fixture now registers every
+  entry and passes first/middle/last Source navigation.
 - Preserved all V8.5.1 machine-code and Windows GUI regression results.
 - Kept the V8.5.1 current/release generator and binary unchanged.
 

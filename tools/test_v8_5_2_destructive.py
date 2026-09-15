@@ -88,7 +88,11 @@ class App:
         assert u32.WaitForInputIdle(w.HANDLE(self.proc._handle), 5000) == 0
         self.main = wait_window(self.proc.pid, "DirectPE_Notepad_Main")
         assert self.main
+        deadline = time.perf_counter() + 5
         self.edit = find_edit(self.main)
+        while not self.edit and time.perf_counter() < deadline:
+            time.sleep(.03)
+            self.edit = find_edit(self.main)
         assert self.edit
         self.handle = k32.OpenProcess(0x001F0FFF, False, self.proc.pid)
         assert self.handle
@@ -120,6 +124,14 @@ class App:
         assert k32.ReadProcessMemory(self.handle,
             c.c_void_p(self.base + self.bsyms[name]), c.byref(value), 4,
             c.byref(count)) and count.value == 4
+        return value.value
+
+    def read64(self, name):
+        value, count = c.c_uint64(), c.c_size_t()
+        assert k32.ReadProcessMemory(self.handle,
+                                     c.c_void_p(self.base + self.bsyms[name]),
+                                     c.byref(value), 8, c.byref(count))
+        assert count.value == 8
         return value.value
 
     def write_path(self, path):
@@ -188,6 +200,14 @@ class App:
         raise AssertionError(f"button {button_id} not found in dialog: {title}; "
                              f"seen control IDs={seen}, exit={self.proc.poll()}")
 
+    def wait_dialog_closed(self, title, timeout=5.0):
+        deadline = time.perf_counter() + timeout
+        while time.perf_counter() < deadline:
+            if not enum_windows(self.proc.pid, "#32770", title):
+                return
+            time.sleep(.03)
+        raise AssertionError(f"dialog did not close: {title}")
+
 def scenario_clean_close(ns):
     app = App(ns)
     try:
@@ -238,7 +258,7 @@ def scenario_open_cancel(ns):
         assert app.revisions() == before and app.text() == "open cancel sentinel\r\n"
         app.post_command(CMD_OPEN); app.click_dialog("PeMark", 7)
         app.click_dialog("Open Markdown or text file", 2)  # picker Cancel
-        time.sleep(.1)
+        app.wait_dialog_closed("Open Markdown or text file")
         assert app.revisions() == before and app.text() == "open cancel sentinel\r\n"
         app.post_close(); app.click_dialog("PeMark", 7)
         assert app.proc.wait(timeout=5) == 0
