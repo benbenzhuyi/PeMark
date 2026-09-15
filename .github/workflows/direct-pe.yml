@@ -60,3 +60,6 @@ jobs:
       - name: Exercise V8.5.3 render arena when present
         if: ${{ hashFiles('tools/test_v8_5_3_render_arena.py') != '' }}
         run: python tools/test_v8_5_3_render_arena.py
+      - name: Exercise V8.5.3 document arena when present
+        if: ${{ hashFiles('tools/test_v8_5_3_document_arena.py') != '' }}
+        run: python tools/test_v8_5_3_document_arena.py

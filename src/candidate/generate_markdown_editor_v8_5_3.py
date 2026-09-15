@@ -27,7 +27,8 @@ if OPEN_READ_INJECTION_MODE not in _OPEN_READ_INJECTION_MODES:
     raise ValueError('unknown OPEN_READ_INJECTION_MODE: %r' % OPEN_READ_INJECTION_MODE)
 _ARENA_ALLOC_INJECTION_MODES = {'release', 'fail_first', 'fail_second',
                                 'style_fail_first', 'style_fail_second',
-                                'render_fail_first', 'render_fail_second'}
+                                'render_fail_first', 'render_fail_second',
+                                'document_fail_first', 'document_fail_second'}
 if ARENA_ALLOC_INJECTION_MODE not in _ARENA_ALLOC_INJECTION_MODES:
     raise ValueError('unknown ARENA_ALLOC_INJECTION_MODE: %r' %
                      ARENA_ALLOC_INJECTION_MODE)
@@ -37,6 +38,8 @@ STYLE_ALLOC_INJECTED = ARENA_ALLOC_INJECTION_MODE in {'style_fail_first',
                                                       'style_fail_second'}
 RENDER_ALLOC_INJECTED = ARENA_ALLOC_INJECTION_MODE in {'render_fail_first',
                                                        'render_fail_second'}
+DOCUMENT_ALLOC_INJECTED = ARENA_ALLOC_INJECTION_MODE in {'document_fail_first',
+                                                         'document_fail_second'}
 OPEN_TEST_BUILD = OPEN_TEST_BUILD or OPEN_READ_INJECTION_MODE != 'release'
 _WRITE_INJECTION_MODES = {'release', 'short_then_complete', 'zero_success',
                           'fail_first', 'late_failure', 'flush_failure',
@@ -242,7 +245,7 @@ wstr('err_save','Could not save the file.')
 wstr('err_recovery_exists','A PeMark recovery file already exists beside this document (.pemark.tmp). Inspect, rename, or remove it before saving again.')
 wstr('err_large','The file is too large for this build (limit: 4 MiB).')
 wstr('err_decode','The file could not be decoded as UTF-8/ANSI text.')
-wstr('err_alloc','Not enough memory to open this document safely.')
+wstr('err_alloc','Not enough memory to complete this document operation safely.')
 wstr('unsaved_prompt','Save changes before continuing?')
 wstr('about','PeMark x64 ' + _VERSION_LABEL + '\r\nDirect-PE Markdown Editor\r\n\r\nNative PE32+ and x86-64 machine code generated directly, without a C/C++ compiler, assembler, or linker.\r\n\r\n' + ('V8.5.3 protects unsaved work and makes saving transactional: revision-based dirty state, one shared unsaved-change controller, atomic replace through a sibling staging file, and strict encoding-preserving open/save.' if _RELEASE_CHANNEL else 'This candidate establishes revision-based dirty state, transactional save and encoding-preserving documents.'))
 
@@ -416,6 +419,10 @@ bss_alloc('codeblock_flag', 4, 4)
 # verified ABI bug in rebuild_outline (misaligned RSP at Win32 API calls); fixed below. A 4 MiB ASCII LF-only file can
 # expand to almost 8.4M UTF-16 code units when normalized to CRLF.
 WIDE_CHARS = 8_500_000
+# V8.5.3 Phase E：document 文本不再固定预留物理内存，而是在政策上限内
+# 保留地址空间并按 512 KiB 单元块提交。编辑器上限与规范化上限仍由
+# WIDE_CHARS 决定，因此可见行为不变。
+DOC_COMMIT_CHUNK = 262_144
 MAX_FILE_BYTES = 4_194_304
 # Saving UTF-16 source as UTF-8 can take up to 4 bytes/code unit; leave headroom.
 BYTE_CAP = 34_500_000
@@ -430,7 +437,10 @@ bss_alloc('render_len', 4, 4)
 bss_alloc('render_srcmap', 8, 8)          # pointer to the position map
 bss_alloc('previewbuf', 8, 8)             # pointer to the render text
 bss_alloc('render_arena_capacity', 4, 4)  # units currently owned
-bss_alloc('document_model', WIDE_CHARS*2, 16)
+bss_alloc('document_model', 8, 8)        # pointer into the reserved document arena
+bss_alloc('document_capacity', 4, 4)     # committed units
+bss_alloc('document_reserved', 4, 4)     # reserved units (policy bound)
+bss_alloc('sync_text_len', 4, 4)         # editor length kept across the ensure call
 bss_alloc('widebuf', WIDE_CHARS*2, 16)
 bss_alloc('bytebuf', BYTE_CAP+16, 16)
 # Append new state after the complete V8.5.1 layout. This preserves every
@@ -460,6 +470,9 @@ if STYLE_ALLOC_INJECTED:
     bss_alloc('open_alloc_error_count', 4, 4)
 if RENDER_ALLOC_INJECTED:
     bss_alloc('inject_render_alloc_call_count', 4, 4)
+    bss_alloc('open_alloc_error_count', 4, 4)
+if DOCUMENT_ALLOC_INJECTED:
+    bss_alloc('inject_document_alloc_call_count', 4, 4)
     bss_alloc('open_alloc_error_count', 4, 4)
 if OPEN_TEST_BUILD:
     bss_alloc('open_decode_error_count', 4, 4)
@@ -1064,8 +1077,10 @@ em.jmp('dispatch')
 
 em.label('cmd_new'); em.mov_ripmem_imm32(bsyms['pending_destructive_action'],1); em.jmp('destructive_request')
 em.label('cmd_new_commit')
+# V8.5.3：新建文档同样需要文档 arena；失败时不执行 New，保留当前文档。
+em.xor32('rcx'); em.call_label('ensure_document_arena'); em.test32('rax'); em.jcc(0x84,'err_open_alloc')
 em.xor32('r8'); em.call_label('set_view_mode')
-em.lea_rip('rax',bsyms['document_model']); em.mov_word_ptr_reg_zero('rax'); em.mov_ripmem_imm32(bsyms['document_len'],0); em.call_label('load_model_into_editor')
+em.mov_r64_ripmem('rax',bsyms['document_model']); em.mov_word_ptr_reg_zero('rax'); em.mov_ripmem_imm32(bsyms['document_len'],0); em.call_label('load_model_into_editor')
 em.lea_rip('rax',bsyms['current_path']); em.mov_word_ptr_reg_zero('rax'); em.mov_ripmem_imm32(bsyms['encoding_state'],0); em.mov_ripmem_imm32(bsyms['eol_state'],0); em.call_label('commit_clean_document'); em.call_label('update_preview'); em.call_label('update_status'); em.jmp('msg_loop')
 
 # Initialize OFN common fields macro
@@ -1130,6 +1145,7 @@ em.lea_rip('rcx',bsyms['widebuf']); em.mov_r32_r32('rdx','r15'); em.call_label('
 em.lea_rip('rcx',bsyms['widebuf']); em.call_label('candidate_normalized_length'); em.mov_r32_r32('rcx','rax'); em.call_label('ensure_outline_arena'); em.test32('rax'); em.jcc(0x84,'err_open_alloc')
 em.lea_rip('rcx',bsyms['widebuf']); em.call_label('candidate_normalized_length'); em.mov_r32_r32('rcx','rax'); em.call_label('ensure_style_arena'); em.test32('rax'); em.jcc(0x84,'err_open_alloc')
 em.lea_rip('rcx',bsyms['widebuf']); em.call_label('candidate_normalized_length'); em.mov_r32_r32('rcx','rax'); em.call_label('ensure_render_arena'); em.test32('rax'); em.jcc(0x84,'err_open_alloc')
+em.lea_rip('rcx',bsyms['widebuf']); em.call_label('candidate_normalized_length'); em.mov_r32_r32('rcx','rax'); em.call_label('ensure_document_arena'); em.test32('rax'); em.jcc(0x84,'err_open_alloc')
 em.lea_rip('rcx',bsyms['widebuf']); em.call_label('normalize_to_document_model'); em.call_label('load_model_into_editor')
 em.jmp('open_commit')
 
@@ -1138,14 +1154,16 @@ em.lea_rip('rax',bsyms['widebuf']); em.mov_word_ptr_reg_zero('rax'); em.mov_ripm
 em.xor32('rcx'); em.call_label('ensure_outline_arena'); em.test32('rax'); em.jcc(0x84,'err_open_alloc')
 em.xor32('rcx'); em.call_label('ensure_style_arena'); em.test32('rax'); em.jcc(0x84,'err_open_alloc')
 em.xor32('rcx'); em.call_label('ensure_render_arena'); em.test32('rax'); em.jcc(0x84,'err_open_alloc')
-em.lea_rip('rax',bsyms['document_model']); em.mov_word_ptr_reg_zero('rax'); em.mov_ripmem_imm32(bsyms['document_len'],0); em.call_label('load_model_into_editor'); em.jmp('open_commit')
+em.xor32('rcx'); em.call_label('ensure_document_arena'); em.test32('rax'); em.jcc(0x84,'err_open_alloc')
+em.mov_r64_ripmem('rax',bsyms['document_model']); em.mov_word_ptr_reg_zero('rax'); em.mov_ripmem_imm32(bsyms['document_len'],0); em.call_label('load_model_into_editor'); em.jmp('open_commit')
 
 em.label('decode_empty')
 em.mov_ripmem_imm32(bsyms['candidate_encoding_state'],0); em.mov_ripmem_imm32(bsyms['candidate_eol_state'],0)
 em.xor32('rcx'); em.call_label('ensure_outline_arena'); em.test32('rax'); em.jcc(0x84,'err_open_alloc')
 em.xor32('rcx'); em.call_label('ensure_style_arena'); em.test32('rax'); em.jcc(0x84,'err_open_alloc')
 em.xor32('rcx'); em.call_label('ensure_render_arena'); em.test32('rax'); em.jcc(0x84,'err_open_alloc')
-em.lea_rip('rax',bsyms['document_model']); em.mov_word_ptr_reg_zero('rax'); em.mov_ripmem_imm32(bsyms['document_len'],0); em.call_label('load_model_into_editor')
+em.xor32('rcx'); em.call_label('ensure_document_arena'); em.test32('rax'); em.jcc(0x84,'err_open_alloc')
+em.mov_r64_ripmem('rax',bsyms['document_model']); em.mov_word_ptr_reg_zero('rax'); em.mov_ripmem_imm32(bsyms['document_len'],0); em.call_label('load_model_into_editor')
 em.jmp('open_commit')
 
 em.label('decode_utf16')
@@ -1156,6 +1174,7 @@ em.lea_rip('rcx',bsyms['bytebuf']); em.add_r64_imm8('rcx',2); em.mov_r32_r32('rd
 em.lea_rip('r14',bsyms['bytebuf']); em.add_r64_imm8('r14',2); em.mov_r64_r64('rcx','r14'); em.call_label('candidate_normalized_length'); em.mov_r32_r32('rcx','rax'); em.call_label('ensure_outline_arena'); em.test32('rax'); em.jcc(0x84,'err_open_alloc')
 em.mov_r64_r64('rcx','r14'); em.call_label('candidate_normalized_length'); em.mov_r32_r32('rcx','rax'); em.call_label('ensure_style_arena'); em.test32('rax'); em.jcc(0x84,'err_open_alloc')
 em.mov_r64_r64('rcx','r14'); em.call_label('candidate_normalized_length'); em.mov_r32_r32('rcx','rax'); em.call_label('ensure_render_arena'); em.test32('rax'); em.jcc(0x84,'err_open_alloc')
+em.mov_r64_r64('rcx','r14'); em.call_label('candidate_normalized_length'); em.mov_r32_r32('rcx','rax'); em.call_label('ensure_document_arena'); em.test32('rax'); em.jcc(0x84,'err_open_alloc')
 em.mov_r64_r64('rcx','r14'); em.call_label('normalize_to_document_model'); em.call_label('load_model_into_editor')
 em.label('open_commit')
 # Only a fully read and validated candidate may change visible/document state.
@@ -1393,7 +1412,7 @@ em.mov_mrsp_imm32(0x20,0); em.mov_mrsp_imm32(0x28,0); em.mov_mrsp_imm32(0x30,100
 em.mov_mrsp_reg64(0x40,'rbx'); em.mov_mrsp_imm32(0x48,1,qword=True); em.mov_mrsp_reg64(0x50,'r15'); em.mov_mrsp_imm32(0x58,0,qword=True)
 em.call_iat('CreateWindowExW'); em.mov_r64_r64('rsi','rax'); em.mov_ripmem_r64(bsyms['hwnd_edit'],'rsi'); em.test64('rax'); em.jcc(0x84,'exit')
 em.mov_r64_r64('rcx','rsi'); em.mov_r32_imm('rdx',0x00C5); em.mov_r32_imm('r8',WIDE_CHARS-1); em.xor32('r9'); em.call_iat('SendMessageW')
-em.mov_r64_r64('rcx','rsi'); em.mov_r32_imm('rdx',0x000C); em.xor32('r8'); em.lea_rip('r9',bsyms['document_model']); em.call_iat('SendMessageW')
+em.mov_r64_r64('rcx','rsi'); em.mov_r32_imm('rdx',0x000C); em.xor32('r8'); em.mov_r64_ripmem('r9',bsyms['document_model']); em.call_iat('SendMessageW')
 em.mov_r64_r64('rcx','rsi'); em.mov_r32_imm('rdx',0x0030); em.mov_r64_ripmem('r8',bsyms['hfont']); em.mov_r32_imm('r9',1); em.call_iat('SendMessageW')
 # Apply the 10px Source text gutter after WM_SETFONT so it cannot be reset by the font change.
 em.mov_r64_r64('rcx','rsi'); em.mov_r32_imm('rdx',0x00D3); em.mov_r32_imm('r8',3); em.mov_r32_imm('r9',0x000A000A); em.call_iat('SendMessageW')
@@ -2087,6 +2106,13 @@ if RENDER_ALLOC_INJECTED:
     em.cmp_r32_imm('rax',_render_fail_ordinal); em.jcc(0x85,'injected_render_alloc_real'); em.xor32('rax'); em.emit(0xC3)
     em.label('injected_render_alloc_real'); em.emit(0x48,0x83,0xEC,0x28); em.call_iat('VirtualAlloc'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
 
+if DOCUMENT_ALLOC_INJECTED:
+    em.label('injected_DocumentVirtualAlloc')
+    em.mov_r32_ripmem('rax',bsyms['inject_document_alloc_call_count']); em.add_r32_imm8('rax',1); em.mov_ripmem_r32(bsyms['inject_document_alloc_call_count'],'rax')
+    _document_fail_ordinal = 1 if ARENA_ALLOC_INJECTION_MODE == 'document_fail_first' else 2
+    em.cmp_r32_imm('rax',_document_fail_ordinal); em.jcc(0x85,'injected_document_alloc_real'); em.xor32('rax'); em.emit(0xC3)
+    em.label('injected_document_alloc_real'); em.emit(0x48,0x83,0xEC,0x28); em.call_iat('VirtualAlloc'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
+
 if WRITE_CALL_INJECTED:
     em.label('injected_WriteFile')
     em.mov_r32_ripmem('rax',bsyms['inject_write_call_count']); em.add_r32_imm8('rax',1); em.mov_ripmem_r32(bsyms['inject_write_call_count'],'rax')
@@ -2151,10 +2177,11 @@ em.label('candidate_len_done'); em.emit(0xC3)
 em.label('normalize_to_document_model')
 em.emit(0x56); em.emit(0x57); em.emit(0x41,0x54); em.emit(0x41,0x55)
 em.emit(0x48,0x83,0xEC,0x28)
-em.mov_r64_r64('rsi','rcx'); em.lea_rip('rdi',bsyms['document_model']); em.xor32('r12'); em.xor32('r13')
+em.mov_r64_r64('rsi','rcx'); em.mov_r64_ripmem('rdi',bsyms['document_model']); em.xor32('r12'); em.xor32('r13')
 em.label('doc_norm_loop')
 em.movzx_r32_word_index2('rax','rsi','r12'); em.test32('rax'); em.jcc(0x84,'doc_norm_done')
-em.cmp_r32_imm('r13',WIDE_CHARS-3); em.jcc(0x83,'doc_norm_done')
+# 越界检查不得破坏 rax：它保存着刚从源读出的字符。
+em.mov_r32_ripmem('rdx',bsyms['document_capacity']); em.sub_r32_imm8('rdx',3); em.cmp_r32_r32('r13','rdx'); em.jcc(0x83,'doc_norm_done')
 em.cmp_r32_imm('rax',0x0D); em.jcc(0x84,'doc_norm_cr')
 em.cmp_r32_imm('rax',0x0A); em.jcc(0x84,'doc_norm_lf')
 em.mov_word_index2_reg('rdi','r13','rax'); em.add_r32_imm8('r13',1); em.add_r32_imm8('r12',1); em.jmp('doc_norm_loop')
@@ -2172,7 +2199,7 @@ em.add_r64_imm8('rsp',0x28); em.emit(0x41,0x5D); em.emit(0x41,0x5C); em.emit(0x5
 # DocumentModel is canonical CRLF. Produce UTF-16 scratch using preferred_eol:
 # 0 keeps CRLF, 1 writes LF, 2 writes CR. Returns output UTF-16 length in eax.
 em.label('serialize_preferred_eol')
-em.lea_rip('rcx',bsyms['document_model']); em.lea_rip('rdx',bsyms['widebuf']); em.mov_r32_ripmem('r11',bsyms['eol_state']); em.mov_r32_ripmem('r10',bsyms['document_len']); em.xor32('r8'); em.xor32('r9')
+em.mov_r64_ripmem('rcx',bsyms['document_model']); em.lea_rip('rdx',bsyms['widebuf']); em.mov_r32_ripmem('r11',bsyms['eol_state']); em.mov_r32_ripmem('r10',bsyms['document_len']); em.xor32('r8'); em.xor32('r9')
 em.label('serialize_eol_loop'); em.cmp_r32_r32('r8','r10'); em.jcc(0x83,'serialize_eol_done'); em.movzx_r32_word_index2('rax','rcx','r8')
 em.test32('r11'); em.jcc(0x84,'serialize_eol_copy'); em.cmp_r32_imm('rax',0x0D); em.jcc(0x85,'serialize_eol_copy')
 em.cmp_r32_imm('r11',1); em.jcc(0x84,'serialize_eol_emit_lf'); em.mov_r32_imm('rax',0x0D); em.jmp('serialize_eol_emit')
@@ -2186,9 +2213,15 @@ em.label('sync_model_from_editor')
 em.emit(0x48,0x83,0xEC,0x28)
 em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.test64('rcx'); em.jcc(0x84,'sync_model_ret')
 em.call_iat('GetWindowTextLengthW'); em.cmp_r32_imm('rax',WIDE_CHARS-1); em.jcc(0x87,'sync_model_ret')
-em.mov_r32_r32('r8','rax'); em.add_r32_imm8('r8',1); em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.lea_rip('rdx',bsyms['document_model']); em.call_iat('GetWindowTextW')
+# V8.5.3：先把文档 arena 提交到本次编辑器长度的容量，再读取文本。分配失败时
+# 不能只更新一半状态，因此恢复编辑器显示并保留旧模型。
+em.mov_ripmem_r32(bsyms['sync_text_len'],'rax')
+em.mov_r32_r32('rcx','rax'); em.add_r32_imm8('rcx',1); em.call_label('ensure_document_arena')
+em.test32('rax'); em.jcc(0x84,'sync_model_rollback')
+em.mov_r32_ripmem('r8',bsyms['sync_text_len']); em.add_r32_imm8('r8',1); em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.mov_r64_ripmem('rdx',bsyms['document_model']); em.call_iat('GetWindowTextW')
 em.mov_ripmem_r32(bsyms['document_len'],'rax')
 em.label('sync_model_ret'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
+em.label('sync_model_rollback'); em.call_label('load_model_into_editor'); em.jmp('sync_model_ret')
 
 # Document Model -> Source Editor. Suppress EN_CHANGE and visible incremental redraw.
 # For very large documents SetWindowText can otherwise visibly repaint/scroll while layout is built.
@@ -2200,7 +2233,7 @@ em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.test64('rcx'); em.jcc(0x84,'load
 # WM_SETREDRAW alone still allowed visible progressive layout on some Windows builds.
 em.xor32('rdx'); em.call_iat('ShowWindow')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.mov_r32_imm('rdx',0x000B); em.xor32('r8'); em.xor32('r9'); em.call_iat('SendMessageW')
-em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.lea_rip('rdx',bsyms['document_model']); em.call_iat('SetWindowTextW')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.mov_r64_ripmem('rdx',bsyms['document_model']); em.call_iat('SetWindowTextW')
 # A newly opened document starts at its true beginning.
 em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.mov_r32_imm('rdx',0x00B1); em.xor32('r8'); em.xor32('r9'); em.call_iat('SendMessageW')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.mov_r32_imm('rdx',0x000B); em.mov_r32_imm('r8',1); em.xor32('r9'); em.call_iat('SendMessageW')
@@ -2281,6 +2314,34 @@ em.label('render_arena_ok'); em.mov_r32_imm('rax',1); em.jmp('render_arena_ret')
 em.label('render_arena_fail'); em.xor32('rax')
 em.label('render_arena_ret'); em.add_r64_imm8('rsp',0x28); em.emit(0x41,0x5F); em.emit(0x41,0x5E); em.emit(0x41,0x5D); em.emit(0x41,0x5C); em.emit(0xC3)
 
+# Ensure the document arena can hold ecx units (including the terminator).
+# The policy bound WIDE_CHARS is reserved once as address space; physical pages
+# are committed in 512 KiB unit blocks and only as content actually grows, so a
+# small document does not reserve megabytes of committed memory. The editor text
+# limit and the normalization bound keep using WIDE_CHARS, so visible behaviour
+# is unchanged. Returns 1 on success, 0 on failure with no state change.
+em.label('ensure_document_arena')
+em.emit(0x41,0x54); em.emit(0x41,0x55); em.emit(0x41,0x56); em.emit(0x41,0x57); em.emit(0x48,0x83,0xEC,0x28)
+em.mov_r32_r32('r13','rcx'); em.add_r32_imm8('r13',1)
+em.mov_r32_imm('rax',DOC_COMMIT_CHUNK-1); em.add_r32_r32('r13','rax'); em.and_r32_imm('r13',~(DOC_COMMIT_CHUNK-1) & 0xFFFFFFFF)
+em.cmp_r32_imm('r13',DOC_COMMIT_CHUNK); em.jcc(0x83,'doc_need_ready'); em.mov_r32_imm('r13',DOC_COMMIT_CHUNK)
+em.label('doc_need_ready'); em.cmp_r32_imm('r13',WIDE_CHARS); em.jcc(0x87,'doc_arena_fail')
+em.mov_r32_ripmem('rax',bsyms['document_capacity']); em.cmp_r32_r32('rax','r13'); em.jcc(0x83,'doc_arena_ok')
+em.mov_r64_ripmem('r15',bsyms['document_model']); em.test64('r15'); em.jcc(0x85,'doc_arena_commit')
+em.xor32('rcx'); em.mov_r32_imm('rdx',WIDE_CHARS*2); em.mov_r32_imm('r8',0x2000); em.mov_r32_imm('r9',4); em.call_iat('VirtualAlloc')
+em.test64('rax'); em.jcc(0x84,'doc_arena_fail'); em.mov_r64_r64('r15','rax'); em.mov_ripmem_r64(bsyms['document_model'],'r15'); em.mov_ripmem_imm32(bsyms['document_reserved'],WIDE_CHARS)
+em.label('doc_arena_commit')
+em.mov_r32_ripmem('r12',bsyms['document_capacity']); em.mov_r32_r32('r14','r13')
+em.shl_r32_imm8('r12',1); em.shl_r32_imm8('r14',1)
+em.mov_r32_r32('rdx','r14'); em.sub_r32_r32('rdx','r12')
+em.mov_r64_r64('rcx','r15'); em.add_r64_r64('rcx','r12'); em.mov_r32_imm('r8',0x1000); em.mov_r32_imm('r9',4)
+if DOCUMENT_ALLOC_INJECTED: em.call_label('injected_DocumentVirtualAlloc')
+else: em.call_iat('VirtualAlloc')
+em.test64('rax'); em.jcc(0x84,'doc_arena_fail'); em.mov_ripmem_r32(bsyms['document_capacity'],'r13')
+em.label('doc_arena_ok'); em.mov_r32_imm('rax',1); em.jmp('doc_arena_ret')
+em.label('doc_arena_fail'); em.xor32('rax')
+em.label('doc_arena_ret'); em.add_r64_imm8('rsp',0x28); em.emit(0x41,0x5F); em.emit(0x41,0x5E); em.emit(0x41,0x5D); em.emit(0x41,0x5C); em.emit(0xC3)
+
 # ---------------- V8.4.25 统一扫描：大纲条目推送例程 ----------------
 # 契约：统一扫描器（update_preview 的 pv8 循环）在围栏代码块之外识别出
 # ATX 标题行时调用，当场完成该大纲行的文本构建、ListBox 登记与三表写入。
@@ -2305,7 +2366,7 @@ em.label('outline_push_indent'); em.cmp_r32_imm('r10',1); em.jcc(0x8E,'outline_p
 em.mov_word_index2_imm16('rcx','rdx',0x20); em.add_r32_imm8('rdx',1)
 em.mov_word_index2_imm16('rcx','rdx',0x20); em.add_r32_imm8('rdx',1)
 em.sub_r32_imm8('r10',1); em.jmp('outline_push_indent')
-em.label('outline_push_copy'); em.lea_rip('rax',bsyms['document_model']); em.mov_r32_r32('r11','r12')
+em.label('outline_push_copy'); em.mov_r64_ripmem('rax',bsyms['document_model']); em.mov_r32_r32('r11','r12')
 em.label('outline_push_copy_loop'); em.movzx_r32_word_index2('r10','rax','r11'); em.test32('r10'); em.jcc(0x84,'outline_push_copy_done')
 em.cmp_r32_imm('r10',0x0D); em.jcc(0x84,'outline_push_copy_done'); em.cmp_r32_imm('r10',0x0A); em.jcc(0x84,'outline_push_copy_done')
 em.cmp_r32_imm('rdx',500); em.jcc(0x83,'outline_push_copy_done')
@@ -2469,6 +2530,7 @@ em.mov_r32_ripmem('rcx',bsyms['document_len']); em.call_label('ensure_outline_ar
 # 文档模型与编辑器内容保持不变（下一次编辑/切换会重试）。
 em.mov_r32_ripmem('rcx',bsyms['document_len']); em.call_label('ensure_style_arena'); em.test32('rax'); em.jcc(0x84,'pv_render_ret')
 em.mov_r32_ripmem('rcx',bsyms['document_len']); em.call_label('ensure_render_arena'); em.test32('rax'); em.jcc(0x84,'pv_render_ret')
+em.mov_r32_ripmem('rcx',bsyms['document_len']); em.call_label('ensure_document_arena'); em.test32('rax'); em.jcc(0x84,'pv_render_ret')
 # A full Preview rebuild is authoritative. Cancel any delayed viewport-theme timer
 # left over from a previous Light/Dark scroll cycle; otherwise that stale timer can
 # fire after the new render and re-apply ranges using old viewport state, producing
@@ -2492,7 +2554,7 @@ em.label('pv_scan_prep_done')
 # 仅在预览模式进行（见 pv8_finish 之后）。
 em.mov_ripmem_imm32(bsyms['style_count'],0); em.mov_ripmem_imm32(bsyms['heading_level'],0); em.mov_ripmem_imm32(bsyms['line_flags'],0); em.mov_ripmem_imm32(bsyms['render_len'],0)
 em.mov_ripmem_imm32(bsyms['bold_flag'],0); em.mov_ripmem_imm32(bsyms['italic_flag'],0); em.mov_ripmem_imm32(bsyms['inlinecode_flag'],0); em.mov_ripmem_imm32(bsyms['link_flag'],0)
-em.lea_rip('rsi',bsyms['document_model']); em.mov_r64_ripmem('rdi',bsyms['previewbuf']); em.xor32('r12'); em.xor32('r13'); em.mov_r32_imm('r14',1); em.xor32('r15')
+em.mov_r64_ripmem('rsi',bsyms['document_model']); em.mov_r64_ripmem('rdi',bsyms['previewbuf']); em.xor32('r12'); em.xor32('r13'); em.mov_r32_imm('r14',1); em.xor32('r15')
 
 em.label('pv8_loop')
 # Never let malformed input or a future renderer rule overrun Preview Buffer.
@@ -3602,7 +3664,7 @@ assert ('injected_StyleVirtualAlloc' in em.labels) == STYLE_ALLOC_INJECTED
 assert "call_label('candidate_normalized_length')" in _open_src and \
        "call_label('ensure_outline_arena')" in _open_src
 _first_model_write = min(_open_src.index("call_label('normalize_to_document_model')"),
-                         _open_src.index("em.lea_rip('rax',bsyms['document_model']); em.mov_word_ptr_reg_zero('rax')"))
+                         _open_src.index("em.mov_r64_ripmem('rax',bsyms['document_model']); em.mov_word_ptr_reg_zero('rax')"))
 assert _open_src.index("call_label('ensure_outline_arena')") < _first_model_write, \
     'Open must reserve Outline capacity before mutating active DocumentModel'
 assert all(bss_sizes[name] == 8 for name in
@@ -3680,6 +3742,38 @@ assert "call_label('ensure_render_arena')" in _open_src and \
     'Open must reserve render capacity before mutating active DocumentModel'
 assert "call_label('ensure_render_arena')" in _preview_ensure_src, \
     'update_preview must reserve the render arena before scanning'
+# V8.5.3 Phase E：document 文本必须经保留区 + 分块提交访问。
+assert bss_sizes['document_model'] == 8, \
+    'document_model must be a pointer into the reserved arena'
+assert all(bss_sizes[name] == 4 for name in
+           ('document_capacity','document_reserved','sync_text_len'))
+assert "lea_rip('rdi',bsyms['document_model'])" not in _production_source and \
+       "lea_rip('rsi',bsyms['document_model'])" not in _production_source, \
+    'document readers must load the arena pointer'
+_doc_arena_src = _production_source[
+    _production_source.index("em.label('ensure_document_arena')"):
+    _production_source.index("em.label('outline_push')")]
+assert "em.mov_r32_imm('r8',0x2000)" in _doc_arena_src, \
+    'document arena must reserve the policy bound once'
+assert "em.mov_r32_imm('r8',0x1000)" in _doc_arena_src, \
+    'document arena must commit pages in blocks'
+assert DOC_COMMIT_CHUNK > 0 and DOC_COMMIT_CHUNK & (DOC_COMMIT_CHUNK-1) == 0, \
+    'document commit chunk must be a power of two for masking to be correct'
+assert "em.and_r32_imm('r13',~(DOC_COMMIT_CHUNK-1) & 0xFFFFFFFF)" in _doc_arena_src, \
+    'document arena must round the request up to a whole commit block'
+assert "call_label('ensure_document_arena')" in _open_src and \
+       _open_src.index("call_label('ensure_document_arena')") < _first_model_write, \
+    'Open must reserve document capacity before mutating active DocumentModel'
+assert "call_label('ensure_document_arena')" in _preview_ensure_src, \
+    'update_preview must reserve the document arena before scanning'
+_sync_src = _production_source[
+    _production_source.index("em.label('sync_model_from_editor')"):
+    _production_source.index("em.label('load_model_into_editor')")]
+assert "call_label('ensure_document_arena')" in _sync_src and \
+       "em.label('sync_model_rollback')" in _sync_src, \
+    'editor sync must reserve document capacity and roll back on failure'
+assert "em.mov_r32_imm('r8',WIDE_CHARS-1)" in _production_source, \
+    'editor text limit must keep using the WIDE_CHARS policy bound'
 _save_encode_src = _production_source[_production_source.index("em.label('do_save')"):
                                       _production_source.index("em.label('save_create')")]
 assert "call_label('serialize_preferred_eol')" in _save_encode_src
@@ -3788,6 +3882,8 @@ _output_name = (('pemark_x64_v8_5_3_outline_alloc_%s.exe' % ARENA_ALLOC_INJECTIO
                 if STYLE_ALLOC_INJECTED else
                 ('pemark_x64_v8_5_3_render_alloc_%s.exe' % ARENA_ALLOC_INJECTION_MODE)
                 if RENDER_ALLOC_INJECTED else
+                ('pemark_x64_v8_5_3_document_alloc_%s.exe' % ARENA_ALLOC_INJECTION_MODE)
+                if DOCUMENT_ALLOC_INJECTED else
                 ('pemark_x64_v8_5_3_open_read_%s.exe' % OPEN_READ_INJECTION_MODE)
                 if OPEN_READ_INJECTION_MODE != 'release' else
                 'pemark_x64_v8_5_3_open_transaction_test.exe' if OPEN_TEST_BUILD

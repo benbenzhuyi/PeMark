@@ -34,6 +34,9 @@ class Machine:
             self.u.mem_write(self.base+rva, struct.pack('<Q', addr))
             self.u.mem_write(addr, b'\xc3')
         self.calls = []; self.create_instances=[]; self.selection = 2; self.count = 1800; self.top = 0
+        # Arena allocations are handed out sequentially so independent arenas
+        # (document, Outline, style, render) never alias each other.
+        self.arena_next = 0x300000
         self.cursor = (210, 100); self.visible = {1: True, 2: False}
         self.u.hook_add(UC_HOOK_CODE, self.hook)
         for key, value in {'hwnd_edit':1, 'hwnd_preview':2, 'hwnd_outline':3,
@@ -58,7 +61,12 @@ class Machine:
             self.create_instances.append(int.from_bytes(u.mem_read(u.reg_read(x.UC_X86_REG_RSP)+0x58,8),'little'))
         if name == 'ExitProcess':
             u.emu_stop(); return
-        if name == 'VirtualAlloc': result = 0x300000
+        if name == 'VirtualAlloc':
+            if a[0] == 0:
+                result = self.arena_next
+                self.arena_next += 0x200000
+            else:
+                result = a[0]
         if name == 'VirtualFree': result = 1
         if name == 'IsWindow': result = 0
         if name == 'SendMessageW':
@@ -127,7 +135,11 @@ def checks(ns):
                 m.run('detect_preferred_eol',rcx=scratch,rdx=len(text))
                 actual=m.u.reg_read(x.UC_X86_REG_RAX)&0xffffffff
                 assert actual==expected,(repr(text),expected,actual)
-            model=m.base+ns['bsyms']['document_model']
+            if ns.get('bss_sizes',{}).get('document_model')==8:
+                m.run('ensure_document_arena',rcx=64)
+                model=int.from_bytes(m.u.mem_read(m.base+ns['bsyms']['document_model'],8),'little')
+            else:
+                model=m.base+ns['bsyms']['document_model']
             canonical='a\r\nb\r\n'
             m.u.mem_write(model,canonical.encode('utf-16le')+b'\0\0')
             m.put('document_len',len(canonical))
@@ -189,7 +201,13 @@ def checks(ns):
         def fenced_spaces():
             m=Machine(ns); m.put('hwnd_preview',0,8)
             source="```python\ndef hello():\n    return '# not heading'\n```\n"
-            m.u.mem_write(m.base+ns['bsyms']['document_model'],(source+'\0').encode('utf-16le'))
+            if ns.get('bss_sizes',{}).get('document_model')==8:
+                m.run('ensure_document_arena',rcx=len(source)+1)
+                model=int.from_bytes(m.u.mem_read(m.base+ns['bsyms']['document_model'],8),'little')
+            else:
+                model=m.base+ns['bsyms']['document_model']
+            m.u.mem_write(model,(source+'\0').encode('utf-16le'))
+            m.put('document_len',len(source))
             if ns.get('bss_sizes',{}).get('previewbuf')==8:
                 # update_preview reserves the render arena itself; point the map/text
                 # at mapped scratch memory the way the real allocator would.

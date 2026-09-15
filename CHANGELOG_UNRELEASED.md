@@ -22,3 +22,31 @@ V8.5.2 shipped; its full record is `docs/CHANGELOG_V8_5_2.md`.
   machine-code groups, Open/encoding transaction matrix, atomic save fault
   injection, destructive transition matrix, revision ownership, Outline and
   style arena failure, 140000-span capacity and the 17/17 GUI smoke suite.
+
+## Document arena (reserved policy bound + block commit)
+
+- Replaced the fixed `WIDE_CHARS`-unit `document_model` array with a reserved
+  arena: the policy bound stays `WIDE_CHARS` units (17 MB of address space) and
+  physical pages are committed in 512 KiB unit blocks only as content grows.
+  The editor text limit and the normalization bound keep using `WIDE_CHARS`, so
+  visible behaviour is unchanged.
+- Open reserves the document arena before its commit point in all four decode
+  branches. Editor sync reserves the length it is about to read and, when the
+  commit fails, restores the editor from the unchanged model instead of leaving
+  the control and the model out of step. New requires the same reservation and
+  leaves the current document alone if it fails.
+- Fixed a defect introduced during this migration: the normalization loop's new
+  capacity guard reused `rax`, which held the current source character, so every
+  character was written as the low half of `capacity - 3`. The guard now uses
+  `rdx`, and the block-size mask uses `~(CHUNK - 1)`.
+- Added `document_fail_first` / `document_fail_second` injection modes and
+  `tools/test_v8_5_3_document_arena.py`: reservation is reused across Open, the
+  commit grows in aligned blocks for a 1.2 MB document, editor edits commit
+  further blocks, a failed commit preserves text, path, revisions and prior
+  contents, and a failed first commit leaves the reservation unpublished.
+- Virtual BSS drops from 68,509,696 to 51,511,296 bytes. The remaining fixed
+  buffers are `widebuf` (decode/serialize scratch) and `bytebuf` (file bytes).
+- Re-verified on the V8.5.3 channel: 13/13 machine-code groups, Open/encoding
+  transaction matrix, atomic save fault injection, destructive transition
+  matrix, revision ownership, Outline/style/render arena failure, 140000-span
+  capacity and the 17/17 GUI smoke suite.
