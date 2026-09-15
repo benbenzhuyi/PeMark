@@ -29,17 +29,17 @@ English | [简体中文](PUBLISHING_CHECKLIST.zh-CN.md)
 
 - [x] Rerun the commit and milestone gates on the release commit and record them
   in `docs/V8_5_2_RELEASE_RESULTS.md`.
-- [ ] Create annotated tag `v8.5.2`.
-- [ ] Create a GitHub pre-release named `PeMark V8.5.2 Preview`.
-- [ ] Use `docs/RELEASE_V8_5_2_GITHUB.md` as the release body.
-- [ ] Attach only `bin/current/pemark_x64_v8_5_2.exe` as the release asset.
-- [ ] Verify the uploaded asset SHA-256 is
+- [x] Create annotated tag `v8.5.2`.
+- [x] Create a GitHub pre-release named `PeMark V8.5.2 Preview`.
+- [x] Use `docs/RELEASE_V8_5_2_GITHUB.md` as the release body.
+- [x] Attach only `bin/current/pemark_x64_v8_5_2.exe` as the release asset.
+- [x] Verify the uploaded asset SHA-256 is
   `2c105660dbac96b7de18614f43753073b3b5613e22bba160ceb8058646040e30`.
-- [ ] Keep GitHub's “Set as a pre-release” option enabled.
+- [x] Keep GitHub's “Set as a pre-release” option enabled.
 
 ## Repository settings
 
-- [ ] Set the default branch to `main`.
+- [x] Set the default branch to `main`.
 - [ ] Require the `build-and-test` status check before merging.
 - [ ] Disable force pushes and branch deletion on `main`.
 - [ ] Decide whether Discussions should be enabled.

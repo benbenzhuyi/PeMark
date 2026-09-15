@@ -27,17 +27,17 @@
 
 - [x] 在发布提交上重跑 commit 与 milestone 两级门禁，结果记录于
   `V8_5_2_RELEASE_RESULTS.md`。
-- [ ] 创建带说明的 `v8.5.2` 标签。
-- [ ] 创建名为 `PeMark V8.5.2 Preview` 的 GitHub Pre-release。
-- [ ] 使用 `RELEASE_V8_5_2_GITHUB.md` 作为发布正文。
-- [ ] 只附加 `bin/current/pemark_x64_v8_5_2.exe`。
-- [ ] 确认附件 SHA-256 为
+- [x] 创建带说明的 `v8.5.2` 标签。
+- [x] 创建名为 `PeMark V8.5.2 Preview` 的 GitHub Pre-release。
+- [x] 使用 `RELEASE_V8_5_2_GITHUB.md` 作为发布正文。
+- [x] 只附加 `bin/current/pemark_x64_v8_5_2.exe`。
+- [x] 确认附件 SHA-256 为
   `2c105660dbac96b7de18614f43753073b3b5613e22bba160ceb8058646040e30`。
-- [ ] 保持 GitHub 的 “Set as a pre-release” 选项开启。
+- [x] 保持 GitHub 的 “Set as a pre-release” 选项开启。
 
 ## 仓库设置
 
-- [ ] 默认分支设为 `main`。
+- [x] 默认分支设为 `main`。
 - [ ] 合并前要求 `build-and-test` 状态检查通过。
 - [ ] 禁止对 `main` 强制推送和删除分支。
 - [ ] 按需要开启 Discussions。
