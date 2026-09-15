@@ -12,17 +12,26 @@ try:
     OPEN_READ_INJECTION_MODE
 except NameError:
     OPEN_READ_INJECTION_MODE = 'release'
+try:
+    OUTLINE_ALLOC_INJECTION_MODE
+except NameError:
+    OUTLINE_ALLOC_INJECTION_MODE = 'release'
 _OPEN_READ_INJECTION_MODES = {'release', 'short_then_complete', 'zero_success',
                               'fail_first', 'late_failure'}
 if OPEN_READ_INJECTION_MODE not in _OPEN_READ_INJECTION_MODES:
     raise ValueError('unknown OPEN_READ_INJECTION_MODE: %r' % OPEN_READ_INJECTION_MODE)
+_OUTLINE_ALLOC_INJECTION_MODES = {'release', 'fail_first', 'fail_second'}
+if OUTLINE_ALLOC_INJECTION_MODE not in _OUTLINE_ALLOC_INJECTION_MODES:
+    raise ValueError('unknown OUTLINE_ALLOC_INJECTION_MODE: %r' %
+                     OUTLINE_ALLOC_INJECTION_MODE)
 OPEN_TEST_BUILD = OPEN_TEST_BUILD or OPEN_READ_INJECTION_MODE != 'release'
 _WRITE_INJECTION_MODES = {'release', 'short_then_complete', 'zero_success',
                           'fail_first', 'late_failure', 'flush_failure',
                           'replace_failure', 'create_failure', 'close_failure'}
 if WRITE_INJECTION_MODE not in _WRITE_INJECTION_MODES:
     raise ValueError('unknown WRITE_INJECTION_MODE: %r' % WRITE_INJECTION_MODE)
-INJECTED_BUILD = WRITE_INJECTION_MODE != 'release' or OPEN_TEST_BUILD
+INJECTED_BUILD = (WRITE_INJECTION_MODE != 'release' or OPEN_TEST_BUILD or
+                  OUTLINE_ALLOC_INJECTION_MODE != 'release')
 WRITE_CALL_INJECTED = WRITE_INJECTION_MODE in {
     'short_then_complete', 'zero_success', 'fail_first', 'late_failure'}
 
@@ -62,7 +71,10 @@ def astr(name,s): return add_bytes(name, s.encode('ascii')+b'\0', 1)
 wstr('class_static','STATIC')
 wstr('class_edit','EDIT')
 wstr('class_main','DirectPE_Notepad_Main')
-if OPEN_READ_INJECTION_MODE != 'release':
+if OUTLINE_ALLOC_INJECTION_MODE != 'release':
+    _window_title = ('PeMark x64 V8.5.2 OUTLINE-ALLOC TEST [%s]' %
+                     OUTLINE_ALLOC_INJECTION_MODE)
+elif OPEN_READ_INJECTION_MODE != 'release':
     _window_title = 'PeMark x64 V8.5.2 OPEN-READ TEST [%s]' % OPEN_READ_INJECTION_MODE
 elif OPEN_TEST_BUILD:
     _window_title = 'PeMark x64 V8.5.2 OPEN-TRANSACTION TEST'
@@ -209,6 +221,7 @@ wstr('err_save','Could not save the file.')
 wstr('err_recovery_exists','A PeMark recovery file already exists beside this document (.pemark.tmp). Inspect, rename, or remove it before saving again.')
 wstr('err_large','The file is too large for this build (limit: 4 MiB).')
 wstr('err_decode','The file could not be decoded as UTF-8/ANSI text.')
+wstr('err_alloc','Not enough memory to open this document safely.')
 wstr('unsaved_prompt','Save changes before continuing?')
 wstr('about','PeMark x64 V8.5.2 Candidate\r\nDirect-PE Markdown Editor\r\n\r\nNative PE32+ and x86-64 machine code generated directly, without a C/C++ compiler, assembler, or linker.\r\n\r\nThis candidate establishes revision-based dirty state and shared unsaved-document protection.')
 
@@ -412,6 +425,9 @@ bss_alloc('outline_srcpos', 8, 8)       # dynamic arena table pointers
 bss_alloc('outline_renderpos', 8, 8)
 bss_alloc('outline_level', 8, 8)
 bss_alloc('outline_capacity', 4, 4)
+if OUTLINE_ALLOC_INJECTION_MODE != 'release':
+    bss_alloc('inject_outline_alloc_call_count', 4, 4)
+    bss_alloc('open_alloc_error_count', 4, 4)
 if OPEN_TEST_BUILD:
     bss_alloc('open_decode_error_count', 4, 4)
     bss_alloc('open_read_error_count', 4, 4)
@@ -1078,15 +1094,18 @@ em.label('decode_done')
 em.mov_r32_r32('r15','rax'); em.lea_rip('rdx',bsyms['widebuf']); em.mov_word_index2_zero('rdx','r15')
 em.lea_rip('rcx',bsyms['widebuf']); em.mov_r32_r32('rdx','r15'); em.call_label('validate_wide_no_nul'); em.test32('rax'); em.jcc(0x84,'err_decode')
 em.lea_rip('rcx',bsyms['widebuf']); em.mov_r32_r32('rdx','r15'); em.call_label('detect_preferred_eol'); em.mov_ripmem_r32(bsyms['candidate_eol_state'],'rax')
+em.lea_rip('rcx',bsyms['widebuf']); em.call_label('candidate_normalized_length'); em.mov_r32_r32('rcx','rax'); em.call_label('ensure_outline_arena'); em.test32('rax'); em.jcc(0x84,'err_open_alloc')
 em.lea_rip('rcx',bsyms['widebuf']); em.call_label('normalize_to_document_model'); em.call_label('load_model_into_editor')
 em.jmp('open_commit')
 
 em.label('decode_empty_utf8_bom')
 em.lea_rip('rax',bsyms['widebuf']); em.mov_word_ptr_reg_zero('rax'); em.mov_ripmem_imm32(bsyms['candidate_eol_state'],0)
+em.xor32('rcx'); em.call_label('ensure_outline_arena'); em.test32('rax'); em.jcc(0x84,'err_open_alloc')
 em.lea_rip('rax',bsyms['document_model']); em.mov_word_ptr_reg_zero('rax'); em.mov_ripmem_imm32(bsyms['document_len'],0); em.call_label('load_model_into_editor'); em.jmp('open_commit')
 
 em.label('decode_empty')
 em.mov_ripmem_imm32(bsyms['candidate_encoding_state'],0); em.mov_ripmem_imm32(bsyms['candidate_eol_state'],0)
+em.xor32('rcx'); em.call_label('ensure_outline_arena'); em.test32('rax'); em.jcc(0x84,'err_open_alloc')
 em.lea_rip('rax',bsyms['document_model']); em.mov_word_ptr_reg_zero('rax'); em.mov_ripmem_imm32(bsyms['document_len'],0); em.call_label('load_model_into_editor')
 em.jmp('open_commit')
 
@@ -1095,7 +1114,8 @@ em.mov_r32_r32('r15','r13'); em.sub_r32_imm8('r15',2); em.mov_r32_r32('rax','r15
 em.lea_rip('rcx',bsyms['bytebuf']); em.add_r64_imm8('rcx',2); em.mov_r32_r32('rdx','r15'); em.call_label('validate_wide_no_nul'); em.test32('rax'); em.jcc(0x84,'err_decode')
 em.mov_ripmem_imm32(bsyms['candidate_encoding_state'],1)
 em.lea_rip('rcx',bsyms['bytebuf']); em.add_r64_imm8('rcx',2); em.mov_r32_r32('rdx','r15'); em.call_label('detect_preferred_eol'); em.mov_ripmem_r32(bsyms['candidate_eol_state'],'rax')
-em.lea_rip('rcx',bsyms['bytebuf']); em.add_r64_imm8('rcx',2); em.call_label('normalize_to_document_model'); em.call_label('load_model_into_editor')
+em.lea_rip('r14',bsyms['bytebuf']); em.add_r64_imm8('r14',2); em.mov_r64_r64('rcx','r14'); em.call_label('candidate_normalized_length'); em.mov_r32_r32('rcx','rax'); em.call_label('ensure_outline_arena'); em.test32('rax'); em.jcc(0x84,'err_open_alloc')
+em.mov_r64_r64('rcx','r14'); em.call_label('normalize_to_document_model'); em.call_label('load_model_into_editor')
 em.label('open_commit')
 # Only a fully read and validated candidate may change visible/document state.
 em.mov_r32_ripmem('rax',bsyms['candidate_encoding_state']); em.mov_ripmem_r32(bsyms['encoding_state'],'rax'); em.mov_r32_ripmem('rax',bsyms['candidate_eol_state']); em.mov_ripmem_r32(bsyms['eol_state'],'rax')
@@ -1122,6 +1142,12 @@ if OPEN_TEST_BUILD:
     em.mov_r32_ripmem('rax',bsyms['open_decode_error_count']); em.add_r32_imm8('rax',1); em.mov_ripmem_r32(bsyms['open_decode_error_count'],'rax'); em.jmp('msg_loop')
 else:
     em.mov_r64_r64('rcx','rbx'); em.lea_rip('rdx',rsyms['err_decode']); em.lea_rip('r8',rsyms['err_title']); em.mov_r32_imm('r9',0x10); em.call_iat('MessageBoxW'); em.jmp('msg_loop')
+
+em.label('err_open_alloc')
+if OUTLINE_ALLOC_INJECTION_MODE != 'release':
+    em.mov_r32_ripmem('rax',bsyms['open_alloc_error_count']); em.add_r32_imm8('rax',1); em.mov_ripmem_r32(bsyms['open_alloc_error_count'],'rax'); em.jmp('msg_loop')
+else:
+    em.mov_r64_r64('rcx','rbx'); em.lea_rip('rdx',rsyms['err_alloc']); em.lea_rip('r8',rsyms['err_title']); em.mov_r32_imm('r9',0x10); em.call_iat('MessageBoxW'); em.jmp('msg_loop')
 
 em.label('cmd_save')
 em.mov_ripmem_imm32(bsyms['save_target_is_temp'],0); em.lea_rip('rax',bsyms['current_path']); em.cmp_word_ptr_reg_zero('rax'); em.jcc(0x84,'cmd_saveas'); em.jmp('do_save')
@@ -1999,6 +2025,13 @@ if OPEN_READ_INJECTION_MODE != 'release':
         em.label('injected_read_short'); em.cmp_r32_imm('r8',7); em.jcc(0x86,'injected_read_real'); em.mov_r32_imm('r8',7)
         em.label('injected_read_real'); em.emit(0x48,0x83,0xEC,0x28); em.mov_mrsp_imm32(0x20,0,qword=True); em.call_iat('ReadFile'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
 
+if OUTLINE_ALLOC_INJECTION_MODE != 'release':
+    em.label('injected_OutlineVirtualAlloc')
+    em.mov_r32_ripmem('rax',bsyms['inject_outline_alloc_call_count']); em.add_r32_imm8('rax',1); em.mov_ripmem_r32(bsyms['inject_outline_alloc_call_count'],'rax')
+    _outline_fail_ordinal = 1 if OUTLINE_ALLOC_INJECTION_MODE == 'fail_first' else 2
+    em.cmp_r32_imm('rax',_outline_fail_ordinal); em.jcc(0x85,'injected_outline_alloc_real'); em.xor32('rax'); em.emit(0xC3)
+    em.label('injected_outline_alloc_real'); em.emit(0x48,0x83,0xEC,0x28); em.call_iat('VirtualAlloc'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
+
 if WRITE_CALL_INJECTED:
     em.label('injected_WriteFile')
     em.mov_r32_ripmem('rax',bsyms['inject_write_call_count']); em.add_r32_imm8('rax',1); em.mov_ripmem_r32(bsyms['inject_write_call_count'],'rax')
@@ -2048,6 +2081,16 @@ em.label('detect_eol_next'); em.add_r32_imm8('r8',1); em.jmp('detect_eol_loop')
 em.label('detect_eol_lf'); em.mov_r32_imm('rax',1); em.emit(0xC3)
 em.label('detect_eol_cr'); em.mov_r32_imm('rax',2); em.emit(0xC3)
 em.label('detect_eol_crlf'); em.xor32('rax'); em.emit(0xC3)
+
+# Return the exact normalized UTF-16 length without touching active document state.
+em.label('candidate_normalized_length')
+em.xor32('rax'); em.xor32('rdx')
+em.label('candidate_len_loop')
+em.movzx_r32_word_index2('r8','rcx','rdx'); em.test32('r8'); em.jcc(0x84,'candidate_len_done')
+em.add_r32_imm8('rdx',1); em.add_r32_imm8('rax',1); em.cmp_r32_imm('r8',0x0D); em.jcc(0x84,'candidate_len_cr'); em.cmp_r32_imm('r8',0x0A); em.jcc(0x85,'candidate_len_loop'); em.add_r32_imm8('rax',1); em.jmp('candidate_len_loop')
+em.label('candidate_len_cr'); em.movzx_r32_word_index2('r8','rcx','rdx'); em.cmp_r32_imm('r8',0x0A); em.jcc(0x85,'candidate_len_cr_add'); em.add_r32_imm8('rdx',1)
+em.label('candidate_len_cr_add'); em.add_r32_imm8('rax',1); em.jmp('candidate_len_loop')
+em.label('candidate_len_done'); em.emit(0xC3)
 
 # normalize_to_document_model(rcx = NUL-terminated UTF-16 source): normalize CRLF/LF/CR -> CRLF.
 em.label('normalize_to_document_model')
@@ -2125,14 +2168,17 @@ em.add_r32_imm8('r11',1); em.mov_ripmem_r32(bsyms['style_count'],'r11')
 em.label('add_style_ret'); em.emit(0xC3)
 
 # Ensure one contiguous Outline arena: [srcpos][renderpos][level]. Capacity is
-# derived from canonical document length (minimum heading representation is four
+# derived from the requested canonical document length in ecx (minimum heading representation is four
 # UTF-16 units) and never shrinks during the process lifetime.
 em.label('ensure_outline_arena')
 em.emit(0x41,0x54); em.emit(0x41,0x55); em.emit(0x41,0x56); em.emit(0x41,0x57); em.emit(0x48,0x83,0xEC,0x28)
-em.mov_r32_ripmem('r13',bsyms['document_len']); em.shr_r32_imm8('r13',2); em.add_r32_imm8('r13',1); em.cmp_r32_imm('r13',4096); em.jcc(0x83,'outline_need_ready'); em.mov_r32_imm('r13',4096)
+em.mov_r32_r32('r13','rcx'); em.shr_r32_imm8('r13',2); em.add_r32_imm8('r13',1); em.cmp_r32_imm('r13',4096); em.jcc(0x83,'outline_need_ready'); em.mov_r32_imm('r13',4096)
 em.label('outline_need_ready'); em.mov_r32_ripmem('rax',bsyms['outline_capacity']); em.cmp_r32_r32('rax','r13'); em.jcc(0x83,'outline_arena_ok')
 em.mov_r32_r32('r14','r13'); em.shl_r32_imm8('r14',2); em.mov_r32_r32('rdx','r14'); em.mov_r32_r32('rax','r14'); em.add_r32_r32('rdx','rax'); em.add_r32_r32('rdx','rax')
-em.xor32('rcx'); em.mov_r32_imm('r8',0x3000); em.mov_r32_imm('r9',4); em.call_iat('VirtualAlloc'); em.test64('rax'); em.jcc(0x84,'outline_arena_fail'); em.mov_r64_r64('r15','rax')
+em.xor32('rcx'); em.mov_r32_imm('r8',0x3000); em.mov_r32_imm('r9',4)
+if OUTLINE_ALLOC_INJECTION_MODE != 'release': em.call_label('injected_OutlineVirtualAlloc')
+else: em.call_iat('VirtualAlloc')
+em.test64('rax'); em.jcc(0x84,'outline_arena_fail'); em.mov_r64_r64('r15','rax')
 em.mov_r64_ripmem('r12',bsyms['outline_srcpos']); em.test64('r12'); em.jcc(0x84,'outline_arena_commit'); em.mov_r64_r64('rcx','r12'); em.xor32('rdx'); em.mov_r32_imm('r8',0x8000); em.call_iat('VirtualFree')
 em.label('outline_arena_commit'); em.mov_ripmem_r64(bsyms['outline_srcpos'],'r15'); em.mov_r64_r64('rax','r15'); em.add_r64_r64('rax','r14'); em.mov_ripmem_r64(bsyms['outline_renderpos'],'rax'); em.add_r64_r64('rax','r14'); em.mov_ripmem_r64(bsyms['outline_level'],'rax'); em.mov_ripmem_r32(bsyms['outline_capacity'],'r13')
 em.label('outline_arena_ok'); em.mov_r32_imm('rax',1); em.jmp('outline_arena_ret')
@@ -2320,7 +2366,7 @@ def emit_render_map_current_source():
 em.label('update_preview')
 em.emit(0x56); em.emit(0x57); em.emit(0x41,0x54); em.emit(0x41,0x55); em.emit(0x41,0x56); em.emit(0x41,0x57)
 em.emit(0x48,0x83,0xEC,0x28)
-em.call_label('ensure_outline_arena'); em.test32('rax'); em.jcc(0x84,'pv_render_ret')
+em.mov_r32_ripmem('rcx',bsyms['document_len']); em.call_label('ensure_outline_arena'); em.test32('rax'); em.jcc(0x84,'pv_render_ret')
 # A full Preview rebuild is authoritative. Cancel any delayed viewport-theme timer
 # left over from a previous Light/Dark scroll cycle; otherwise that stale timer can
 # fire after the new render and re-apply ranges using old viewport state, producing
@@ -3448,6 +3494,14 @@ assert "mov_r32_ripmem('rax',bsyms['io_count']); em.test32('rax'); em.jcc(0x84,'
 assert "em.cmp_r32_r32('rax','r15'); em.jcc(0x87,'read_fail_close')" in _read_src
 assert "em.add_r64_r64('r14','rax'); em.sub_r32_r32('r15','rax'); em.jmp('open_read_loop')" in _read_src
 assert ('injected_ReadFile' in em.labels) == (OPEN_READ_INJECTION_MODE != 'release')
+assert ('injected_OutlineVirtualAlloc' in em.labels) == \
+       (OUTLINE_ALLOC_INJECTION_MODE != 'release')
+assert "call_label('candidate_normalized_length')" in _open_src and \
+       "call_label('ensure_outline_arena')" in _open_src
+_first_model_write = min(_open_src.index("call_label('normalize_to_document_model')"),
+                         _open_src.index("em.lea_rip('rax',bsyms['document_model']); em.mov_word_ptr_reg_zero('rax')"))
+assert _open_src.index("call_label('ensure_outline_arena')") < _first_model_write, \
+    'Open must reserve Outline capacity before mutating active DocumentModel'
 assert all(bss_sizes[name] == 8 for name in
            ('outline_srcpos','outline_renderpos','outline_level'))
 assert 'VirtualAlloc' in IAT and 'VirtualFree' in IAT
@@ -3562,7 +3616,9 @@ hdr[p:p+40] = shdr; p += 40
 
 _build_channel = os.path.basename(os.path.dirname(os.path.abspath(__file__)))
 _output_channel = 'test' if INJECTED_BUILD else _build_channel
-_output_name = (('pemark_x64_v8_5_2_open_read_%s.exe' % OPEN_READ_INJECTION_MODE)
+_output_name = (('pemark_x64_v8_5_2_outline_alloc_%s.exe' % OUTLINE_ALLOC_INJECTION_MODE)
+                if OUTLINE_ALLOC_INJECTION_MODE != 'release' else
+                ('pemark_x64_v8_5_2_open_read_%s.exe' % OPEN_READ_INJECTION_MODE)
                 if OPEN_READ_INJECTION_MODE != 'release' else
                 'pemark_x64_v8_5_2_open_transaction_test.exe' if OPEN_TEST_BUILD
                 else ('pemark_x64_v8_5_2_write_%s.exe' % WRITE_INJECTION_MODE

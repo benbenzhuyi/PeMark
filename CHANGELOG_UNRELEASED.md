@@ -76,6 +76,9 @@
 - Migrated the three Outline tables from fixed 2048-entry BSS arrays to one
   contiguous `VirtualAlloc` arena. The 2600-heading fixture now registers every
   entry and passes first/middle/last Source navigation.
+- Moved Outline growth ahead of the Open commit boundary. A test-only allocator
+  failure now proves that unsuccessful growth leaves the active document and
+  prior Outline arena wholly unchanged.
 - Preserved all V8.5.1 machine-code and Windows GUI regression results.
 - Kept the V8.5.1 current/release generator and binary unchanged.
 

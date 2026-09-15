@@ -1,6 +1,6 @@
 # V8.5.2 Failure Injection Design
 
-Status: transactional save and ReadFile injection implemented; Outline allocation injection is the next design gate
+Status: transactional save, ReadFile injection, and first Outline growth-allocation injection implemented
 
 ## Principle
 
@@ -64,6 +64,16 @@ preserved and causes a safe failure instead of being truncated.
 - growth commit failure;
 - scratch allocation failure after active model exists;
 - parser-derived arena failure independently for render/map/style/outline.
+
+## Implemented Outline allocation slice
+
+The test-only `fail_second` allocator permits the initial 4096-entry arena and
+then rejects the first growth request. Open computes the exact canonical CRLF
+length of the decoded candidate and reserves the needed Outline capacity before
+writing `document_model` or changing the editor. The Windows harness proves that
+failed growth preserves text, path, revisions, encoding, EOL, view state,
+Outline count, all arena pointers, and prior arena bytes. The release build calls
+`VirtualAlloc` directly and remains free of injection state.
 
 ## Implemented ReadFile slice
 

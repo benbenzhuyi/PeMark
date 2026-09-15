@@ -108,15 +108,19 @@ normal close exit code:                  = 0
   `outline_level` with pointers into one dynamically sized arena. The same test
   now requires 2600 entries and verifies first/middle/last stored offsets and
   actual Source navigation.
+- Outline capacity is now reserved from the candidate's exact normalized length
+  before Open mutates the active model. Injected failure on the first growth
+  allocation preserves model, path, revisions, encoding, EOL, view state,
+  Outline count, pointers, and sampled prior arena bytes.
 - Candidate size: 78,336 bytes.
-- Emitted text: 28,941 bytes, 1,875 bytes above V8.5.1.
+- Emitted text: 29,148 bytes, 2,082 bytes above V8.5.1.
 - Candidate SHA-256:
-  `eae2a41f6045d4cf4c84cab9270ee8e9b98e6b80c5c756d5030c6b054dfd0d30`.
+  `3d3717c51f9427e03d5a830f183e846f58e96eb0bd45250371ce1d6597564baf`.
 
 ## Remaining before promotion
 
-- Complete Phase E dynamic arenas: remove the active 131072-style cap, add
-  allocation-failure coverage, and demonstrate stable memory
+- Complete Phase E dynamic arenas: remove the active 131072-style cap, extend
+  allocation-failure coverage to the remaining arenas, and demonstrate stable memory
   across repeated Open/parse/Close cycles. Until then this remains a document
   safety candidate rather than the V8.5.2 release.
 - Add startup or Open-time recovery discovery only if later usability evidence

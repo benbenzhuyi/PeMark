@@ -52,3 +52,6 @@ jobs:
       - name: Observe V8.5.2 pre-arena capacity baseline when present
         if: ${{ hashFiles('tools/test_v8_5_2_capacity_baseline.py') != '' }}
         run: python tools/test_v8_5_2_capacity_baseline.py
+      - name: Exercise V8.5.2 Outline allocation failure when present
+        if: ${{ hashFiles('tools/test_v8_5_2_outline_alloc_injection.py') != '' }}
+        run: python tools/test_v8_5_2_outline_alloc_injection.py
