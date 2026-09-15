@@ -6,15 +6,21 @@
 - UTF-16 work buffers: 8.5M code units each
 - byte output buffer: 34.5M bytes
 - render->source map: 8.5M x 4 bytes
-- style spans: 131072 x (start,end,type)
-- Outline entries: 2048
-- total virtual BSS: ~115.5 MiB
+- style spans: dynamic arena, `max(4096, normalized_length/2 + 16)` entries
+- Outline entries: dynamic arena, `max(4096, normalized_length/4 + 1)` entries
+- total virtual BSS: ~114 MiB after retiring both fixed tables
 
 The frozen V8.5.2 pre-arena baseline registered exactly 2048 of 2600 headings.
 The first Phase E migration replaces the three fixed Outline arrays with one
 contiguous `VirtualAlloc` block. Capacity is derived from canonical document
 length with a 4096-entry minimum and retained for reuse. The 2600-heading fixture
 now registers all entries and passes first/middle/last Source navigation.
+
+The second Phase E migration does the same for the three style-span columns,
+retiring the 131072-entry table. Both arenas are reserved before the Open commit
+point, publish their pointers only after a successful allocation, and keep the
+previous arena intact when growth fails. A 140,000-span fixture confirms that
+formatting metadata is no longer truncated.
 
 ## Lessons from V8.4.x
 

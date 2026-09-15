@@ -18,7 +18,7 @@ k32 = c.windll.kernel32
 def build(mode):
     source = GEN.read_text(encoding="utf-8")
     ns = {"__file__": str(GEN), "__name__": "__pemark_alloc_test__",
-          "OPEN_TEST_BUILD": True, "OUTLINE_ALLOC_INJECTION_MODE": mode}
+          "OPEN_TEST_BUILD": True, "ARENA_ALLOC_INJECTION_MODE": mode}
     exec(compile(source, str(GEN), "exec"), ns)
     out = Path(ns["out"])
     assert out.name == f"pemark_x64_v8_5_2_outline_alloc_{mode}.exe"

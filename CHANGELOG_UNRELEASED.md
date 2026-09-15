@@ -12,6 +12,21 @@
 
 ## V8.5.2 document revision candidate
 
+- Retired the fixed 131072-entry Markdown style table. The three span columns
+  (`style_start`, `style_end`, `style_type`) now live in one dynamic arena whose
+  capacity is derived from the canonical document length; the stored span count
+  is bounded by that capacity instead of a compile-time constant.
+- Split the build-time allocator injection into `ARENA_ALLOC_INJECTION_MODE`
+  (`fail_first`, `fail_second`, `style_fail_first`, `style_fail_second`) so both
+  dynamic arenas have dedicated failure coverage; the old Outline-only variable
+  remains an accepted alias.
+- Added `tools/test_v8_5_2_style_alloc_injection.py`: style-arena growth failure
+  keeps text, path, revisions, encoding, EOL, view state and the previous arena
+  byte-for-byte, and a failed first allocation publishes no arena at all.
+- Added `tools/test_v8_5_2_style_capacity.py`: a 140,000-span document records
+  every span beyond the retired 131072 cap, with checked arena geometry and
+  first/middle/cap-boundary/last span payloads.
+- Made `apply_styles` refuse to dereference an unallocated style arena.
 - Added a candidate-channel implementation of 64-bit `document_revision` and
   `saved_revision` with single-writer build assertions. The fields are appended
   after the V8.5.1 state layout so all existing BSS addresses remain stable.

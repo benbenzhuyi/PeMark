@@ -16,14 +16,24 @@ try:
     OUTLINE_ALLOC_INJECTION_MODE
 except NameError:
     OUTLINE_ALLOC_INJECTION_MODE = 'release'
+try:
+    ARENA_ALLOC_INJECTION_MODE
+except NameError:
+    # V8.5.2 早期只有 Outline 注入；保留旧开关名作为别名。
+    ARENA_ALLOC_INJECTION_MODE = OUTLINE_ALLOC_INJECTION_MODE
 _OPEN_READ_INJECTION_MODES = {'release', 'short_then_complete', 'zero_success',
                               'fail_first', 'late_failure'}
 if OPEN_READ_INJECTION_MODE not in _OPEN_READ_INJECTION_MODES:
     raise ValueError('unknown OPEN_READ_INJECTION_MODE: %r' % OPEN_READ_INJECTION_MODE)
-_OUTLINE_ALLOC_INJECTION_MODES = {'release', 'fail_first', 'fail_second'}
-if OUTLINE_ALLOC_INJECTION_MODE not in _OUTLINE_ALLOC_INJECTION_MODES:
-    raise ValueError('unknown OUTLINE_ALLOC_INJECTION_MODE: %r' %
-                     OUTLINE_ALLOC_INJECTION_MODE)
+_ARENA_ALLOC_INJECTION_MODES = {'release', 'fail_first', 'fail_second',
+                                'style_fail_first', 'style_fail_second'}
+if ARENA_ALLOC_INJECTION_MODE not in _ARENA_ALLOC_INJECTION_MODES:
+    raise ValueError('unknown ARENA_ALLOC_INJECTION_MODE: %r' %
+                     ARENA_ALLOC_INJECTION_MODE)
+OUTLINE_ALLOC_INJECTED = ARENA_ALLOC_INJECTION_MODE in {'fail_first',
+                                                        'fail_second'}
+STYLE_ALLOC_INJECTED = ARENA_ALLOC_INJECTION_MODE in {'style_fail_first',
+                                                      'style_fail_second'}
 OPEN_TEST_BUILD = OPEN_TEST_BUILD or OPEN_READ_INJECTION_MODE != 'release'
 _WRITE_INJECTION_MODES = {'release', 'short_then_complete', 'zero_success',
                           'fail_first', 'late_failure', 'flush_failure',
@@ -31,7 +41,7 @@ _WRITE_INJECTION_MODES = {'release', 'short_then_complete', 'zero_success',
 if WRITE_INJECTION_MODE not in _WRITE_INJECTION_MODES:
     raise ValueError('unknown WRITE_INJECTION_MODE: %r' % WRITE_INJECTION_MODE)
 INJECTED_BUILD = (WRITE_INJECTION_MODE != 'release' or OPEN_TEST_BUILD or
-                  OUTLINE_ALLOC_INJECTION_MODE != 'release')
+                  ARENA_ALLOC_INJECTION_MODE != 'release')
 WRITE_CALL_INJECTED = WRITE_INJECTION_MODE in {
     'short_then_complete', 'zero_success', 'fail_first', 'late_failure'}
 
@@ -47,7 +57,11 @@ IDATA_RVA = 0x13000
 BSS_RVA = 0x14000
 FILE_ALIGN = 0x200
 SECT_ALIGN = 0x1000
-STYLE_CAP = 131072  # V8.4.23: large-doc Markdown style span capacity
+# V8.5.2 Phase E：样式表改为动态 arena。
+# 每个样式 span 至少消耗 2 个源字符（*x*、`x`、> x 等），
+# 因此 len/2 + 16 项是规范化文档长度的安全上界；下限 4096 项，进程内不缩小。
+STYLE_MIN_ENTRIES = 4096
+STYLE_SPAN_DIVISOR = 2
 
 
 def align(x,a): return (x+a-1)&~(a-1)
@@ -71,9 +85,9 @@ def astr(name,s): return add_bytes(name, s.encode('ascii')+b'\0', 1)
 wstr('class_static','STATIC')
 wstr('class_edit','EDIT')
 wstr('class_main','DirectPE_Notepad_Main')
-if OUTLINE_ALLOC_INJECTION_MODE != 'release':
-    _window_title = ('PeMark x64 V8.5.2 OUTLINE-ALLOC TEST [%s]' %
-                     OUTLINE_ALLOC_INJECTION_MODE)
+if ARENA_ALLOC_INJECTION_MODE != 'release':
+    _window_title = ('PeMark x64 V8.5.2 ARENA-ALLOC TEST [%s]' %
+                     ARENA_ALLOC_INJECTION_MODE)
 elif OPEN_READ_INJECTION_MODE != 'release':
     _window_title = 'PeMark x64 V8.5.2 OPEN-READ TEST [%s]' % OPEN_READ_INJECTION_MODE
 elif OPEN_TEST_BUILD:
@@ -364,9 +378,11 @@ bss_alloc('ps_scroll', 80, 16)
 bss_alloc('defproc_result', 8, 8)
 bss_alloc('nav_hwnd', 8, 8)
 bss_alloc('style_count', 4, 4)
-bss_alloc('style_start', STYLE_CAP*4, 16)
-bss_alloc('style_end', STYLE_CAP*4, 16)
-bss_alloc('style_type', STYLE_CAP*4, 16)
+# V8.5.2 Phase E：三个样式表（start/end/type）合并为一个动态 arena 的三个区段。
+bss_alloc('style_start', 8, 8)      # dynamic arena segment pointers
+bss_alloc('style_end', 8, 8)
+bss_alloc('style_type', 8, 8)
+bss_alloc('style_capacity', 4, 4)   # arena entries currently owned
 bss_alloc('outline_titlebuf', 512*2, 16)
 bss_alloc('menu_textbuf', 256*2, 16)
 bss_alloc('line_src_start', 4, 4)
@@ -425,8 +441,11 @@ bss_alloc('outline_srcpos', 8, 8)       # dynamic arena table pointers
 bss_alloc('outline_renderpos', 8, 8)
 bss_alloc('outline_level', 8, 8)
 bss_alloc('outline_capacity', 4, 4)
-if OUTLINE_ALLOC_INJECTION_MODE != 'release':
+if OUTLINE_ALLOC_INJECTED:
     bss_alloc('inject_outline_alloc_call_count', 4, 4)
+    bss_alloc('open_alloc_error_count', 4, 4)
+if STYLE_ALLOC_INJECTED:
+    bss_alloc('inject_style_alloc_call_count', 4, 4)
     bss_alloc('open_alloc_error_count', 4, 4)
 if OPEN_TEST_BUILD:
     bss_alloc('open_decode_error_count', 4, 4)
@@ -1095,17 +1114,20 @@ em.mov_r32_r32('r15','rax'); em.lea_rip('rdx',bsyms['widebuf']); em.mov_word_ind
 em.lea_rip('rcx',bsyms['widebuf']); em.mov_r32_r32('rdx','r15'); em.call_label('validate_wide_no_nul'); em.test32('rax'); em.jcc(0x84,'err_decode')
 em.lea_rip('rcx',bsyms['widebuf']); em.mov_r32_r32('rdx','r15'); em.call_label('detect_preferred_eol'); em.mov_ripmem_r32(bsyms['candidate_eol_state'],'rax')
 em.lea_rip('rcx',bsyms['widebuf']); em.call_label('candidate_normalized_length'); em.mov_r32_r32('rcx','rax'); em.call_label('ensure_outline_arena'); em.test32('rax'); em.jcc(0x84,'err_open_alloc')
+em.lea_rip('rcx',bsyms['widebuf']); em.call_label('candidate_normalized_length'); em.mov_r32_r32('rcx','rax'); em.call_label('ensure_style_arena'); em.test32('rax'); em.jcc(0x84,'err_open_alloc')
 em.lea_rip('rcx',bsyms['widebuf']); em.call_label('normalize_to_document_model'); em.call_label('load_model_into_editor')
 em.jmp('open_commit')
 
 em.label('decode_empty_utf8_bom')
 em.lea_rip('rax',bsyms['widebuf']); em.mov_word_ptr_reg_zero('rax'); em.mov_ripmem_imm32(bsyms['candidate_eol_state'],0)
 em.xor32('rcx'); em.call_label('ensure_outline_arena'); em.test32('rax'); em.jcc(0x84,'err_open_alloc')
+em.xor32('rcx'); em.call_label('ensure_style_arena'); em.test32('rax'); em.jcc(0x84,'err_open_alloc')
 em.lea_rip('rax',bsyms['document_model']); em.mov_word_ptr_reg_zero('rax'); em.mov_ripmem_imm32(bsyms['document_len'],0); em.call_label('load_model_into_editor'); em.jmp('open_commit')
 
 em.label('decode_empty')
 em.mov_ripmem_imm32(bsyms['candidate_encoding_state'],0); em.mov_ripmem_imm32(bsyms['candidate_eol_state'],0)
 em.xor32('rcx'); em.call_label('ensure_outline_arena'); em.test32('rax'); em.jcc(0x84,'err_open_alloc')
+em.xor32('rcx'); em.call_label('ensure_style_arena'); em.test32('rax'); em.jcc(0x84,'err_open_alloc')
 em.lea_rip('rax',bsyms['document_model']); em.mov_word_ptr_reg_zero('rax'); em.mov_ripmem_imm32(bsyms['document_len'],0); em.call_label('load_model_into_editor')
 em.jmp('open_commit')
 
@@ -1115,6 +1137,7 @@ em.lea_rip('rcx',bsyms['bytebuf']); em.add_r64_imm8('rcx',2); em.mov_r32_r32('rd
 em.mov_ripmem_imm32(bsyms['candidate_encoding_state'],1)
 em.lea_rip('rcx',bsyms['bytebuf']); em.add_r64_imm8('rcx',2); em.mov_r32_r32('rdx','r15'); em.call_label('detect_preferred_eol'); em.mov_ripmem_r32(bsyms['candidate_eol_state'],'rax')
 em.lea_rip('r14',bsyms['bytebuf']); em.add_r64_imm8('r14',2); em.mov_r64_r64('rcx','r14'); em.call_label('candidate_normalized_length'); em.mov_r32_r32('rcx','rax'); em.call_label('ensure_outline_arena'); em.test32('rax'); em.jcc(0x84,'err_open_alloc')
+em.mov_r64_r64('rcx','r14'); em.call_label('candidate_normalized_length'); em.mov_r32_r32('rcx','rax'); em.call_label('ensure_style_arena'); em.test32('rax'); em.jcc(0x84,'err_open_alloc')
 em.mov_r64_r64('rcx','r14'); em.call_label('normalize_to_document_model'); em.call_label('load_model_into_editor')
 em.label('open_commit')
 # Only a fully read and validated candidate may change visible/document state.
@@ -1144,7 +1167,7 @@ else:
     em.mov_r64_r64('rcx','rbx'); em.lea_rip('rdx',rsyms['err_decode']); em.lea_rip('r8',rsyms['err_title']); em.mov_r32_imm('r9',0x10); em.call_iat('MessageBoxW'); em.jmp('msg_loop')
 
 em.label('err_open_alloc')
-if OUTLINE_ALLOC_INJECTION_MODE != 'release':
+if ARENA_ALLOC_INJECTION_MODE != 'release':
     em.mov_r32_ripmem('rax',bsyms['open_alloc_error_count']); em.add_r32_imm8('rax',1); em.mov_ripmem_r32(bsyms['open_alloc_error_count'],'rax'); em.jmp('msg_loop')
 else:
     em.mov_r64_r64('rcx','rbx'); em.lea_rip('rdx',rsyms['err_alloc']); em.lea_rip('r8',rsyms['err_title']); em.mov_r32_imm('r9',0x10); em.call_iat('MessageBoxW'); em.jmp('msg_loop')
@@ -2025,12 +2048,19 @@ if OPEN_READ_INJECTION_MODE != 'release':
         em.label('injected_read_short'); em.cmp_r32_imm('r8',7); em.jcc(0x86,'injected_read_real'); em.mov_r32_imm('r8',7)
         em.label('injected_read_real'); em.emit(0x48,0x83,0xEC,0x28); em.mov_mrsp_imm32(0x20,0,qword=True); em.call_iat('ReadFile'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
 
-if OUTLINE_ALLOC_INJECTION_MODE != 'release':
+if OUTLINE_ALLOC_INJECTED:
     em.label('injected_OutlineVirtualAlloc')
     em.mov_r32_ripmem('rax',bsyms['inject_outline_alloc_call_count']); em.add_r32_imm8('rax',1); em.mov_ripmem_r32(bsyms['inject_outline_alloc_call_count'],'rax')
-    _outline_fail_ordinal = 1 if OUTLINE_ALLOC_INJECTION_MODE == 'fail_first' else 2
+    _outline_fail_ordinal = 1 if ARENA_ALLOC_INJECTION_MODE == 'fail_first' else 2
     em.cmp_r32_imm('rax',_outline_fail_ordinal); em.jcc(0x85,'injected_outline_alloc_real'); em.xor32('rax'); em.emit(0xC3)
     em.label('injected_outline_alloc_real'); em.emit(0x48,0x83,0xEC,0x28); em.call_iat('VirtualAlloc'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
+
+if STYLE_ALLOC_INJECTED:
+    em.label('injected_StyleVirtualAlloc')
+    em.mov_r32_ripmem('rax',bsyms['inject_style_alloc_call_count']); em.add_r32_imm8('rax',1); em.mov_ripmem_r32(bsyms['inject_style_alloc_call_count'],'rax')
+    _style_fail_ordinal = 1 if ARENA_ALLOC_INJECTION_MODE == 'style_fail_first' else 2
+    em.cmp_r32_imm('rax',_style_fail_ordinal); em.jcc(0x85,'injected_style_alloc_real'); em.xor32('rax'); em.emit(0xC3)
+    em.label('injected_style_alloc_real'); em.emit(0x48,0x83,0xEC,0x28); em.call_iat('VirtualAlloc'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
 
 if WRITE_CALL_INJECTED:
     em.label('injected_WriteFile')
@@ -2158,14 +2188,35 @@ em.label('load_model_unsuppress'); em.mov_ripmem_imm32(bsyms['suppress_edit_chan
 em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
 
 # Helper: append a rich-format span. Inputs: r8d=start, r9d=end, r10d=style.
+# V8.5.2 Phase E：三张样式表由动态 arena 提供，写入一律经 arena 指针。
+# 没有容量（未分配或注入失败）时静默跳过：不会越界，也不会破坏文档状态。
 em.label('add_style')
-em.mov_r32_ripmem('r11',bsyms['style_count']); em.cmp_r32_imm('r11',STYLE_CAP); em.jcc(0x83,'add_style_ret')
+em.mov_r32_ripmem('r11',bsyms['style_count']); em.mov_r32_ripmem('rax',bsyms['style_capacity']); em.cmp_r32_r32('r11','rax'); em.jcc(0x83,'add_style_ret')
 em.mov_r32_r32('rax','r11'); em.add_r32_r32('rax','rax'); em.add_r32_r32('rax','rax')
-em.lea_rip('rcx',bsyms['style_start']); em.add_r64_r64('rcx','rax'); em.mov_ptr_r32('rcx','r8')
-em.lea_rip('rcx',bsyms['style_end']); em.add_r64_r64('rcx','rax'); em.mov_ptr_r32('rcx','r9')
-em.lea_rip('rcx',bsyms['style_type']); em.add_r64_r64('rcx','rax'); em.mov_ptr_r32('rcx','r10')
+em.mov_r64_ripmem('rcx',bsyms['style_start']); em.add_r64_r64('rcx','rax'); em.mov_ptr_r32('rcx','r8')
+em.mov_r64_ripmem('rcx',bsyms['style_end']); em.add_r64_r64('rcx','rax'); em.mov_ptr_r32('rcx','r9')
+em.mov_r64_ripmem('rcx',bsyms['style_type']); em.add_r64_r64('rcx','rax'); em.mov_ptr_r32('rcx','r10')
 em.add_r32_imm8('r11',1); em.mov_ripmem_r32(bsyms['style_count'],'r11')
 em.label('add_style_ret'); em.emit(0xC3)
+
+# Ensure one contiguous style-span arena: [start][end][type] dwords per entry.
+# Capacity is derived from the requested canonical document length in ecx
+# (every recorded span consumes at least two source characters) and never
+# shrinks during the process lifetime. Returns 1 on success, 0 on failure.
+em.label('ensure_style_arena')
+em.emit(0x41,0x54); em.emit(0x41,0x55); em.emit(0x41,0x56); em.emit(0x41,0x57); em.emit(0x48,0x83,0xEC,0x28)
+em.mov_r32_r32('r13','rcx'); em.shr_r32_imm8('r13',STYLE_SPAN_DIVISOR); em.add_r32_imm8('r13',16); em.cmp_r32_imm('r13',STYLE_MIN_ENTRIES); em.jcc(0x83,'style_need_ready'); em.mov_r32_imm('r13',STYLE_MIN_ENTRIES)
+em.label('style_need_ready'); em.mov_r32_ripmem('rax',bsyms['style_capacity']); em.cmp_r32_r32('rax','r13'); em.jcc(0x83,'style_arena_ok')
+em.mov_r32_r32('r14','r13'); em.shl_r32_imm8('r14',2); em.mov_r32_r32('rdx','r14'); em.mov_r32_r32('rax','r14'); em.add_r32_r32('rdx','rax'); em.add_r32_r32('rdx','rax')
+em.xor32('rcx'); em.mov_r32_imm('r8',0x3000); em.mov_r32_imm('r9',4)
+if STYLE_ALLOC_INJECTED: em.call_label('injected_StyleVirtualAlloc')
+else: em.call_iat('VirtualAlloc')
+em.test64('rax'); em.jcc(0x84,'style_arena_fail'); em.mov_r64_r64('r15','rax')
+em.mov_r64_ripmem('r12',bsyms['style_start']); em.test64('r12'); em.jcc(0x84,'style_arena_commit'); em.mov_r64_r64('rcx','r12'); em.xor32('rdx'); em.mov_r32_imm('r8',0x8000); em.call_iat('VirtualFree')
+em.label('style_arena_commit'); em.mov_ripmem_r64(bsyms['style_start'],'r15'); em.mov_r64_r64('rax','r15'); em.add_r64_r64('rax','r14'); em.mov_ripmem_r64(bsyms['style_end'],'rax'); em.add_r64_r64('rax','r14'); em.mov_ripmem_r64(bsyms['style_type'],'rax'); em.mov_ripmem_r32(bsyms['style_capacity'],'r13')
+em.label('style_arena_ok'); em.mov_r32_imm('rax',1); em.jmp('style_arena_ret')
+em.label('style_arena_fail'); em.xor32('rax')
+em.label('style_arena_ret'); em.add_r64_imm8('rsp',0x28); em.emit(0x41,0x5F); em.emit(0x41,0x5E); em.emit(0x41,0x5D); em.emit(0x41,0x5C); em.emit(0xC3)
 
 # Ensure one contiguous Outline arena: [srcpos][renderpos][level]. Capacity is
 # derived from the requested canonical document length in ecx (minimum heading representation is four
@@ -2176,7 +2227,7 @@ em.mov_r32_r32('r13','rcx'); em.shr_r32_imm8('r13',2); em.add_r32_imm8('r13',1);
 em.label('outline_need_ready'); em.mov_r32_ripmem('rax',bsyms['outline_capacity']); em.cmp_r32_r32('rax','r13'); em.jcc(0x83,'outline_arena_ok')
 em.mov_r32_r32('r14','r13'); em.shl_r32_imm8('r14',2); em.mov_r32_r32('rdx','r14'); em.mov_r32_r32('rax','r14'); em.add_r32_r32('rdx','rax'); em.add_r32_r32('rdx','rax')
 em.xor32('rcx'); em.mov_r32_imm('r8',0x3000); em.mov_r32_imm('r9',4)
-if OUTLINE_ALLOC_INJECTION_MODE != 'release': em.call_label('injected_OutlineVirtualAlloc')
+if OUTLINE_ALLOC_INJECTED: em.call_label('injected_OutlineVirtualAlloc')
 else: em.call_iat('VirtualAlloc')
 em.test64('rax'); em.jcc(0x84,'outline_arena_fail'); em.mov_r64_r64('r15','rax')
 em.mov_r64_ripmem('r12',bsyms['outline_srcpos']); em.test64('r12'); em.jcc(0x84,'outline_arena_commit'); em.mov_r64_r64('rcx','r12'); em.xor32('rdx'); em.mov_r32_imm('r8',0x8000); em.call_iat('VirtualFree')
@@ -2292,13 +2343,15 @@ em.label('preview_theme_color_ret'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
 # so inline/code/quote spans can carry restrained background colors too.
 em.label('apply_styles')
 em.emit(0x41,0x54); em.emit(0x41,0x55); em.emit(0x48,0x83,0xEC,0x28)
+# V8.5.2 Phase E：arena 未建立（分配失败或尚未预留）时不得解引用样式指针。
+em.mov_r64_ripmem('rcx',bsyms['style_start']); em.test64('rcx'); em.jcc(0x84,'styles_done')
 em.xor32('r12')
 em.label('style_loop')
 em.mov_r32_ripmem('rax',bsyms['style_count']); em.cmp_r32_r32('r12','rax'); em.jcc(0x83,'styles_done')
 em.mov_r32_r32('rax','r12'); em.add_r32_r32('rax','rax'); em.add_r32_r32('rax','rax')
-em.lea_rip('rcx',bsyms['style_start']); em.add_r64_r64('rcx','rax'); em.mov_r32_ptr('r8','rcx')
-em.lea_rip('rcx',bsyms['style_end']); em.add_r64_r64('rcx','rax'); em.mov_r32_ptr('r9','rcx')
-em.lea_rip('rcx',bsyms['style_type']); em.add_r64_r64('rcx','rax'); em.mov_r32_ptr('r13','rcx')
+em.mov_r64_ripmem('rcx',bsyms['style_start']); em.add_r64_r64('rcx','rax'); em.mov_r32_ptr('r8','rcx')
+em.mov_r64_ripmem('rcx',bsyms['style_end']); em.add_r64_r64('rcx','rax'); em.mov_r32_ptr('r9','rcx')
+em.mov_r64_ripmem('rcx',bsyms['style_type']); em.add_r64_r64('rcx','rax'); em.mov_r32_ptr('r13','rcx')
 # During a theme-only viewport refresh, skip spans completely outside the current
 # visible formatting window. The style array scan is cheap; expensive RichEdit
 # range formatting is limited to what can actually be seen.
@@ -2367,6 +2420,9 @@ em.label('update_preview')
 em.emit(0x56); em.emit(0x57); em.emit(0x41,0x54); em.emit(0x41,0x55); em.emit(0x41,0x56); em.emit(0x41,0x57)
 em.emit(0x48,0x83,0xEC,0x28)
 em.mov_r32_ripmem('rcx',bsyms['document_len']); em.call_label('ensure_outline_arena'); em.test32('rax'); em.jcc(0x84,'pv_render_ret')
+# V8.5.2 Phase E：样式表同样在扫描前按文档长度预留；分配失败放弃本次渲染，
+# 文档模型与编辑器内容保持不变（下一次编辑/切换会重试）。
+em.mov_r32_ripmem('rcx',bsyms['document_len']); em.call_label('ensure_style_arena'); em.test32('rax'); em.jcc(0x84,'pv_render_ret')
 # A full Preview rebuild is authoritative. Cancel any delayed viewport-theme timer
 # left over from a previous Light/Dark scroll cycle; otherwise that stale timer can
 # fire after the new render and re-apply ranges using old viewport state, producing
@@ -3495,7 +3551,8 @@ assert "em.cmp_r32_r32('rax','r15'); em.jcc(0x87,'read_fail_close')" in _read_sr
 assert "em.add_r64_r64('r14','rax'); em.sub_r32_r32('r15','rax'); em.jmp('open_read_loop')" in _read_src
 assert ('injected_ReadFile' in em.labels) == (OPEN_READ_INJECTION_MODE != 'release')
 assert ('injected_OutlineVirtualAlloc' in em.labels) == \
-       (OUTLINE_ALLOC_INJECTION_MODE != 'release')
+       OUTLINE_ALLOC_INJECTED
+assert ('injected_StyleVirtualAlloc' in em.labels) == STYLE_ALLOC_INJECTED
 assert "call_label('candidate_normalized_length')" in _open_src and \
        "call_label('ensure_outline_arena')" in _open_src
 _first_model_write = min(_open_src.index("call_label('normalize_to_document_model')"),
@@ -3513,6 +3570,47 @@ assert "call_iat('VirtualAlloc')" in _outline_dynamic_src and \
 for _outline_table in ('outline_srcpos','outline_renderpos','outline_level'):
     assert "lea_rip('rcx',bsyms['%s'])" % _outline_table not in _production_source, \
         '%s must be accessed through its dynamic pointer' % _outline_table
+# V8.5.2 Phase E：固定 131072 项样式表已删除，三个表必须经动态 arena 指针访问。
+assert all(bss_sizes[name] == 8 for name in
+           ('style_start','style_end','style_type')), \
+    'style tables must be dynamic arena pointers'
+assert bss_sizes['style_capacity'] == 4
+assert 'STYLE_CAP' not in _production_source and 'STYLE_CAP' not in globals()
+_style_arena_src = _production_source[
+    _production_source.index("em.label('ensure_style_arena')"):
+    _production_source.index("em.label('ensure_outline_arena')")]
+assert "call_iat('VirtualAlloc')" in _style_arena_src or STYLE_ALLOC_INJECTED, \
+    'style arena growth must allocate through VirtualAlloc'
+assert "call_iat('VirtualFree')" in _style_arena_src, \
+    'style arena growth must release the previous arena'
+_add_style_src = _production_source[
+    _production_source.index("em.label('add_style')"):
+    _production_source.index("em.label('ensure_style_arena')")]
+for _style_table in ('style_start','style_end','style_type'):
+    assert "lea_rip('rcx',bsyms['%s'])" % _style_table not in _production_source, \
+        '%s must be accessed through its dynamic pointer' % _style_table
+    assert "mov_r64_ripmem('rcx',bsyms['%s'])" % _style_table in _add_style_src or \
+           "mov_r64_ripmem('rcx',bsyms['%s'])" % _style_table in _production_source, \
+        '%s pointer must be loaded before each span write' % _style_table
+assert "mov_r32_ripmem('rax',bsyms['style_capacity'])" in _add_style_src, \
+    'add_style must bound writes by the dynamic arena capacity'
+_apply_styles_src = _production_source[
+    _production_source.index("em.label('apply_styles')"):
+    _production_source.index("em.label('styles_done')")]
+assert all("mov_r64_ripmem('rcx',bsyms['%s'])" % _style_table
+           in _apply_styles_src for _style_table in
+           ('style_start','style_end','style_type')), \
+    'apply_styles must read the dynamic style arena pointers'
+assert "call_label('ensure_style_arena')" in _open_src, \
+    'Open must reserve style capacity before mutating active DocumentModel'
+assert _open_src.index("call_label('ensure_style_arena')") < _first_model_write, \
+    'Open must reserve style capacity before mutating active DocumentModel'
+_preview_ensure_src = _production_source[
+    _production_source.index("em.label('update_preview')"):
+    _production_source.index("em.label('pv_timer_reset_done')")]
+assert "call_label('ensure_outline_arena')" in _preview_ensure_src and \
+       "call_label('ensure_style_arena')" in _preview_ensure_src, \
+    'update_preview must reserve both dynamic arenas before scanning'
 _save_encode_src = _production_source[_production_source.index("em.label('do_save')"):
                                       _production_source.index("em.label('save_create')")]
 assert "call_label('serialize_preferred_eol')" in _save_encode_src
@@ -3616,8 +3714,10 @@ hdr[p:p+40] = shdr; p += 40
 
 _build_channel = os.path.basename(os.path.dirname(os.path.abspath(__file__)))
 _output_channel = 'test' if INJECTED_BUILD else _build_channel
-_output_name = (('pemark_x64_v8_5_2_outline_alloc_%s.exe' % OUTLINE_ALLOC_INJECTION_MODE)
-                if OUTLINE_ALLOC_INJECTION_MODE != 'release' else
+_output_name = (('pemark_x64_v8_5_2_outline_alloc_%s.exe' % ARENA_ALLOC_INJECTION_MODE)
+                if OUTLINE_ALLOC_INJECTED else
+                ('pemark_x64_v8_5_2_style_alloc_%s.exe' % ARENA_ALLOC_INJECTION_MODE)
+                if STYLE_ALLOC_INJECTED else
                 ('pemark_x64_v8_5_2_open_read_%s.exe' % OPEN_READ_INJECTION_MODE)
                 if OPEN_READ_INJECTION_MODE != 'release' else
                 'pemark_x64_v8_5_2_open_transaction_test.exe' if OPEN_TEST_BUILD

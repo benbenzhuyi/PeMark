@@ -210,7 +210,16 @@ def checks(ns):
             m.run('set_visible_format_window')
             assert m.get('format_visible_end')==3500,m.get('format_visible_end')
             m.put('preview_visible_format_only',1); m.put('style_count',1)
-            m.put('style_start',0); m.put('style_end',100000); m.put('style_type',15)
+            if ns.get('bss_sizes',{}).get('style_start')==8:
+                arena=0x300000
+                for name,offset in (('style_start',0),('style_end',0x1000),('style_type',0x2000)):
+                    m.put(name,arena+offset,8)
+                m.u.mem_write(arena,struct.pack('<I',0))
+                m.u.mem_write(arena+0x1000,struct.pack('<I',100000))
+                m.u.mem_write(arena+0x2000,struct.pack('<I',15))
+                m.put('style_capacity',4096)
+            else:
+                m.put('style_start',0); m.put('style_end',100000); m.put('style_type',15)
             m.run('apply_styles')
             sels=[a[2:] for n,a in m.calls if n=='SendMessageW' and a[1]==0xb1]
             # apply_styles also restores the saved empty selection at completion.

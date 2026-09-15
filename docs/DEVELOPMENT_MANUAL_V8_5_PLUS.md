@@ -220,7 +220,7 @@ I/O 和 UI thread 最长阻塞。
 每种 arena 逐一迁移：
 
 1. 定义 header 和 checked growth arithmetic；
-2. 将已覆盖的 Outline growth allocation failure 扩展到后续动态 arena；
+2. 将已覆盖的 Outline 与 style span growth allocation failure 扩展到后续动态 arena；
 3. 在 scratch block 中构建；
 4. 成功后通过 pointer/metadata swap 提交；
 5. 确保无 reader 后释放旧块；

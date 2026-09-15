@@ -1,6 +1,6 @@
 # V8.5.2 Failure Injection Design
 
-Status: transactional save, ReadFile injection, and first Outline growth-allocation injection implemented
+Status: transactional save, ReadFile injection, and Outline/style arena growth-allocation injection implemented
 
 ## Principle
 
@@ -72,8 +72,26 @@ then rejects the first growth request. Open computes the exact canonical CRLF
 length of the decoded candidate and reserves the needed Outline capacity before
 writing `document_model` or changing the editor. The Windows harness proves that
 failed growth preserves text, path, revisions, encoding, EOL, view state,
-Outline count, all arena pointers, and prior arena bytes. The release build calls
-`VirtualAlloc` directly and remains free of injection state.
+  Outline count, all arena pointers, and prior arena bytes. The release build calls
+  `VirtualAlloc` directly and remains free of injection state.
+
+## Implemented style-arena allocation slice
+
+`tools/test_v8_5_2_style_alloc_injection.py` builds two marked binaries in
+ignored `bin/test/` through `ARENA_ALLOC_INJECTION_MODE`:
+
+- `style_fail_second` permits the startup 4096-entry arena and rejects the first
+  growth request. Opening a 140,000-span document then fails at the Open
+  allocation gate while text, path, revisions, encoding, EOL, view state, span
+  count, capacity, all three arena pointers and sampled prior arena bytes stay
+  byte-for-byte identical.
+- `style_fail_first` rejects the startup allocation. No capacity is published,
+  no span is recorded through a stale pointer, the process stays alive, and a
+  later Open retries the allocation and succeeds normally.
+
+`ARENA_ALLOC_INJECTION_MODE` also accepts the original Outline modes
+(`fail_first`, `fail_second`); the earlier `OUTLINE_ALLOC_INJECTION_MODE`
+variable is still honored as an alias for external harnesses.
 
 ## Implemented ReadFile slice
 

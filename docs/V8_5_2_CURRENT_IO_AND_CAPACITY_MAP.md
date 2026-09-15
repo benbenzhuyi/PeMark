@@ -49,8 +49,8 @@ successful commit; no durability or recovery policy.
 | document | `document_model` | fixed 8.5M UTF-16 |
 | render | `previewbuf` | fixed 8.5M UTF-16 |
 | map | `render_srcmap` | fixed 8.5M dwords |
-| style spans | three arrays | 131072, silently stops adding |
-| outline | arrays | 2048 active cap |
+| style spans | one dynamic arena (three segments) | cap retired; capacity from canonical length |
+| outline | one dynamic arena | 2048 cap retired; capacity from canonical length |
 | input file | `MAX_FILE_BYTES` | 4,194,304 bytes |
 | dirty state | absent | destructive transitions unguarded |
 | encoding | `encoding_state` | not a complete input/output policy |
@@ -84,3 +84,8 @@ migration follow as separate bounded changes.
   to the first terminator observed at Open; no-terminator input defaults CRLF.
 - Save uses the sibling staging and atomic-replacement transaction documented in
   `V8_5_2_FILE_OPERATION_CONTRACTS.md` and `V8_5_2_RECOVERY_POLICY.md`.
+- Outline and style-span tables are `VirtualAlloc` arenas reserved before the
+  Open commit point. Outline capacity is `max(4096, normalized_length/4 + 1)`;
+  style capacity is `max(4096, normalized_length/2 + 16)`. Both never shrink
+  during a process lifetime and both publish their pointers only after a
+  successful allocation, so a failed growth leaves the previous arena intact.

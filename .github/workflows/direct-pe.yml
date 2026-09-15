@@ -55,3 +55,9 @@ jobs:
       - name: Exercise V8.5.2 Outline allocation failure when present
         if: ${{ hashFiles('tools/test_v8_5_2_outline_alloc_injection.py') != '' }}
         run: python tools/test_v8_5_2_outline_alloc_injection.py
+      - name: Exercise V8.5.2 style-arena allocation failure when present
+        if: ${{ hashFiles('tools/test_v8_5_2_style_alloc_injection.py') != '' }}
+        run: python tools/test_v8_5_2_style_alloc_injection.py
+      - name: Verify the retired style-span cap when present
+        if: ${{ hashFiles('tools/test_v8_5_2_style_capacity.py') != '' }}
+        run: python tools/test_v8_5_2_style_capacity.py

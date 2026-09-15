@@ -112,16 +112,29 @@ normal close exit code:                  = 0
   before Open mutates the active model. Injected failure on the first growth
   allocation preserves model, path, revisions, encoding, EOL, view state,
   Outline count, pointers, and sampled prior arena bytes.
+- The second Phase E slice retires the fixed 131072-entry Markdown style table.
+  `style_start`, `style_end` and `style_type` are now segments of one
+  `VirtualAlloc` arena sized `max(4096, normalized_length/2 + 16)` entries, and
+  `apply_styles` refuses to run before that arena exists. Fixed tables accounted
+  for 3 x 512 KiB of the previous BSS; `bss_vsize` dropped from 121,081,856 to
+  119,508,992 bytes.
+- A 140,000-span regression document records 140,000 spans (the retired cap
+  would have truncated at 131,072) with verified arena geometry and
+  first/cap-boundary/last span payloads.
+- `tools/test_v8_5_2_style_alloc_injection.py` proves that a failed style-arena
+  growth leaves the active document, metadata, view state and previous arena
+  untouched, and that a failed first allocation publishes no arena at all.
 - Candidate size: 78,336 bytes.
-- Emitted text: 29,148 bytes, 2,082 bytes above V8.5.1.
+- Emitted text: 29,466 bytes, 2,400 bytes above V8.5.1.
 - Candidate SHA-256:
-  `3d3717c51f9427e03d5a830f183e846f58e96eb0bd45250371ce1d6597564baf`.
+  `e134e6d2419574aacf975b217a610aebbb6a5070e36f20ef25d83d3e6ce1857a`.
 
 ## Remaining before promotion
 
-- Complete Phase E dynamic arenas: remove the active 131072-style cap, extend
-  allocation-failure coverage to the remaining arenas, and demonstrate stable memory
-  across repeated Open/parse/Close cycles. Until then this remains a document
-  safety candidate rather than the V8.5.2 release.
+- Complete Phase E dynamic arenas: migrate the remaining fixed document, render,
+  position-map and encoded-output buffers, extend allocation-failure coverage to
+  those arenas, and demonstrate stable memory across repeated Open/parse/Close
+  cycles. Until then this remains a document safety candidate rather than the
+  V8.5.2 release.
 - Add startup or Open-time recovery discovery only if later usability evidence
   justifies directory scanning beyond the current Save-time policy.

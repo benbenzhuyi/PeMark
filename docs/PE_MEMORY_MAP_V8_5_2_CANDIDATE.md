@@ -2,9 +2,9 @@
 
 布局（V8.5.0-pre 扩展）：text @ 0x1000（预算 0xf000 字节）、rdata @ 0x10000、idata @ 0x13000、BSS @ 0x14000（virtual-only 尾部）。
 
-本次构建：text 实际 29148 字节（余量 32292 字节）；BSS 符号 172 个，最终虚拟 BSS 121081856 字节。
+本次构建：text 实际 29466 字节（余量 31974 字节）；BSS 符号 173 个，最终虚拟 BSS 119508992 字节。
 
-SHA-256：`3d3717c51f9427e03d5a830f183e846f58e96eb0bd45250371ce1d6597564baf`
+SHA-256：`e134e6d2419574aacf975b217a610aebbb6a5070e36f20ef25d83d3e6ce1857a`
 
 | Symbol | RVA | Size |
 |---|---:|---:|
@@ -133,50 +133,51 @@ SHA-256：`3d3717c51f9427e03d5a830f183e846f58e96eb0bd45250371ce1d6597564baf`
 | `defproc_result` | `0x153D0` | 8 |
 | `nav_hwnd` | `0x153D8` | 8 |
 | `style_count` | `0x153E0` | 4 |
-| `style_start` | `0x153F0` | 524288 |
-| `style_end` | `0x953F0` | 524288 |
-| `style_type` | `0x1153F0` | 524288 |
-| `outline_titlebuf` | `0x1953F0` | 1024 |
-| `menu_textbuf` | `0x1957F0` | 512 |
-| `line_src_start` | `0x1959F0` | 4 |
-| `heading_out_start` | `0x1959F4` | 4 |
-| `heading_out_end` | `0x1959F8` | 4 |
-| `heading_level` | `0x1959FC` | 4 |
-| `quote_out_start` | `0x195A00` | 4 |
-| `bold_out_start` | `0x195A04` | 4 |
-| `italic_out_start` | `0x195A08` | 4 |
-| `code_out_start` | `0x195A0C` | 4 |
-| `link_out_start` | `0x195A10` | 4 |
-| `codeblock_out_start` | `0x195A14` | 4 |
-| `inline_flags` | `0x195A18` | 4 |
-| `line_flags` | `0x195A1C` | 4 |
-| `bold_flag` | `0x195A20` | 4 |
-| `italic_flag` | `0x195A24` | 4 |
-| `inlinecode_flag` | `0x195A28` | 4 |
-| `link_flag` | `0x195A2C` | 4 |
-| `codeblock_flag` | `0x195A30` | 4 |
-| `document_len` | `0x195A34` | 4 |
-| `suppress_edit_change` | `0x195A38` | 4 |
-| `render_len` | `0x195A3C` | 4 |
-| `render_srcmap` | `0x195A40` | 34000000 |
-| `document_model` | `0x22026C0` | 17000000 |
-| `widebuf` | `0x3238D00` | 17000000 |
-| `previewbuf` | `0x426F340` | 17000000 |
-| `bytebuf` | `0x52A5980` | 34500016 |
-| `document_revision` | `0x738C730` | 8 |
-| `saved_revision` | `0x738C738` | 8 |
-| `pending_destructive_action` | `0x738C740` | 4 |
-| `save_target_is_temp` | `0x738C744` | 4 |
-| `inject_write_call_count` | `0x738C748` | 4 |
-| `inject_flush_call_count` | `0x738C74C` | 4 |
-| `inject_replace_call_count` | `0x738C750` | 4 |
-| `save_stage_path` | `0x738C760` | 1024 |
-| `inject_create_call_count` | `0x738CB60` | 4 |
-| `inject_close_call_count` | `0x738CB64` | 4 |
-| `eol_state` | `0x738CB68` | 4 |
-| `candidate_encoding_state` | `0x738CB6C` | 4 |
-| `candidate_eol_state` | `0x738CB70` | 4 |
-| `outline_srcpos` | `0x738CB78` | 8 |
-| `outline_renderpos` | `0x738CB80` | 8 |
-| `outline_level` | `0x738CB88` | 8 |
-| `outline_capacity` | `0x738CB90` | 4 |
+| `style_start` | `0x153E8` | 8 |
+| `style_end` | `0x153F0` | 8 |
+| `style_type` | `0x153F8` | 8 |
+| `style_capacity` | `0x15400` | 4 |
+| `outline_titlebuf` | `0x15410` | 1024 |
+| `menu_textbuf` | `0x15810` | 512 |
+| `line_src_start` | `0x15A10` | 4 |
+| `heading_out_start` | `0x15A14` | 4 |
+| `heading_out_end` | `0x15A18` | 4 |
+| `heading_level` | `0x15A1C` | 4 |
+| `quote_out_start` | `0x15A20` | 4 |
+| `bold_out_start` | `0x15A24` | 4 |
+| `italic_out_start` | `0x15A28` | 4 |
+| `code_out_start` | `0x15A2C` | 4 |
+| `link_out_start` | `0x15A30` | 4 |
+| `codeblock_out_start` | `0x15A34` | 4 |
+| `inline_flags` | `0x15A38` | 4 |
+| `line_flags` | `0x15A3C` | 4 |
+| `bold_flag` | `0x15A40` | 4 |
+| `italic_flag` | `0x15A44` | 4 |
+| `inlinecode_flag` | `0x15A48` | 4 |
+| `link_flag` | `0x15A4C` | 4 |
+| `codeblock_flag` | `0x15A50` | 4 |
+| `document_len` | `0x15A54` | 4 |
+| `suppress_edit_change` | `0x15A58` | 4 |
+| `render_len` | `0x15A5C` | 4 |
+| `render_srcmap` | `0x15A60` | 34000000 |
+| `document_model` | `0x20826E0` | 17000000 |
+| `widebuf` | `0x30B8D20` | 17000000 |
+| `previewbuf` | `0x40EF360` | 17000000 |
+| `bytebuf` | `0x51259A0` | 34500016 |
+| `document_revision` | `0x720C750` | 8 |
+| `saved_revision` | `0x720C758` | 8 |
+| `pending_destructive_action` | `0x720C760` | 4 |
+| `save_target_is_temp` | `0x720C764` | 4 |
+| `inject_write_call_count` | `0x720C768` | 4 |
+| `inject_flush_call_count` | `0x720C76C` | 4 |
+| `inject_replace_call_count` | `0x720C770` | 4 |
+| `save_stage_path` | `0x720C780` | 1024 |
+| `inject_create_call_count` | `0x720CB80` | 4 |
+| `inject_close_call_count` | `0x720CB84` | 4 |
+| `eol_state` | `0x720CB88` | 4 |
+| `candidate_encoding_state` | `0x720CB8C` | 4 |
+| `candidate_eol_state` | `0x720CB90` | 4 |
+| `outline_srcpos` | `0x720CB98` | 8 |
+| `outline_renderpos` | `0x720CBA0` | 8 |
+| `outline_level` | `0x720CBA8` | 8 |
+| `outline_capacity` | `0x720CBB0` | 4 |
