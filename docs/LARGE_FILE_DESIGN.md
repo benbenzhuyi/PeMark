@@ -5,10 +5,10 @@
 - input bytes: 4 MiB
 - UTF-16 work buffers: 8.5M code units each
 - byte output buffer: 34.5M bytes
-- render->source map: 8.5M x 4 bytes
+- render->source map + render text: dynamic arena, `max(4096, normalized_length + 1)` units
 - style spans: dynamic arena, `max(4096, normalized_length/2 + 16)` entries
 - Outline entries: dynamic arena, `max(4096, normalized_length/4 + 1)` entries
-- total virtual BSS: ~114 MiB after retiring both fixed tables
+- total virtual BSS: ~65 MiB after retiring the style, Outline and render tables
 
 The frozen V8.5.2 pre-arena baseline registered exactly 2048 of 2600 headings.
 The first Phase E migration replaces the three fixed Outline arrays with one
@@ -21,6 +21,12 @@ retiring the 131072-entry table. Both arenas are reserved before the Open commit
 point, publish their pointers only after a successful allocation, and keep the
 previous arena intact when growth fails. A 140,000-span fixture confirms that
 formatting metadata is no longer truncated.
+
+The third migration covers the render side: the position map and the render text
+share one arena sized from the canonical document length, and the scanner's
+overflow guard reads the published capacity instead of a constant. The document,
+decode and encoded-output buffers are still fixed and are the remaining V8.5.3
+work.
 
 ## Lessons from V8.4.x
 

@@ -57,3 +57,6 @@ jobs:
           python tools/test_v8_5_2_outline_alloc_injection.py
           python tools/test_v8_5_2_style_alloc_injection.py
           python tools/test_v8_5_2_style_capacity.py
+      - name: Exercise V8.5.3 render arena when present
+        if: ${{ hashFiles('tools/test_v8_5_3_render_arena.py') != '' }}
+        run: python tools/test_v8_5_3_render_arena.py

@@ -14,6 +14,7 @@ SMALL = ROOT / "tests/v8_5_2/fixtures/utf8_lf.md"
 CMD_OPEN_SELECTED = 1901
 SPAN_LINES = 140000
 k32 = c.windll.kernel32
+VERSION_TAG = GEN.stem.replace("generate_markdown_editor_", "")
 
 
 def build(mode):
@@ -22,7 +23,7 @@ def build(mode):
           "OPEN_TEST_BUILD": True, "ARENA_ALLOC_INJECTION_MODE": mode}
     exec(compile(source, str(GEN), "exec"), ns)
     out = Path(ns["out"])
-    assert out.name == f"pemark_x64_v8_5_2_style_alloc_{mode}.exe", out.name
+    assert out.name == f"pemark_x64_{VERSION_TAG}_style_alloc_{mode}.exe", out.name
     assert "bin" in out.parts and "test" in out.parts
     return ns, out
 

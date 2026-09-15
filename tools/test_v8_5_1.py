@@ -104,7 +104,14 @@ def checks(ns):
         m.u.mem_write(start,struct.pack('<III',0,100,200))
         if dynamic: m.put('outline_capacity',4096)
         m.put('outline_count',3)
-        m.u.mem_write(m.base+ns['bsyms']['render_srcmap'],struct.pack('<1000I',*range(1000)))
+        if ns.get('bss_sizes',{}).get('render_srcmap')==8:
+            arena=0x310000
+            m.put('render_srcmap',arena,8)
+            m.put('previewbuf',arena+0x4000,8)
+            m.put('render_arena_capacity',4096)
+            m.u.mem_write(arena,struct.pack('<1000I',*range(1000)))
+        else:
+            m.u.mem_write(m.base+ns['bsyms']['render_srcmap'],struct.pack('<1000I',*range(1000)))
         m.run('navigate_outline')
         sels=[a for n,a in m.calls if n=='SendMessageW' and a[1]==0xb1]
         assert sels and sels[0][0]==2 and sels[0][2:]==[200,200], sels
@@ -183,8 +190,16 @@ def checks(ns):
             m=Machine(ns); m.put('hwnd_preview',0,8)
             source="```python\ndef hello():\n    return '# not heading'\n```\n"
             m.u.mem_write(m.base+ns['bsyms']['document_model'],(source+'\0').encode('utf-16le'))
+            if ns.get('bss_sizes',{}).get('previewbuf')==8:
+                # update_preview reserves the render arena itself; point the map/text
+                # at mapped scratch memory the way the real allocator would.
+                arena=0x310000
+                m.put('render_srcmap',arena,8)
+                m.put('previewbuf',arena+0x4000,8)
+                m.put('render_arena_capacity',4096)
             m.run('update_preview')
-            rendered=bytes(m.u.mem_read(m.base+ns['bsyms']['previewbuf'],m.get('render_len')*2)).decode('utf-16le')
+            base=m.base+ns['bsyms']['previewbuf'] if ns.get('bss_sizes',{}).get('previewbuf')!=8 else int.from_bytes(m.u.mem_read(m.base+ns['bsyms']['previewbuf'],8),'little')
+            rendered=bytes(m.u.mem_read(base,m.get('render_len')*2)).decode('utf-16le')
             assert "def hello():\r    return '# not heading'\r" in rendered,repr(rendered)
         check('fenced code preserves indentation and internal spaces',fenced_spaces)
         def short_hover():

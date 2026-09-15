@@ -13,6 +13,7 @@ SMALL = ROOT / "tests/v8_5_2/fixtures/utf8_lf.md"
 LARGE = ROOT / "tests/outline_2600_headings.md"
 CMD_OPEN_SELECTED = 1901
 k32 = c.windll.kernel32
+VERSION_TAG = GEN.stem.replace("generate_markdown_editor_", "")
 
 
 def build(mode):
@@ -21,7 +22,7 @@ def build(mode):
           "OPEN_TEST_BUILD": True, "ARENA_ALLOC_INJECTION_MODE": mode}
     exec(compile(source, str(GEN), "exec"), ns)
     out = Path(ns["out"])
-    assert out.name == f"pemark_x64_v8_5_2_outline_alloc_{mode}.exe"
+    assert out.name == f"pemark_x64_{VERSION_TAG}_outline_alloc_{mode}.exe", out.name
     return ns, out
 
 

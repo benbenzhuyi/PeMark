@@ -12,6 +12,9 @@ ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "tests/v8_5_2/fixtures"
 CMD_OPEN_SELECTED, CMD_SAVE, CMD_PREVIEW = 1901, 1003, 1306
 k32 = c.windll.kernel32
+# Version tag derived from the generator under test so the same suite can verify
+# the released channel and the next development channel.
+VERSION_TAG = GEN.stem.replace("generate_markdown_editor_", "")
 
 
 def build_test_candidate(read_mode="release"):
@@ -20,8 +23,9 @@ def build_test_candidate(read_mode="release"):
           "OPEN_TEST_BUILD": True, "OPEN_READ_INJECTION_MODE": read_mode}
     exec(compile(source, str(GEN), "exec"), ns)
     out = Path(ns["out"])
-    expected = ("pemark_x64_v8_5_2_open_transaction_test.exe" if read_mode == "release"
-                else f"pemark_x64_v8_5_2_open_read_{read_mode}.exe")
+    expected = (f"pemark_x64_{VERSION_TAG}_open_transaction_test.exe"
+                if read_mode == "release"
+                else f"pemark_x64_{VERSION_TAG}_open_read_{read_mode}.exe")
     assert out.name == expected
     assert "bin" in out.parts and "test" in out.parts
     return ns, out

@@ -8,6 +8,7 @@ import time
 from test_v8_5_2_destructive import App, EXE, GEN, CMD_NEW
 
 WM_CLOSE = 0x0010
+VERSION_TAG = GEN.stem.replace("generate_markdown_editor_", "")
 
 
 def build_variant(mode):
@@ -19,7 +20,7 @@ def build_variant(mode):
     }
     exec(compile(source, str(GEN), "exec"), ns)
     out = Path(ns["out"])
-    assert out.name == f"pemark_x64_v8_5_2_write_{mode}.exe"
+    assert out.name == f"pemark_x64_{VERSION_TAG}_write_{mode}.exe", out.name
     assert "bin" in out.parts and "test" in out.parts
     return ns, out
 
