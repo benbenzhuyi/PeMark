@@ -2023,14 +2023,20 @@ em.lea_rip('rcx',bsyms['msg']); em.call_iat('TranslateMessage'); em.lea_rip('rcx
 # has been idle for ~180 ms.
 em.mov_r32_ripmem('rax',bsyms['preview_theme_dirty']); em.test32('rax'); em.jcc(0x84,'dispatch_theme_refresh_done')
 em.mov_rax_mr12(0); em.mov_r64_ripmem('r10',bsyms['hwnd_preview']); em.cmp_r64_r64('rax','r10'); em.jcc(0x85,'dispatch_theme_refresh_done')
-em.mov_eax_mr12(8); em.cmp_r32_imm('rax',0x0115); em.jcc(0x84,'dispatch_theme_schedule')  # WM_VSCROLL
+em.mov_eax_mr12(8); em.cmp_r32_imm('rax',0x0115); em.jcc(0x84,'dispatch_theme_vscroll')  # WM_VSCROLL
 em.cmp_r32_imm('rax',0x020A); em.jcc(0x84,'dispatch_theme_schedule')                       # WM_MOUSEWHEEL
 # Lazy Preview styling must also follow keyboard viewport movement (arrows, PgUp/
 # PgDn, Home/End). Scheduling on any Preview WM_KEYDOWN is cheap and avoids stale
 # formatting after keyboard-only navigation.
 em.cmp_r32_imm('rax',0x0100); em.jcc(0x85,'dispatch_theme_refresh_done')
+em.jmp('dispatch_theme_schedule')
+em.label('dispatch_theme_vscroll')
+# V8.6.1：拖动滑块期间（SB_THUMBTRACK=5）绝不重排——拖动途中反复重排既卡顿，
+# 又会让重排后的视口露出尚未格式化的源码。等松手后的 SB_ENDSCROLL 再统一格式化。
+em.mov_rax_mr12(16); em.mov_r32_r32('r10','rax'); em.and_r32_imm('r10',0xFFFF); em.cmp_r32_imm('r10',5); em.jcc(0x84,'dispatch_theme_refresh_done')
 em.label('dispatch_theme_schedule')
-em.mov_r64_ripmem('rcx',bsyms['hwnd_main']); em.mov_r32_imm('rdx',0x4D); em.mov_r32_imm('r8',180); em.xor32('r9'); em.call_iat('SetTimer')
+# 180ms 太短：连续滚动时定时器会在手指停顿的间隙里触发，导致滚动中重排（卡顿）。
+em.mov_r64_ripmem('rcx',bsyms['hwnd_main']); em.mov_r32_imm('rdx',0x4D); em.mov_r32_imm('r8',450); em.xor32('r9'); em.call_iat('SetTimer')
 em.label('dispatch_theme_refresh_done')
 # V8.4.4: do NOT refresh the owner-drawn status bar after every dispatched
 # message. WM_MOUSEMOVE used to cause six SB_SETTEXT redraws per message,
