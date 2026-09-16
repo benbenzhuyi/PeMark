@@ -2401,9 +2401,14 @@ em.mov_r64_ripmem('rcx',bsyms['hwnd_preview']); em.call_label('capture_surface_s
 # Suppress all intermediate paints while selection/ranges are temporarily changed.
 em.mov_r64_ripmem('rcx',bsyms['hwnd_preview']); em.mov_r32_imm('rdx',0x000B); em.xor32('r8'); em.xor32('r9'); em.call_iat('SendMessageW')
 em.call_label('set_visible_format_window'); em.mov_ripmem_imm32(bsyms['preview_visible_format_only'],1); em.call_label('apply_styles'); em.mov_ripmem_imm32(bsyms['preview_visible_format_only'],0)
-# 第二遍：第一遍隐藏标记后行高/换行会重排，把因此新露出来的区域再格式化一次
-# （重复套用同样的字符格式是幂等的）。否则快速滚动停下时会看到未渲染的源码。
-em.call_label('set_visible_format_window'); em.mov_ripmem_imm32(bsyms['preview_visible_format_only'],1); em.call_label('apply_styles'); em.mov_ripmem_imm32(bsyms['preview_visible_format_only'],0)
+# V8.6.1 第 1 步（首屏优先 + 空闲预渲染）：可见区已格式化后，再把"当前视口往前
+# 8 万字符"一并补好。这样大幅度滚动/跳转停下时，落点附近通常已经在格式化范围内，
+# 不会再出现成片未渲染；代价是每次空闲多做一段（毫秒~几十毫秒级），不阻塞输入、
+# 也不需要新增定时器——复用的就是这条 450ms 去抖后的刷新。
+em.mov_r32_ripmem('rax',bsyms['view_top_pos']); em.mov_r32_imm('r10',80000); em.add_r32_r32('rax','r10')
+em.mov_r32_ripmem('r11',bsyms['render_len']); em.cmp_r32_r32('rax','r11'); em.jcc(0x86,'lookahead_ready'); em.mov_r32_r32('rax','r11')
+em.label('lookahead_ready'); em.mov_ripmem_r32(bsyms['format_visible_end'],'rax')
+em.mov_ripmem_imm32(bsyms['preview_visible_format_only'],1); em.call_label('apply_styles'); em.mov_ripmem_imm32(bsyms['preview_visible_format_only'],0)
 em.mov_r64_ripmem('rcx',bsyms['hwnd_preview']); em.call_label('restore_surface_state')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_preview']); em.mov_r32_imm('rdx',0x000B); em.mov_r32_imm('r8',1); em.xor32('r9'); em.call_iat('SendMessageW')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_preview']); em.xor32('rdx'); em.mov_r32_imm('r8',1); em.call_iat('InvalidateRect')
