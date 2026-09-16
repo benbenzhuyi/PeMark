@@ -40,13 +40,13 @@
 
 - [x] 在发布提交上重跑 commit 与 milestone 两级门禁，结果记录于
   `V8_5_3_RELEASE_RESULTS.md`。
-- [ ] 创建带说明的 `v8.5.3` 标签。
-- [ ] 创建名为 `PeMark V8.5.3 Preview` 的 GitHub Pre-release。
-- [ ] 使用 `RELEASE_V8_5_3_GITHUB.md` 作为发布正文。
-- [ ] 只附加 `bin/current/pemark_x64_v8_5_3.exe`。
-- [ ] 确认附件 SHA-256 为
+- [x] 创建带说明的 `v8.5.3` 标签。
+- [x] 创建名为 `PeMark V8.5.3 Preview` 的 GitHub Pre-release。
+- [x] 使用 `RELEASE_V8_5_3_GITHUB.md` 作为发布正文。
+- [x] 只附加 `bin/current/pemark_x64_v8_5_3.exe`。
+- [x] 确认附件 SHA-256 为
   `6ad87c6dcb3b9d3a35041d1bc37e5792f3cfd16cb79046088a3426200d0bb7d0`。
-- [ ] 保持 GitHub 的 “Set as a pre-release” 选项开启。
+- [x] 保持 GitHub 的 “Set as a pre-release” 选项开启。
 
 ## 仓库设置
 
