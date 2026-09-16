@@ -9,6 +9,20 @@ refresh/collapse — replacing the earlier "single flat list, read-only" decisio
 The design, the Rabbit reference behaviour and the remaining slices A–E are in
 `docs/FILE_PANEL_REDESIGN.md`; no code has been written against it yet.
 
+## Keymap alignment with Rabbit
+
+Shared actions now use Rabbit's keys: `Ctrl+Shift+S` saves as, `Ctrl+Shift+O`
+opens a folder, `Ctrl+W` closes the document, and `Ctrl+B` toggles the whole
+left sidebar (the View item is renamed `Left Sidebar`). The status bar moved to
+the freed `Ctrl+Alt+S`, Insert Link to `Ctrl+Alt+L` and Code Block to
+`Ctrl+Alt+K`, which leaves `Ctrl+K` and `Ctrl+Shift+K` free for the V9 AI quick
+edit and V8.7's Delete Line.
+
+`docs/KEYBINDINGS.md` holds the full mapping, the conflict decisions and the
+reserved keys for later milestones. Build-time assertions tie the accelerator
+table to the menu hints, and `tools/test_v8_6_keymap.py` parses the shipped
+table out of the running process and verifies the reserved keys stay unused.
+
 V8.6 is scoped to "browse a directory and open files from it" while the
 application still owns a single writable document. The plan
 (`docs/MILESTONE_PLAN.md` §6) deliberately defers destructive file operations,
