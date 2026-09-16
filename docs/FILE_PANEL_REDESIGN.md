@@ -175,10 +175,14 @@ PeMark 是纯 Direct-PE 机器码生成，没有 DOM 与第三方控件，因此
     决定最终几何，避免高度与状态互相覆盖。
 12. **分界线拖动与标题点击沿用既有鼠标路径。**
     分界线是一个 4px 高的子窗口（`hwnd_panel_divider`），拖动复用
-    `splitter_drag` 那套模式（`SetCapture` + `WM_MOUSEMOVE` + 位移换算），
+    `splitter_drag` 那套模式（`SetCapture` + `WM_MOUSEMOVE` + 绝对位置换算），
     命中时把光标设为 `IDC_SIZENS(32645)`；标题栏是自绘 STATIC
-    （`hwnd_files_header` / `hwnd_outline_header`），单击与双击用
-    `GetMessageTime` 的间隔区分，避免 Rabbit 那种 250ms 定时器在消息泵里额外开销。
+    （`hwnd_files_header` / `hwnd_outline_header`）。单击先用
+    `SetTimer(0x4E, 250ms)` 挂起，双击用 `GetMessageTime` 的间隔（同一标题栏
+    且不超过 500ms）判定并取消挂起。挂起的单击到点才走三态循环：这与 Rabbit 的
+    `setTimeout` 同义，多花一个定时器 ID，换来的是双击的第二下必然落在**没有
+    移动过**的标题栏上。若第一次单击立即应用，最小化会让标题栏当场移位，
+    第二下就落空了。
 13. **两个面板共用主题与命中路由。**
     hover/拖动/滚轮等现有逻辑（`update_outline_hover`、
     `outline_scroll_drag_move`、`mousewheel_event`）按"鼠标落在哪个面板矩形"分流，
@@ -237,11 +241,11 @@ PeMark 是纯 Direct-PE 机器码生成，没有 DOM 与第三方控件，因此
 
 | 输入 | 行为 |
 | --- | --- |
-| 单击文件面板标题栏 | 三态循环 `half → minimized → maximized → half` |
-| 双击文件面板标题栏 | 在 `minimized` 与 `maximized` 之间对调 |
+| 单击文件面板标题栏 | 250ms 后三态循环 `half → minimized → maximized → half`（与 Rabbit 同义） |
+| 双击文件面板标题栏 | 在 `minimized` 与 `maximized` 之间对调：最小化的面板双击后最大化，其余状态双击后最小化 |
 | 单击/双击大纲标题栏 | 同上，状态机互相独立（与 Rabbit 一致） |
 | 标题栏内的按钮（折叠/刷新） | 只触发按钮动作，不改变面板状态 |
-| 拖动 4px 分界线 | 改 `panel_split`，实时钳制到上下各留一个标题栏（28px） |
+| 拖动 4px 分界线 | 改 `panel_split`，按指针绝对位置换算，钳制到 `[80, 920]‰` |
 | 分界线悬停 | 背景变强调色，光标变 `IDC_SIZENS` |
 | 单击箭头区（缩进段末尾 12px） | 展开/折叠该目录（`Shift` 时递归展开） |
 | 单击目录行其他区域 | 展开/折叠 |
@@ -289,6 +293,12 @@ PeMark 是纯 Direct-PE 机器码生成，没有 DOM 与第三方控件，因此
   4px 分界线子窗口；`resize_children` 改为按 `panel_split` 与三态计算几何；
 - 标题栏单击三态循环、双击 min/max 对调；分界线拖动改比例并钳制；
   每面板独立滚动状态与命中路由；
+  - 已完成：三件套、两个标题栏、4px 分界线；`panel_split` 三态几何；
+    标题栏单击/双击（250ms 挂起 + `GetMessageTime` 判定）；分界线悬停高亮、
+    `IDC_SIZENS` 光标、绝对位置拖动与 `[80, 920]‰` 钳制。证据：
+    `tools/test_v8_6_panel.py` 用真实指针输入驱动以上全部行为。
+  - 未完：文件面板自己的滚动条（当前 overlay 仍只服务大纲）、
+    `View → Files/Outline Panel` 的显示开关语义、每面板独立滚动路由。
 - 切片 2 的 `panel_mode` 二选一语义与相关测试在此切片被替换（大纲内容、
   层级配色、`outline_*` 三表与滚动状态全部保留，只是不再与文件共用控件）；
 - 验收：两个列表同时可见且各滚各的；拖动分界、单击/双击标题的三态与钳制符合
@@ -357,7 +367,7 @@ PeMark 是纯 Direct-PE 机器码生成，没有 DOM 与第三方控件，因此
 | 文件过滤 | 显示全部非隐藏项 | 只显示 `.md` / `.markdown` / `.txt` | 用户决策：只列出可打开的文本 |
 | 打开方式 | 单击打开 + 双击重命名 | 同 Rabbit | 用户决策 |
 | 面板比例表达 | CSS flex 百分比 + 0.15s 过渡 | 像素千分比，无过渡动画 | 自绘窗口没有 CSS 过渡，瞬间重排更可预测 |
-| 单双击区分 | 250ms `setTimeout` | `GetMessageTime` 间隔判定 | 消息泵里不需要额外定时器 |
+| 单双击区分 | 250ms `setTimeout` | 250ms `SetTimer` 挂起单击 + `GetMessageTime` 间隔判定双击 | 语义与 Rabbit 一致；立即应用会让标题栏在双击中间移位 |
 | 保存备份 | 覆盖前 `.bak.md` | 不采用 | 已有事务化保存与 staging 保障 |
 
 ## 12. 已确认的决策（2026-09-16）

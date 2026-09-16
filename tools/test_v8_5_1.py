@@ -44,6 +44,15 @@ class Machine:
             self.put(key, value, 8)
         self.put('content_h', 570); self.put('scrollbar_w',17)
         self.put('outline_width',230); self.put('outline_flag',1)
+        # V8.6.1 splits the sidebar into two panels, so the scrollbar geometry is
+        # no longer read straight from content_h: resize_children publishes
+        # files_list_h / outline_list_h and scroll_layout consumes that. Bootstrap
+        # the split through the real layout routine, exactly like the app's
+        # startup path, so every scenario below still starts from a live layout.
+        if 'outline_list_h' in ns['bsyms']:
+            self.put('client_w',800); self.put('client_h',570); self.put('status_flag',0)
+            self.put('files_state',1); self.put('outline_state',1); self.put('panel_split',500)
+            self.run('resize_children')
 
     def put(self, name, value, size=4):
         self.u.mem_write(self.base+self.ns['bsyms'][name], int(value).to_bytes(size,'little',signed=value<0))
@@ -264,11 +273,14 @@ def checks(ns):
         check('viewport formatting clips huge code spans to visible range',viewport)
         def geometry():
             m=Machine(ns)
+            # V8.6.1: the outline panel owns a slice of the sidebar, so its list
+            # height (not the whole content area) is what scroll_layout consumes.
+            height_symbol='outline_list_h' if 'outline_list_h' in ns['bsyms'] else 'content_h'
             for count in [0,1,18,19,20,1800,2048]:
                 for height in [0,8,20,29,30,31,565,570,599,1200]:
                     for top in [0,count//2,count+100]:
                         m.put('outline_scroll_count',count); m.put('outline_scroll_top',top)
-                        m.put('content_h',height); m.run('scroll_layout')
+                        m.put(height_symbol,height); m.run('scroll_layout')
                         rows=max(1,height//30); maximum=max(0,count-rows)
                         assert m.get('outline_visible_rows')==rows
                         assert m.get('outline_max_top')==maximum
@@ -282,7 +294,10 @@ def checks(ns):
         check('210 scrollbar capacity/height/top boundary combinations',geometry)
         def drag_positions():
             m=Machine(ns); m.run('sync_outline_scrollbar'); m.put('outline_scroll_drag_offset',10)
-            for y,expected in [(-100,0),(14,0),(10000,1781),(14,0)]:
+            # The bottom clamp is max_top = count - visibleRows, and visibleRows
+            # now follows the outline panel's own list height.
+            last=max(0,m.count-m.get('outline_visible_rows'))
+            for y,expected in [(-100,0),(14,0),(10000,last),(14,0)]:
                 m.cursor=(220,y); m.run('outline_scroll_drag_move')
                 assert m.top==expected,(y,m.top,expected)
         check('drag clamps both extremes and returns to start',drag_positions)

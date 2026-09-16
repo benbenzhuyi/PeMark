@@ -23,7 +23,7 @@ reserved keys for later milestones. Build-time assertions tie the accelerator
 table to the menu hints, and `tools/test_v8_6_keymap.py` parses the shipped
 table out of the running process and verifies the reserved keys stay unused.
 
-## V8.6.1 — Sidebar split into two panels (slice 0, skeleton)
+## V8.6.1 — Sidebar split into two panels (slice 0)
 
 The outline and the file browser are no longer two modes of one ListBox. The
 sidebar now holds two independent lists stacked vertically: the file panel owns
@@ -37,16 +37,38 @@ Row drawing decides its data source from the control ID (14 = file panel), so
 neither list can read the other's tables. The status bar path segment now
 follows the workspace directly instead of the panel mode.
 
-Still open in slice 0: the 28px panel headers with the half/minimized/maximized
-click behaviour, the draggable 4px divider, the per-panel scrollbar ownership
-(the overlay still serves the outline), `View → Files/Outline Panel` becoming
-visibility switches, and the directory tree itself (slice 1).
+The frame around those lists is live. Each panel has a 28px header and the two
+are separated by a draggable 4px divider:
+
+- a single header click is held for 250ms and then walks
+  `half → minimized → maximized → half`, matching Rabbit's `setTimeout`
+  behaviour; deferring the first click is what keeps the second click of a
+  double click on a header that has not moved yet;
+- a double click (same header, within 500ms, timed with `GetMessageTime`)
+  cancels the pending single click and swaps minimized/maximized, so the three
+  reachable states are exactly Rabbit's;
+- the divider highlights with the accent colour and shows `IDC_SIZENS` while
+  hovered or dragged. Dragging converts the pointer's absolute position into
+  `panel_split` and clamps it to `[80, 920]` per-mille, so neither panel can be
+  squeezed below a usable strip.
+
+Still open in slice 0: the file panel's own scrollbar ownership (the overlay
+still serves the outline), `View → Files/Outline Panel` becoming visibility
+switches, and the directory tree itself (slice 1).
 
 Evidence: `tools/test_v8_6_panel.py` rewritten for the two-panel layout (both
 lists visible and stacked, each owning its content, directory/file colours in
-both themes, scrollbar geometry following the panel height);
+both themes, scrollbar geometry following the panel height) and extended with
+real pointer input: hover highlight, `+80px` drag arithmetic, both clamp ends,
+the full single-click tristate walk and all three double-click transitions;
 `tools/test_v8_6_navigation.py` now drives the file panel. Full V8.5.4 suite,
 the slice 1–4 suites and `smoke_test_v8_5_1.py` (17/17) pass.
+
+`tools/test_v8_5_1.py` keeps its role as the static machine-code regression
+suite: the emulated bootstrap now runs `resize_children` so the scrollbar
+scenarios consume the published `outline_list_h` instead of the whole content
+height, and the height/top matrix drives that same symbol. It still passes
+against the V8.5.1–V8.5.4 generators.
 
 V8.6 is scoped to "browse a directory and open files from it" while the
 application still owns a single writable document. The plan

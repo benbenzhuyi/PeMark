@@ -361,6 +361,16 @@ bss_alloc('divider_y', 4, 4)
 bss_alloc('files_state', 4, 4)
 bss_alloc('outline_state', 4, 4)
 bss_alloc('panel_split', 4, 4)   # 文件面板占可用高度的千分比（默认 500）
+bss_alloc('panel_click_time', 4, 4)
+bss_alloc('panel_click_target', 4, 4)
+bss_alloc('panel_click_now', 4, 4)    # 本次按下的标题栏（0 文件 / 1 大纲）
+bss_alloc('panel_click_pending', 4, 4)  # 已有一次等待兑现的单击（250ms 判定窗口内）
+bss_alloc('divider_drag', 4, 4)
+bss_alloc('divider_drag_y', 4, 4)
+bss_alloc('divider_drag_start', 4, 4)
+bss_alloc('divider_drag_usable', 4, 4)
+bss_alloc('divider_drag_target', 4, 4)
+bss_alloc('divider_hot', 4, 4)
 bss_alloc('splitter_drag', 4, 4)
 bss_alloc('scrollbar_w', 4, 4)
 bss_alloc('scroll_trim_w', 4, 4)
@@ -576,7 +586,7 @@ imports = {
         'SetWindowTextW','SendMessageW','MoveWindow','SetWindowPos','MessageBoxW','SetFocus',
         'RegisterClassExW','DefWindowProcW','PostQuitMessage','PostMessageW','LoadCursorW',
         'DestroyWindow','ShowWindow','CheckMenuItem','GetWindowRect','GetClientRect','wsprintfW','RegisterWindowMessageW','InvalidateRect','UpdateWindow','RedrawWindow',
-        'GetCursorPos','ScreenToClient','SetCapture','ReleaseCapture','SetCursor','BeginPaint','EndPaint','SetScrollRange','SetScrollPos','ShowScrollBar','GetKeyState','GetSystemMetrics','SetTimer','KillTimer',
+        'GetCursorPos','ScreenToClient','SetCapture','ReleaseCapture','SetCursor','BeginPaint','EndPaint','SetScrollRange','SetScrollPos','ShowScrollBar','GetKeyState','GetSystemMetrics','SetTimer','KillTimer','GetMessageTime',
         'CreateAcceleratorTableW','TranslateAcceleratorW','DestroyAcceleratorTable','IsDialogMessageW','SetForegroundWindow','DrawMenuBar','DrawTextW','FillRect','GetMenuStringW','SetMenuInfo','GetWindowDC','ReleaseDC','GetMenuItemRect'
     ],
     'COMDLG32.dll': ['GetOpenFileNameW','GetSaveFileNameW','FindTextW','ReplaceTextW'],
@@ -851,6 +861,8 @@ em.mov_ripmem_imm32(bsyms['outline_flag'],1)
 em.mov_ripmem_imm32(bsyms['outline_width'],228)
 em.mov_ripmem_imm32(bsyms['splitter_drag'],0)
 em.mov_ripmem_imm32(bsyms['outline_scroll_visible'],0)
+em.mov_ripmem_imm32(bsyms['divider_hot'],0)
+em.mov_ripmem_imm32(bsyms['divider_drag'],0)
 em.mov_ripmem_imm32(bsyms['outline_scroll_drag'],0)
 em.mov_ripmem_imm32(bsyms['outline_scroll_drag_offset'],0)
 em.mov_ripmem_imm32(bsyms['outline_scroll_thumb_top'],4)
@@ -1098,13 +1110,17 @@ em.cmp_r32_imm('rax',0x020A); em.jcc(0x84,'mousewheel_event')
 em.jmp('dispatch')
 
 em.label('mousemove_event')
-# Architecture-preview event routing: scrollbar drag, splitter drag, then hover.
+# Architecture-preview event routing: panel divider drag, scrollbar drag,
+# splitter drag, then hover.
+em.mov_r32_ripmem('rax',bsyms['divider_drag']); em.test32('rax'); em.jcc(0x84,'mousemove_not_divider_drag')
+em.call_label('divider_drag_move'); em.jmp('msg_loop')
+em.label('mousemove_not_divider_drag')
 em.mov_r32_ripmem('rax',bsyms['outline_scroll_drag']); em.test32('rax'); em.jcc(0x84,'mousemove_not_scroll_drag')
 em.call_label('outline_scroll_drag_move'); em.jmp('msg_loop')
 em.label('mousemove_not_scroll_drag')
 em.mov_r32_ripmem('rax',bsyms['splitter_drag']); em.test32('rax'); em.jcc(0x84,'mousemove_hover_only')
 em.call_label('splitter_drag_move'); em.jmp('msg_loop')
-em.label('mousemove_hover_only'); em.call_label('update_outline_hover'); em.jmp('dispatch')
+em.label('mousemove_hover_only'); em.call_label('update_divider_hover'); em.call_label('update_outline_hover'); em.jmp('dispatch')
 
 em.label('lbuttondown_event')
 # Convert current pointer to main-client coordinates once.  The permanent scrollbar
@@ -1118,6 +1134,64 @@ em.mov_r32_ripmem('rax',bsyms['outline_flag']); em.test32('rax'); em.jcc(0x84,'d
 em.mov_eax_mr12(36); em.mov_ripmem_r32(bsyms['cursor_pt'],'rax')
 em.mov_eax_mr12(40); em.mov_ripmem_r32(bsyms['cursor_pt']+4,'rax')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_main']); em.lea_rip('rdx',bsyms['cursor_pt']); em.call_iat('ScreenToClient'); em.test32('rax'); em.jcc(0x84,'dispatch')
+# V8.6.1 面板框架命中（自上而下）：文件标题栏 [0,28)、文件列表、分界线
+# [divider_y,divider_y+4)、大纲标题栏 [divider_y+4,divider_y+32)。x 方向越过
+# 侧边栏宽度即不属于面板框架，直接交给文档侧命中测试。
+em.mov_r32_ripmem('r10',bsyms['cursor_pt']); em.mov_r32_ripmem('r11',bsyms['outline_width']); em.cmp_r32_r32('r10','r11'); em.jcc(0x8D,'lbd_after_frame')
+em.mov_r32_ripmem('r11',bsyms['cursor_pt']+4)
+em.cmp_r32_imm('r11',28); em.jcc(0x82,'lbd_frame_files_header')
+em.mov_r32_ripmem('rax',bsyms['divider_y']); em.cmp_r32_r32('r11','rax'); em.jcc(0x8C,'lbd_after_frame')
+# 分界线是 4px 窄带 [divider_y, divider_y+4)；再往下就是大纲标题栏。
+em.add_r32_imm8('rax',4); em.cmp_r32_r32('r11','rax'); em.jcc(0x8D,'lbd_frame_outline_header')
+# 分界线：记录起点高度与按下位置，后续 WM_MOUSEMOVE 用绝对位置换算比例。
+em.mov_ripmem_r32(bsyms['divider_drag_y'],'r11'); em.mov_ripmem_imm32(bsyms['divider_drag'],1)
+em.mov_r32_ripmem('rax',bsyms['files_list_h']); em.mov_ripmem_r32(bsyms['divider_drag_start'],'rax')
+em.mov_ripmem_imm32(bsyms['divider_hot'],1)
+em.mov_r64_ripmem('rcx',bsyms['hwnd_panel_divider']); em.xor32('rdx'); em.xor32('r8'); em.mov_r32_imm('r9',0x105); em.call_iat('RedrawWindow')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_main']); em.call_iat('SetCapture'); em.jmp('msg_loop')
+# 落到这里意味着 y >= divider_y+4：只可能是大纲标题栏或更低（列表/状态栏）。
+em.label('lbd_frame_outline_header')
+em.mov_r32_ripmem('rax',bsyms['divider_y']); em.add_r32_imm8('rax',32); em.cmp_r32_r32('r11','rax'); em.jcc(0x8D,'lbd_after_frame')
+em.mov_ripmem_imm32(bsyms['panel_click_now'],1); em.jmp('lbd_frame_header')
+em.label('lbd_frame_files_header'); em.mov_ripmem_imm32(bsyms['panel_click_now'],0)
+em.label('lbd_frame_header')
+# GetMessageTime 是 API 调用，会破坏 volatile 的 R9：目标标题栏必须先落到 BSS，
+# 调用之后再取回，否则会把"点了哪个面板"读成随机值。
+em.call_iat('GetMessageTime'); em.mov_r32_r32('r8','rax')
+em.mov_r32_ripmem('r9',bsyms['panel_click_now']); em.mov_r32_ripmem('r10',bsyms['panel_click_time']); em.mov_r32_ripmem('r11',bsyms['panel_click_target'])
+em.mov_r32_r32('rax','r8'); em.sub_r32_r32('rax','r10')
+em.mov_ripmem_r32(bsyms['panel_click_time'],'r8')
+# 单击不立即生效：先等 250ms（Rabbit 的 setPanelBehaviors 同款），窗口内只有
+# 双击才会越过它。这样双击的第二下必然落在原地，标题栏不会先跳走。
+em.mov_r32_ripmem('r10',bsyms['panel_click_pending'])
+em.test32('r10'); em.jcc(0x84,'lbd_frame_not_double')
+em.cmp_r32_imm('rax',500); em.jcc(0x83,'lbd_frame_not_double')
+em.cmp_r32_r32('r11','r9'); em.jcc(0x85,'lbd_frame_not_double')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_main']); em.mov_r32_imm('rdx',0x4E); em.call_iat('KillTimer')
+em.mov_ripmem_imm32(bsyms['panel_click_pending'],0)
+em.mov_r32_ripmem('r9',bsyms['panel_click_now'])   # KillTimer 同样是 API 调用
+em.test32('r9'); em.jcc(0x85,'lbd_frame_dbl_outline')
+em.mov_r32_ripmem('rax',bsyms['files_state']); em.cmp_r32_imm('rax',2); em.jcc(0x84,'lbd_frame_dbl_files_max')
+em.mov_ripmem_imm32(bsyms['files_state'],2); em.jmp('lbd_frame_apply')
+em.label('lbd_frame_dbl_files_max'); em.mov_ripmem_imm32(bsyms['files_state'],0); em.jmp('lbd_frame_apply')
+em.label('lbd_frame_dbl_outline')
+em.mov_r32_ripmem('rax',bsyms['outline_state']); em.cmp_r32_imm('rax',2); em.jcc(0x84,'lbd_frame_dbl_outline_max')
+em.mov_ripmem_imm32(bsyms['outline_state'],2); em.jmp('lbd_frame_apply')
+em.label('lbd_frame_dbl_outline_max'); em.mov_ripmem_imm32(bsyms['outline_state'],0); em.jmp('lbd_frame_apply')
+# 非双击：若上一次单击还在等窗口，先立刻兑现它（另一个标题栏的点击不能吞掉它），
+# 再把本次单击设为待定并重新起 250ms 判定窗口。
+em.label('lbd_frame_not_double')
+em.test32('r10'); em.jcc(0x84,'lbd_frame_arm')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_main']); em.mov_r32_imm('rdx',0x4E); em.call_iat('KillTimer')
+em.mov_ripmem_imm32(bsyms['panel_click_pending'],0)
+em.call_label('panel_click_step')
+em.mov_r32_ripmem('r9',bsyms['panel_click_now'])
+em.label('lbd_frame_arm')
+em.mov_ripmem_r32(bsyms['panel_click_target'],'r9'); em.mov_ripmem_imm32(bsyms['panel_click_pending'],1)
+em.mov_r64_ripmem('rcx',bsyms['hwnd_main']); em.mov_r32_imm('rdx',0x4E); em.mov_r32_imm('r8',250); em.xor32('r9'); em.call_iat('SetTimer'); em.jmp('msg_loop')
+em.label('lbd_frame_apply')
+em.call_label('resize_children'); em.jmp('msg_loop')
+em.label('lbd_after_frame')
 # First test permanent scrollbar gutter: [outline_width-scrollbar_w, outline_width).
 em.mov_r32_ripmem('r10',bsyms['cursor_pt']); em.mov_r32_ripmem('r11',bsyms['outline_width']); em.mov_r32_ripmem('rax',bsyms['scrollbar_w']); em.mov_r32_r32('r8','r11'); em.sub_r32_r32('r8','rax')
 em.cmp_r32_r32('r10','r8'); em.jcc(0x8C,'lbd_test_splitter'); em.cmp_r32_r32('r10','r11'); em.jcc(0x8D,'lbd_test_splitter')
@@ -1154,6 +1228,9 @@ em.label('lbuttonup_event')
 em.mov_r32_ripmem('rax',bsyms['outline_scroll_drag']); em.test32('rax'); em.jcc(0x84,'lbu_not_scroll')
 em.mov_ripmem_imm32(bsyms['outline_scroll_drag'],0); em.call_iat('ReleaseCapture'); em.call_label('sync_outline_scrollbar'); em.call_label('update_outline_hover'); em.jmp('msg_loop')
 em.label('lbu_not_scroll')
+em.mov_r32_ripmem('rax',bsyms['divider_drag']); em.test32('rax'); em.jcc(0x84,'lbu_not_divider')
+em.mov_ripmem_imm32(bsyms['divider_drag'],0); em.call_iat('ReleaseCapture'); em.call_label('update_divider_hover'); em.jmp('msg_loop')
+em.label('lbu_not_divider')
 em.mov_r32_ripmem('rax',bsyms['splitter_drag']); em.test32('rax'); em.jcc(0x84,'dispatch')
 em.mov_ripmem_imm32(bsyms['splitter_drag'],0); em.call_iat('ReleaseCapture'); em.call_label('update_outline_hover'); em.jmp('msg_loop')
 
@@ -1161,6 +1238,13 @@ em.mov_ripmem_imm32(bsyms['splitter_drag'],0); em.call_iat('ReleaseCapture'); em
 # Repeated wheel/scroll messages restart this short timer; only after scrolling
 # has been idle for ~180 ms do we refresh semantic colors in the visible viewport.
 em.label('timer_event')
+# V8.6.1：0x4E 是标题栏单击的兑现定时器（250ms）。到点才走三态循环，
+# 这样双击的第二下仍然落在没有移动过的标题栏上。
+em.mov_rax_mr12(16); em.cmp_r32_imm('rax',0x4E); em.jcc(0x85,'timer_not_panel_click')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_main']); em.mov_r32_imm('rdx',0x4E); em.call_iat('KillTimer')
+em.mov_r32_ripmem('rax',bsyms['panel_click_pending']); em.test32('rax'); em.jcc(0x84,'msg_loop')
+em.mov_ripmem_imm32(bsyms['panel_click_pending'],0); em.call_label('panel_click_step'); em.jmp('msg_loop')
+em.label('timer_not_panel_click')
 em.mov_rax_mr12(16); em.cmp_r32_imm('rax',0x4D); em.jcc(0x85,'dispatch')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_main']); em.mov_r32_imm('rdx',0x4D); em.call_iat('KillTimer')
 em.call_label('refresh_preview_visible_theme'); em.jmp('msg_loop')
@@ -1927,6 +2011,31 @@ em.lea_rip('rcx',bsyms['outline_thumb_rect']); em.mov_mreg_reg32('rcx',0,'r11');
 em.mov_r32_ripmem('rax',bsyms['outline_scroll_thumb_top']); em.mov_mreg_reg32('rcx',4,'rax'); em.mov_r32_ripmem('r10',bsyms['outline_scroll_thumb_h']); em.add_r32_r32('rax','r10'); em.mov_mreg_reg32('rcx',12,'rax')
 em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
 
+# V8.6.1：4px 面板分界线在悬停或拖动中变强调色，并给出上下调整光标。
+# 悬停命中区与按下命中区共用同一段几何：x ∈ [0, outline_width)、
+# y ∈ [divider_y, divider_y+4)。无变化时不重绘、不换光标。
+em.label('update_divider_hover')
+em.emit(0x48,0x83,0xEC,0x38)
+em.mov_r64_ripmem('rcx',bsyms['hwnd_panel_divider']); em.test64('rcx'); em.jcc(0x84,'dh_ret')
+em.mov_r32_ripmem('r9',bsyms['divider_drag'])
+em.mov_r32_ripmem('rax',bsyms['outline_flag']); em.test32('rax'); em.jcc(0x84,'dh_off')
+em.test32('r9'); em.jcc(0x85,'dh_on')
+em.lea_rip('rcx',bsyms['cursor_pt']); em.call_iat('GetCursorPos'); em.test32('rax'); em.jcc(0x84,'dh_off')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_main']); em.lea_rip('rdx',bsyms['cursor_pt']); em.call_iat('ScreenToClient'); em.test32('rax'); em.jcc(0x84,'dh_off')
+em.mov_r32_ripmem('rax',bsyms['cursor_pt']); em.mov_r32_ripmem('r11',bsyms['outline_width']); em.cmp_r32_r32('rax','r11'); em.jcc(0x8D,'dh_off')
+em.mov_r32_ripmem('rax',bsyms['cursor_pt']+4); em.mov_r32_ripmem('r11',bsyms['divider_y']); em.cmp_r32_r32('rax','r11'); em.jcc(0x8C,'dh_off')
+em.add_r32_imm8('r11',4); em.cmp_r32_r32('rax','r11'); em.jcc(0x8D,'dh_off')
+em.label('dh_on'); em.mov_r32_imm('r9',1); em.jmp('dh_apply')
+em.label('dh_off'); em.xor32('r9')
+em.label('dh_apply')
+em.mov_r32_ripmem('rax',bsyms['divider_hot']); em.cmp_r32_r32('rax','r9'); em.jcc(0x84,'dh_cursor')
+em.mov_ripmem_r32(bsyms['divider_hot'],'r9')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_panel_divider']); em.xor32('rdx'); em.xor32('r8'); em.mov_r32_imm('r9',0x105); em.call_iat('RedrawWindow')
+em.label('dh_cursor')
+em.mov_r32_ripmem('rax',bsyms['divider_hot']); em.test32('rax'); em.jcc(0x84,'dh_ret')
+em.xor32('rcx'); em.mov_r32_imm('rdx',32645); em.call_iat('LoadCursorW'); em.mov_r64_r64('rcx','rax'); em.call_iat('SetCursor')
+em.label('dh_ret'); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
+
 # Owner-drawn overlay scrollbar visibility.  Geometry never changes on hover.
 em.label('update_outline_hover')
 em.emit(0x48,0x83,0xEC,0x38)
@@ -1984,6 +2093,34 @@ em.mov_r32_r32('rcx','r10'); em.mov_r32_r32('rdx','r11'); em.mov_r32_ripmem('r8'
 em.label('os_drag_zero'); em.xor32('r10')
 em.label('os_drag_apply'); em.mov_ripmem_r32(bsyms['outline_scroll_top'],'r10'); em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.mov_r32_imm('rdx',0x0197); em.mov_r32_r32('r8','r10'); em.xor32('r9'); em.call_iat('SendMessageW'); em.call_label('sync_outline_scrollbar')
 em.label('os_drag_ret'); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
+
+# Helper: 4px 面板分界线拖动。用绝对位置换算比例（按下高度 + 指针位移），
+# 避免增量累积误差；比例钳制到 [80, 920]‰（见 docs/FILE_PANEL_REDESIGN.md §5）。
+# 三个 MulDiv 都破坏 volatile 寄存器，因此中间值一律落在 BSS 上，不跨调用持有。
+em.label('divider_drag_move')
+em.emit(0x48,0x83,0xEC,0x38)
+em.call_label('capture_message_point'); em.test32('rax'); em.jcc(0x84,'dd_ret')
+# 可用高度 = 内容高度 - 两个标题栏(28+28) - 分界线(4)；过小时不换算（同时避免除零）。
+em.mov_r32_ripmem('rax',bsyms['content_h']); em.sub_r32_imm8('rax',60); em.test32('rax'); em.jcc(0x8E,'dd_ret')
+em.mov_ripmem_r32(bsyms['divider_drag_usable'],'rax')
+# 目标高度 = 按下时的文件列表高度 + 指针位移（允许为负，下面按有符号钳制）。
+em.mov_r32_ripmem('r10',bsyms['cursor_pt']+4); em.mov_r32_ripmem('r11',bsyms['divider_drag_y']); em.sub_r32_r32('r10','r11')
+em.mov_r32_ripmem('r11',bsyms['divider_drag_start']); em.add_r32_r32('r10','r11')
+em.mov_ripmem_r32(bsyms['divider_drag_target'],'r10')
+# 下限 = MulDiv(usable, 80, 1000)
+em.mov_r32_ripmem('rcx',bsyms['divider_drag_usable']); em.mov_r32_imm('rdx',80); em.mov_r32_imm('r8',1000); em.call_iat('MulDiv')
+em.mov_r32_ripmem('r10',bsyms['divider_drag_target']); em.cmp_r32_r32('r10','rax'); em.jcc(0x8D,'dd_after_lo'); em.mov_ripmem_r32(bsyms['divider_drag_target'],'rax')
+em.label('dd_after_lo')
+# 上限 = MulDiv(usable, 920, 1000)
+em.mov_r32_ripmem('rcx',bsyms['divider_drag_usable']); em.mov_r32_imm('rdx',920); em.mov_r32_imm('r8',1000); em.call_iat('MulDiv')
+em.mov_r32_ripmem('r10',bsyms['divider_drag_target']); em.cmp_r32_r32('r10','rax'); em.jcc(0x8E,'dd_after_hi'); em.mov_ripmem_r32(bsyms['divider_drag_target'],'rax')
+em.label('dd_after_hi')
+# 比例 = MulDiv(目标高度, 1000, 可用高度)，再按整数舍入边界钳制一次。
+em.mov_r32_ripmem('rcx',bsyms['divider_drag_target']); em.mov_r32_imm('rdx',1000); em.mov_r32_ripmem('r8',bsyms['divider_drag_usable']); em.call_iat('MulDiv')
+em.cmp_r32_imm('rax',80); em.jcc(0x8D,'dd_split_lo_ok'); em.mov_r32_imm('rax',80)
+em.label('dd_split_lo_ok'); em.cmp_r32_imm('rax',920); em.jcc(0x8E,'dd_split_store'); em.mov_r32_imm('rax',920)
+em.label('dd_split_store'); em.mov_ripmem_r32(bsyms['panel_split'],'rax'); em.call_label('resize_children')
+em.label('dd_ret'); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
 
 # Helper: live splitter drag; clamp Outline to 140..500 px while preserving at least 240px document width.
 em.label('splitter_drag_move')
@@ -2069,11 +2206,24 @@ em.mov_r32_r32('r11','r10'); em.add_r32_imm8('r11',1); em.mov_ripmem_r32(bsyms['
 em.mov_r32_ripmem('r10',bsyms['content_h']); em.sub_r32_imm8('r10',60)
 em.test32('r10'); em.jcc(0x89,'rc_usable_ok'); em.xor32('r10')
 em.label('rc_usable_ok')
+# 三态优先：本面板 maximized 拿 90%，minimized 归零，否则按 panel_split。
+em.mov_r32_ripmem('rax',bsyms['files_state']); em.cmp_r32_imm('rax',2); em.jcc(0x84,'rc_files_min')
+em.cmp_r32_imm('rax',0); em.jcc(0x84,'rc_files_max')
+em.mov_r32_ripmem('rax',bsyms['outline_state']); em.cmp_r32_imm('rax',2); em.jcc(0x84,'rc_outline_min')
+em.cmp_r32_imm('rax',0); em.jcc(0x84,'rc_outline_max')
 em.mov_r32_r32('rcx','r10'); em.mov_r32_ripmem('rdx',bsyms['panel_split']); em.mov_r32_imm('r8',1000); em.call_iat('MulDiv')
+em.mov_ripmem_r32(bsyms['files_list_h'],'rax'); em.jmp('rc_split_done')
+em.label('rc_files_min'); em.mov_ripmem_imm32(bsyms['files_list_h'],0); em.jmp('rc_split_done')
+em.label('rc_files_max'); em.mov_r32_r32('rcx','r10'); em.mov_r32_imm('rdx',9); em.mov_r32_imm('r8',10); em.call_iat('MulDiv')
+em.mov_ripmem_r32(bsyms['files_list_h'],'rax'); em.jmp('rc_split_done')
+em.label('rc_outline_min'); em.mov_r32_r32('rcx','r10'); em.mov_r32_imm('rdx',9); em.mov_r32_imm('r8',10); em.call_iat('MulDiv')
+em.mov_ripmem_r32(bsyms['files_list_h'],'rax'); em.jmp('rc_split_done')
+em.label('rc_outline_max'); em.mov_r32_r32('rcx','r10'); em.mov_r32_imm('rdx',1); em.mov_r32_imm('r8',10); em.call_iat('MulDiv')
 em.mov_ripmem_r32(bsyms['files_list_h'],'rax')
-# MulDiv 是 API 调用，会破坏 volatile 寄存器：可用高度必须重新推导，
-# 不能沿用调用前的 r10（否则大纲高度会变成 content_h - 文件高度的错值）。
-em.mov_r32_ripmem('r11',bsyms['content_h']); em.sub_r32_imm8('r11',60); em.sub_r32_r32('r11','rax')
+em.label('rc_split_done')
+# MulDiv 是 API 调用，会破坏 volatile 寄存器：可用高度与大纲高度都必须重新推导。
+em.mov_r32_ripmem('r11',bsyms['content_h']); em.sub_r32_imm8('r11',60)
+em.mov_r32_ripmem('rax',bsyms['files_list_h']); em.sub_r32_r32('r11','rax')
 em.mov_ripmem_r32(bsyms['outline_list_h'],'r11')
 em.mov_ripmem_imm32(bsyms['files_list_y'],28)
 em.add_r32_imm8('rax',28); em.mov_ripmem_r32(bsyms['divider_y'],'rax')
@@ -2910,6 +3060,19 @@ em.label('spmm_ret'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
 
 em.label('cmd_panel_files'); em.mov_r32_imm('rcx',1); em.call_label('set_panel_mode'); em.jmp('msg_loop')
 em.label('cmd_panel_outline'); em.xor32('rcx'); em.call_label('set_panel_mode'); em.jmp('msg_loop')
+
+# V8.6.1：兑现一次待定的标题栏单击——三态循环 half(1) → minimized(2) →
+# maximized(0) → half(1)，与 Rabbit 的 (state + 1) % 3 一致。目标标题栏取自
+# panel_click_target，所以定时器回调与"换面板时立刻兑现"共用同一条路径。
+em.label('panel_click_step')
+em.emit(0x48,0x83,0xEC,0x28)
+em.mov_r32_ripmem('r9',bsyms['panel_click_target']); em.test32('r9'); em.jcc(0x85,'pcs_outline')
+em.mov_r32_ripmem('rax',bsyms['files_state']); em.add_r32_imm8('rax',1); em.cmp_r32_imm('rax',3); em.jcc(0x82,'pcs_files_store'); em.xor32('rax')
+em.label('pcs_files_store'); em.mov_ripmem_r32(bsyms['files_state'],'rax'); em.jmp('pcs_apply')
+em.label('pcs_outline')
+em.mov_r32_ripmem('rax',bsyms['outline_state']); em.add_r32_imm8('rax',1); em.cmp_r32_imm('rax',3); em.jcc(0x82,'pcs_outline_store'); em.xor32('rax')
+em.label('pcs_outline_store'); em.mov_ripmem_r32(bsyms['outline_state'],'rax')
+em.label('pcs_apply'); em.call_label('resize_children'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
 
 # ---------------- V8.6 切片 3：目录导航与从列表打开 ----------------
 # rcx = 基路径, rdx = 条目名 -> rax = ws_path_buf 中的拼接结果。
@@ -3775,7 +3938,12 @@ em.label('wp_row_hwnd_files'); em.mov_r64_ripmem('rax',bsyms['hwnd_files']); em.
 
 # V8.6.1 面板框架：分界线背景 + 两个标题栏（背景与左对齐小标题）。
 em.label('wp_draw_panel_divider')
-em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r64_mreg('rcx','r9',32); em.mov_r64_r64('rdx','r9'); em.add_r64_imm8('rdx',40); em.mov_r64_ripmem('r8',bsyms['hbrush_splitter']); em.call_iat('FillRect')
+# 悬停/拖动中用强调色，其余时间保持边框色（§7 视觉规范）。
+em.mov_r32_ripmem('rax',bsyms['divider_hot']); em.test32('rax'); em.jcc(0x84,'wp_divider_calm')
+em.mov_r64_ripmem('r8',bsyms['hbrush_scroll_hot']); em.jmp('wp_divider_fill')
+em.label('wp_divider_calm'); em.mov_r64_ripmem('r8',bsyms['hbrush_splitter'])
+em.label('wp_divider_fill')
+em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r64_mreg('rcx','r9',32); em.mov_r64_r64('rdx','r9'); em.add_r64_imm8('rdx',40); em.call_iat('FillRect')
 em.mov_r32_imm('rax',1); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
 
 def emit_panel_header(title_sym, tag):
@@ -4202,7 +4370,9 @@ assert _surf_owners <= {'set_view_mode_commit', 'set_view_source', 'load_model_i
 #     resize_children 家族或 repaint_splitter_surface 内。
 _geo_owners = set()
 _geo_targets = ('hwnd_edit', 'hwnd_preview', 'hwnd_outline', 'hwnd_splitter',
-                'hwnd_outline_gutter', 'hwnd_outline_scroll', 'hwnd_status', 'hwnd_corner')
+                'hwnd_outline_gutter', 'hwnd_outline_scroll', 'hwnd_status', 'hwnd_corner',
+                'hwnd_files', 'hwnd_files_gutter', 'hwnd_files_header',
+                'hwnd_outline_header', 'hwnd_panel_divider')
 for _i, _ln in enumerate(_scan_lines):
     if ("call_iat('MoveWindow')" in _ln or "call_iat('SetWindowPos')" in _ln):
         _ctx = '\n'.join(_scan_lines[max(0, _i - 3):_i + 1])
@@ -4211,7 +4381,7 @@ for _i, _ln in enumerate(_scan_lines):
 _layout_family = {'resize_children', 'resize_content', 'resize_doc',
                   'resize_preview_surface', 'repaint_splitter_surface',
                   'rc_usable_ok', 'rc_files_min', 'rc_files_max',
-                  'rc_outline_min', 'rc_outline_max'}
+                  'rc_outline_min', 'rc_outline_max', 'rc_split_done'}
 assert _geo_owners <= _layout_family, \
     f'架构违规：布局几何出现在 LayoutManager 外的例程 {_geo_owners - _layout_family}'
 
@@ -5079,6 +5249,49 @@ assert "call_iat('SHBrowseForFolderW')" in _menu_folder_src and \
 assert ('cmd_open_folder_selected' in em.labels) == OPEN_TEST_BUILD and \
        ((1908, 'cmd_open_folder_selected') in _command_routes) == OPEN_TEST_BUILD, \
     'the picker bypass must exist only in the explicit test build'
+
+# (X) V8.6.1 面板框架交互的所有权断言。要拦截的错误模式：标题栏命中与 4px
+#     分界线窄带混淆（点标题变成拖动，或拖动变成点标题）、跨 API 调用复用
+#     volatile 的 R9 导致"点了哪个面板"读成随机值、双击被第一次单击的即时
+#     重排打空、拖动比例不钳制、三态高度分配方向写反。
+assert 'GetMessageTime' in imports['USER32.dll'], \
+    'the header click must be timed with GetMessageTime'
+for _frame_routine in ('divider_drag_move', 'update_divider_hover', 'panel_click_step',
+                       'lbd_frame_outline_header', 'lbd_frame_files_header'):
+    assert _frame_routine in em.labels, '%s must be emitted' % _frame_routine
+for _frame_line in (
+        "em.add_r32_imm8('rax',4); em.cmp_r32_r32('r11','rax'); em.jcc(0x8D,'lbd_frame_outline_header')",
+        "em.mov_ripmem_r32(bsyms['divider_drag_y'],'r11'); em.mov_ripmem_imm32(bsyms['divider_drag'],1)",
+        "em.mov_ripmem_imm32(bsyms['panel_click_now'],1); em.jmp('lbd_frame_header')",
+        "em.label('lbd_frame_files_header'); em.mov_ripmem_imm32(bsyms['panel_click_now'],0)",
+        "em.mov_ripmem_imm32(bsyms['divider_drag'],0); em.call_iat('ReleaseCapture'); em.call_label('update_divider_hover')"):
+    assert _frame_line in _production_source, 'panel frame hit test lost: %s' % _frame_line
+_click_src = _production_source[
+    _production_source.index("em.label('lbd_frame_header')"):
+    _production_source.index("em.label('lbd_frame_apply')")]
+assert _click_src.count("call_iat('GetMessageTime')") == 1 and \
+       _click_src.count("em.mov_r32_ripmem('r9',bsyms['panel_click_now'])") >= 3, \
+    'every API call in the header click must reload its target from BSS'
+assert "em.mov_r32_imm('rdx',0x4E); em.mov_r32_imm('r8',250)" in _click_src and \
+       "em.mov_ripmem_imm32(bsyms['panel_click_pending'],1)" in _click_src, \
+    'a single click must wait out a 250ms window before it walks the states'
+assert "em.mov_rax_mr12(16); em.cmp_r32_imm('rax',0x4E)" in _production_source, \
+    'the pump must deliver the pending header click timer'
+_divider_drag_src = _production_source[
+    _production_source.index("em.label('divider_drag_move')"):
+    _production_source.index("em.label('splitter_drag_move')")]
+for _clamp in ("mov_r32_imm('rdx',80)", "mov_r32_imm('rdx',920)",
+               "mov_r32_imm('rax',80)", "mov_r32_imm('rax',920)"):
+    assert _clamp in _divider_drag_src, 'the divider drag must clamp ' + _clamp
+assert _divider_drag_src.count("call_iat('MulDiv')") == 3, \
+    'the divider drag converts absolute pixels to per-mille through MulDiv'
+for _tri_line in (
+        "em.label('rc_files_min'); em.mov_ripmem_imm32(bsyms['files_list_h'],0)",
+        "em.label('rc_files_max'); em.mov_r32_r32('rcx','r10'); em.mov_r32_imm('rdx',9); em.mov_r32_imm('r8',10)",
+        "em.label('rc_outline_min'); em.mov_r32_r32('rcx','r10'); em.mov_r32_imm('rdx',9); em.mov_r32_imm('r8',10)",
+        "em.label('rc_outline_max'); em.mov_r32_r32('rcx','r10'); em.mov_r32_imm('rdx',1); em.mov_r32_imm('r8',10)"):
+    assert _tri_line in _production_source, \
+        'the tri-state height allocation is inverted: %s' % _tri_line
 
 # (W) 快捷键方案：与 Rabbit 对齐的键位必须唯一且指向正确命令，菜单里的提示必须与
 #     加速键表一致，为后续功能预留的键位不得被占用。

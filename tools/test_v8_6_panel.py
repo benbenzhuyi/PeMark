@@ -8,7 +8,11 @@ Evidence collected here:
 * each list owns its own content: workspace entries in the file panel, document
   headings in the outline panel, and neither leaks into the other;
 * directory rows keep the directory/file colour distinction in both themes;
-* the shared scrollbar geometry follows the outline panel height.
+* the shared scrollbar geometry follows the outline panel height;
+* the panel frame reacts to real pointer input: hovering the divider
+  highlights it, dragging it moves the split ratio with the documented
+  [80, 920] per-mille clamp, and single/double clicking a header walks the
+  half -> minimized -> maximized state machine.
 """
 import ctypes as c
 from ctypes import wintypes as w
@@ -39,6 +43,16 @@ LB_GETCOUNT = 0x018B
 WM_SETREDRAW = 0x000B
 SRCCOPY = 0x00CC0020
 ROW_HEIGHT = 30
+MOUSEEVENTF_MOVE = 0x0001
+MOUSEEVENTF_LEFTDOWN = 0x0002
+MOUSEEVENTF_LEFTUP = 0x0004
+SW_RESTORE = 9
+SWP_NOSIZE = 0x0001
+SWP_NOMOVE = 0x0002
+SWP_SHOWWINDOW = 0x0040
+PER_MILLE = 1000
+SPLIT_MIN = 80
+SPLIT_MAX = 920
 
 u32, k32, g32 = c.windll.user32, c.windll.kernel32, c.windll.gdi32
 u32.SendMessageW.argtypes = [w.HWND, w.UINT, w.WPARAM, w.LPARAM]
@@ -150,6 +164,98 @@ def difference(first, second):
     return sum(abs(a - b) for a, b in zip(first, second))
 
 
+def mul_div(value, numerator, denominator):
+    """MulDiv rounds to the nearest integer; the generator geometry uses it too."""
+    return (value * numerator + denominator // 2) // denominator
+
+
+def move_cursor(x, y):
+    """Real pointer input: only hardware messages carry the position the pump reads."""
+    assert u32.SetCursorPos(x, y)
+    u32.mouse_event(MOUSEEVENTF_MOVE, 0, 0, 0, 0)
+    time.sleep(.25)
+
+
+def click_pointer(x, y, hold=.12):
+    move_cursor(x, y)
+    u32.mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
+    time.sleep(hold)
+    u32.mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+    time.sleep(.12)
+
+
+def double_click_pointer(x, y):
+    """Two presses inside the 500ms window the generator reads via GetMessageTime."""
+    move_cursor(x, y)
+    for _ in range(2):
+        u32.mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
+        time.sleep(.06)
+        u32.mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+        time.sleep(.08)
+    time.sleep(.15)
+
+
+def raise_window(hwnd):
+    """Real pointer input goes to whatever window is on top; make that this one."""
+    u32.ShowWindow(hwnd, SW_RESTORE)
+    assert u32.SetWindowPos(hwnd, 0, 0, 0, 0, 0,
+                            SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW)
+    u32.SetForegroundWindow(hwnd)
+    time.sleep(.2)
+
+
+def click_until(app, symbol, expected, point_provider, note, attempts=3):
+    """Click and wait for the state the panel state machine must reach.
+
+    Synthetic pointer input shares the desktop with whatever else is running, so
+    a press can be swallowed by another window. The retry keeps the assertion
+    honest while tolerating that: each attempt starts from a fresh raised
+    window and a fresh point, and the wait is far longer than the 250ms window.
+    """
+    for _ in range(attempts):
+        click_pointer(*point_provider())
+        deadline = time.perf_counter() + 3
+        while time.perf_counter() < deadline:
+            if app.read32(symbol) == expected and \
+                    app.read32("panel_click_pending") == 0:
+                return
+            time.sleep(.03)
+        time.sleep(.4)   # let any pending single click commit before retrying
+    raise AssertionError("%s: expected %s=%d, got %d" % (
+        note, symbol, expected, app.read32(symbol)))
+
+
+def double_click_until(app, symbol, expected, point_provider, note, attempts=3):
+    """Same contract for the double click, which must not be split into two singles."""
+    for _ in range(attempts):
+        double_click_pointer(*point_provider())
+        deadline = time.perf_counter() + 3
+        while time.perf_counter() < deadline:
+            if app.read32(symbol) == expected:
+                return
+            time.sleep(.03)
+        time.sleep(.6)   # stay outside the double-click window before retrying
+    raise AssertionError("%s: expected %s=%d, got %d" % (
+        note, symbol, expected, app.read32(symbol)))
+
+
+def drag_cursor_until(app, x, y, expected, note, attempts=3):
+    """Drag the divider with absolute positioning until the height matches.
+
+    A move can be lost like a click; repeating it is harmless because the drag
+    computes the split from the pointer's absolute position, not from deltas.
+    """
+    for _ in range(attempts):
+        move_cursor(x, y)
+        deadline = time.perf_counter() + 2
+        while time.perf_counter() < deadline:
+            if app.read32("files_list_h") == expected:
+                return
+            time.sleep(.03)
+    raise AssertionError("%s: expected files_list_h=%d, got %d" % (
+        note, expected, app.read32("files_list_h")))
+
+
 def main():
     release_hash = hashlib.sha256(RELEASE_EXE.read_bytes()).hexdigest()
     ns, exe = build()
@@ -239,6 +345,115 @@ def main():
             assert app.read32("files_list_h") == height_f, \
                 (app.read32("files_list_h"), height_f)
 
+        # --- Panel frame interaction (slice 0 acceptance) -----------------
+        content_h = app.read32("content_h")
+        usable = content_h - 60
+        assert usable > 0, content_h
+        saved_cursor = w.POINT()
+        assert u32.GetCursorPos(c.byref(saved_cursor))
+
+        def header_center(symbol):
+            """Fresh screen point: a header moves when the other panel resizes."""
+            raise_window(app.main)
+            left, top, width, height = lb_rect(app.read64(symbol))
+            return left + width // 2, top + height // 2
+
+        def dump_panel_state(note):
+            """Diagnostics for the interaction block: every field one assert reads."""
+            print("PANEL-DUMP %s content_h=%d split=%d fh=%d oh=%d drag=%d start=%d "
+                  "drag_y=%d drag_usable=%d drag_target=%d dy=%d fs=%d os=%d pend=%d" % (
+                      note, app.read32("content_h"), app.read32("panel_split"),
+                      app.read32("files_list_h"), app.read32("outline_list_h"),
+                      app.read32("divider_drag"), app.read32("divider_drag_start"),
+                      app.read32("divider_drag_y"), app.read32("divider_drag_usable"),
+                      app.read32("divider_drag_target"), app.read32("divider_y"),
+                      app.read32("files_state"), app.read32("outline_state"),
+                      app.read32("panel_click_pending")))
+
+        try:
+            raise_window(app.main)
+            divider_left, divider_top, divider_w, divider_h = lb_rect(divider)
+            divider_x = divider_left + divider_w // 2
+
+            # Hover: only while the pointer is on the 4px divider band.
+            move_cursor(divider_x, divider_top + divider_h // 2)
+            wait_for(lambda: app.read32("divider_hot") == 1, 2,
+                     "hovering the divider must highlight it")
+            move_cursor(divider_x, divider_top + 60)
+            wait_for(lambda: app.read32("divider_hot") == 0, 2,
+                     "leaving the divider must clear the highlight")
+
+            # Drag: the split follows the pointer exactly (start height + delta).
+            before = app.read32("files_list_h")
+            move_cursor(divider_x, divider_top + divider_h // 2)
+            u32.mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
+            wait_for(lambda: app.read32("divider_drag") == 1, 2,
+                     "pressing the divider must start a drag")
+            assert app.read32("divider_drag_start") == before, \
+                ("the drag must remember the height it started from",
+                 before, app.read32("divider_drag_start"))
+            drag_cursor_until(app, divider_x, divider_top + divider_h // 2 + 80,
+                              before + 80, "the divider must follow the pointer")
+            split = app.read32("panel_split")
+            assert abs(split - mul_div(before + 80, PER_MILLE, usable)) <= 1, split
+
+            # Clamp: the per-mille ratio never leaves [80, 920].
+            drag_cursor_until(app, divider_x, divider_top - 4000,
+                              mul_div(usable, SPLIT_MIN, PER_MILLE),
+                              "dragging above the window must clamp to the minimum")
+            assert app.read32("panel_split") == SPLIT_MIN, app.read32("panel_split")
+            drag_cursor_until(app, divider_x, divider_top + 4000,
+                              mul_div(usable, SPLIT_MAX, PER_MILLE),
+                              "dragging below the window must clamp to the maximum")
+            assert app.read32("panel_split") == SPLIT_MAX, app.read32("panel_split")
+            u32.mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+            wait_for(lambda: app.read32("divider_drag") == 0, 2,
+                     "releasing the divider must end the drag")
+
+            # Single click walks half -> minimized -> maximized -> half.
+            assert app.read32("files_state") == 1, "the file panel starts half"
+            click_until(app, "files_state", 2,
+                        lambda: header_center("hwnd_files_header"),
+                        "half must become minimized")
+            assert app.read32("files_list_h") == 0, app.read32("files_list_h")
+            time.sleep(.6)   # outside the double-click window
+            click_until(app, "files_state", 0,
+                        lambda: header_center("hwnd_files_header"),
+                        "minimized must become maximized")
+            assert app.read32("files_list_h") == mul_div(usable, 9, 10), \
+                app.read32("files_list_h")
+            time.sleep(.6)
+            click_until(app, "files_state", 1,
+                        lambda: header_center("hwnd_files_header"),
+                        "maximized must become half again")
+
+            # Double click toggles min/max for that panel only.
+            time.sleep(.6)
+            assert app.read32("outline_state") == 1, "the outline starts half"
+            double_click_until(app, "outline_state", 2,
+                               lambda: header_center("hwnd_outline_header"),
+                               "a double click from half must minimize")
+            assert app.read32("files_list_h") == mul_div(usable, 9, 10), \
+                ("a minimized panel leaves 90% to the other",
+                 app.read32("files_list_h"))
+            assert app.read32("files_state") == 1, \
+                "the file panel must keep its own state"
+            time.sleep(.6)
+            double_click_until(app, "outline_state", 0,
+                               lambda: header_center("hwnd_outline_header"),
+                               "a double click from minimized must maximize")
+            assert app.read32("files_list_h") == mul_div(usable, 1, 10), \
+                ("the other panel keeps 10%", app.read32("files_list_h"))
+            time.sleep(.6)
+            double_click_until(app, "outline_state", 2,
+                               lambda: header_center("hwnd_outline_header"),
+                               "a double click from maximized must minimize")
+        except AssertionError:
+            dump_panel_state("interaction failure")
+            raise
+        finally:
+            u32.SetCursorPos(saved_cursor.x, saved_cursor.y)
+
         app.post_close()
         assert app.proc.wait(timeout=10) == 0
     finally:
@@ -246,8 +461,11 @@ def main():
     assert hashlib.sha256(RELEASE_EXE.read_bytes()).hexdigest() == release_hash
     print("PASS sidebar panels: 28px headers and a 4px divider frame the two "
           "lists, each list owns its content, file rows keep the directory/file "
-          "colours in both themes, and the scrollbar geometry follows the panel "
-          "height; released V8.5.4 binary unchanged")
+          "colours in both themes, the scrollbar geometry follows the panel "
+          "height, hovering and dragging the divider respond to real pointer "
+          "input with the [80, 920] per-mille clamp, and single/double clicking "
+          "a header walks the half -> minimized -> maximized states; released "
+          "V8.5.4 binary unchanged")
     return 0
 
 
