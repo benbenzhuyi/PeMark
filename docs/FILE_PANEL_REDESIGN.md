@@ -388,6 +388,16 @@ PeMark 是纯 Direct-PE 机器码生成，没有 DOM 与第三方控件，因此
    这类处理器不是被 `call` 进入的，`sub rsp, 0x38` 会让 API 调用跑在未对齐的
    栈上：`CoCreateInstance` 会返回 `REGDB_E_CLASSNOTREG`，看起来像"类没注册"，
    实际是栈对齐问题。构建期断言会扫描所有路由命令标签的帧大小。
+3. **自绘滚动槽位必须常驻显示，自己刷底色。**
+   两个滚动面（`hwnd_outline_scroll` / `hwnd_files_scroll`）在侧栏可见期间一律
+   显示：它们负责把 17px 槽位刷成面板底色，只有 thumb 取决于"能不能滚"。
+   曾经"不可滚动就整窗隐藏"的写法会让这条槽位没人重画——启动时显出一条比列表
+   更灰的竖条，反复开关侧栏后还会把文档画在这里的文字留在槽位上。
+4. **任何几何变化后必须显式重绘文档面。**
+   拖动分隔条、开关侧栏都会同时改变 EDIT/RichEdit 的位置与宽度；`MoveWindow`
+   不会让它们重画全部内容，会留下旧像素（花屏）。`resize_children` 末尾统一
+   `RedrawWindow(RDW_INVALIDATE|RDW_ERASE|RDW_ALLCHILDREN)`，并顺带重新同步
+   文件面板滚动条。
 
 ## 12. 已确认的决策（2026-09-16）
 

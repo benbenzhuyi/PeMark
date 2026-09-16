@@ -37,8 +37,22 @@ CMD_OPEN_SELECTED = 1901
 CMD_WORKSPACE_PROBE = 1902
 CMD_OPEN_FOLDER = 1006
 CMD_FOLDER_COM_PROBE = 1909
+CMD_TOGGLE_SIDEBAR = 1307
 WM_COMMAND = 0x0111
 WM_CLOSE = 0x0010
+RDW_INVALIDATE = 0x0001
+RDW_ERASE = 0x0004
+RDW_ALLCHILDREN = 0x0080
+RDW_UPDATENOW = 0x0100
+
+
+class BITMAPINFOHEADER(c.Structure):
+    _fields_ = [("biSize", c.c_uint32), ("biWidth", c.c_int32),
+                ("biHeight", c.c_int32), ("biPlanes", c.c_uint16),
+                ("biBitCount", c.c_uint16), ("biCompression", c.c_uint32),
+                ("biSizeImage", c.c_uint32), ("biX", c.c_int32),
+                ("biY", c.c_int32), ("biClrUsed", c.c_uint32),
+                ("biClrImportant", c.c_uint32)]
 
 # Palette documented in the generator's apply_theme.
 DARK_HEADER, DARK_DIVIDER, DARK_PANEL = 0x00202020, 0x001D1D1D, 0x001F1F1F
@@ -51,6 +65,19 @@ u32.ReleaseDC.argtypes = [w.HWND, w.HDC]
 u32.GetWindowRect.argtypes = [w.HWND, c.POINTER(w.RECT)]
 g32.GetPixel.argtypes = [w.HDC, c.c_int, c.c_int]
 g32.GetPixel.restype = w.COLORREF
+u32.GetClientRect.argtypes = [w.HWND, c.POINTER(w.RECT)]
+g32.CreateCompatibleDC.argtypes = [w.HDC]
+g32.CreateCompatibleDC.restype = w.HDC
+g32.CreateCompatibleBitmap.argtypes = [w.HDC, c.c_int, c.c_int]
+g32.CreateCompatibleBitmap.restype = w.HBITMAP
+g32.SelectObject.argtypes = [w.HDC, w.HGDIOBJ]
+g32.SelectObject.restype = w.HGDIOBJ
+g32.DeleteObject.argtypes = [w.HGDIOBJ]
+g32.DeleteDC.argtypes = [w.HDC]
+g32.BitBlt.argtypes = [w.HDC, c.c_int, c.c_int, c.c_int, c.c_int, w.HDC,
+                       c.c_int, c.c_int, w.DWORD]
+g32.GetDIBits.argtypes = [w.HDC, w.HBITMAP, c.c_uint, c.c_uint, c.c_void_p,
+                          c.c_void_p, c.c_uint]
 
 
 def build():
@@ -97,6 +124,33 @@ def thumb_pixel(app, surface_symbol, rect_symbol):
     hwnd = app.read64(surface_symbol)
     left, top, right, bottom = rect_values(app, rect_symbol)
     return pixel(hwnd, (left + right) // 2, (top + bottom) // 2)
+
+
+def surface_bytes(hwnd):
+    """Full client-area bitmap of a window, as raw BGRA bytes."""
+    rect = w.RECT()
+    assert u32.GetClientRect(hwnd, c.byref(rect))
+    width, height = rect.right, rect.bottom
+    hdc = u32.GetDC(hwnd)
+    mem = g32.CreateCompatibleDC(hdc)
+    bitmap = g32.CreateCompatibleBitmap(hdc, width, height)
+    old = g32.SelectObject(mem, bitmap)
+    try:
+        assert g32.BitBlt(mem, 0, 0, width, height, hdc, 0, 0, 0x00CC0020)
+        buffer = c.create_string_buffer(width * height * 4)
+        info = BITMAPINFOHEADER()
+        info.biSize = 40
+        info.biWidth = width
+        info.biHeight = -height
+        info.biPlanes = 1
+        info.biBitCount = 32
+        g32.GetDIBits(mem, bitmap, 0, height, buffer, c.byref(info), 0)
+        return buffer.raw
+    finally:
+        g32.SelectObject(mem, old)
+        g32.DeleteObject(bitmap)
+        g32.DeleteDC(mem)
+        u32.ReleaseDC(hwnd, hdc)
 
 
 def read_wstr(app, symbol, size=1024):
@@ -206,6 +260,39 @@ def main():
                 scrollbar_samples["light"]) - 60, scrollbar_samples
             assert brightness(scrollbar_samples["dark again"]) < 100, \
                 scrollbar_samples
+
+            # Issues 1 + 3: the strips stay painted with the panel background
+            # through repeated sidebar toggles, and the document surface never
+            # keeps stale pixels (that is what showed up as smearing/residue).
+            files_bg = pixel(app.read64("hwnd_files"), 10, 10)
+            outline_bg = pixel(app.read64("hwnd_outline"), 10, 10)
+            preview = app.read64("hwnd_preview")
+            for round_index in range(3):
+                app.post_command(CMD_TOGGLE_SIDEBAR)
+                time.sleep(.5)
+                app.post_command(CMD_TOGGLE_SIDEBAR)
+                time.sleep(.7)
+                for name, surface_sym, height_sym, background in (
+                        ("files", "hwnd_files_scroll", "files_list_h", files_bg),
+                        ("outline", "hwnd_outline_scroll", "outline_list_h",
+                         outline_bg)):
+                    overlay = app.read64(surface_sym)
+                    assert u32.IsWindowVisible(overlay), \
+                        (round_index, name, "the scrollbar strip must stay visible")
+                    height = app.read32(height_sym)
+                    got = pixel(overlay, 4, max(1, height - 6))
+                    assert got == background, \
+                        (round_index, name, "the scrollbar strip must keep the "
+                         "panel background", hex(got), hex(background))
+                after = surface_bytes(preview)
+                u32.RedrawWindow(preview, None, None,
+                                 RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN |
+                                 RDW_UPDATENOW)
+                u32.UpdateWindow(preview)
+                time.sleep(.4)
+                assert surface_bytes(preview) == after, \
+                    (round_index, "the document surface kept stale pixels after "
+                     "a sidebar toggle")
 
         # Issue 4, part 1: the picker object itself is a modern IFileOpenDialog.
         app.post_command(CMD_FOLDER_COM_PROBE)

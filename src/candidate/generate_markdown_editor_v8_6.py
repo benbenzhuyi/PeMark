@@ -1973,10 +1973,9 @@ em.label('outline_show')
 em.mov_ripmem_imm32(bsyms['outline_flag'],1)
 em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.mov_r32_imm('rdx',5); em.call_iat('ShowWindow')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_outline_gutter']); em.mov_r32_imm('rdx',5); em.call_iat('ShowWindow')
-# V8.4.24（P0-002）：空闲时表面保持物理隐藏。若在此处 SW_SHOW 而可见标志
-# 仍为 0，会先画出一条没有 thumb 的空条，直到 resize_children 再次隐藏它；
-# 隐藏状态与可见标志、空闲契约保持一致。
-em.mov_r64_ripmem('rcx',bsyms['hwnd_outline_scroll']); em.xor32('rdx'); em.call_iat('ShowWindow'); em.mov_ripmem_imm32(bsyms['outline_scroll_visible'],0)
+# V8.6.1：滚动面在侧栏可见期间常驻显示（它同时负责刷这条槽位的底色），是否画
+# thumb 由 resize_children/sync 里的几何决定。
+em.mov_r64_ripmem('rcx',bsyms['hwnd_outline_scroll']); em.mov_r32_imm('rdx',5); em.call_iat('ShowWindow'); em.mov_ripmem_imm32(bsyms['outline_scroll_visible'],0)
 em.mov_ripmem_imm32(bsyms['outline_scroll_drag'],0)
 em.mov_ripmem_imm32(bsyms['outline_scroll_drag_offset'],0)
 em.mov_ripmem_imm32(bsyms['outline_scroll_thumb_top'],4)
@@ -2086,12 +2085,11 @@ em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.mov_r32_imm('rdx',0x018E); em
 em.call_label('scroll_layout')
 # Enforce the cached maximum after native ListBox keyboard/wheel navigation too.
 em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.mov_r32_imm('rdx',0x0197); em.mov_r32_ripmem('r8',bsyms['outline_scroll_top']); em.xor32('r9'); em.call_iat('SendMessageW')
-# V8.6.1：可见性由几何决定（有内容可滚就常显），不再依赖悬停。
+# V8.6.1：可见性由几何决定（有内容可滚就画 thumb），不再依赖悬停。
+# 注意：滚动面本身只要侧栏可见就常驻显示——它同时负责把这条槽位刷成面板底色。
+# 之前"不可滚动就整窗隐藏"会让文档的文字留在这条槽里（反复开关侧栏后的残留）。
 em.mov_r64_ripmem('rcx',bsyms['hwnd_outline_scroll']); em.test64('rcx'); em.jcc(0x84,'sync_os_ret')
-em.mov_r32_ripmem('rax',bsyms['outline_scroll_visible']); em.test32('rax'); em.jcc(0x84,'sync_os_hide')
-em.mov_r32_imm('rdx',5); em.call_iat('ShowWindow')
-em.mov_r64_ripmem('rcx',bsyms['hwnd_outline_scroll']); em.xor32('rdx'); em.xor32('r8'); em.mov_r32_imm('r9',0x105); em.call_iat('RedrawWindow'); em.jmp('sync_os_ret')
-em.label('sync_os_hide'); em.xor32('rdx'); em.call_iat('ShowWindow')
+em.xor32('rdx'); em.xor32('r8'); em.mov_r32_imm('r9',0x105); em.call_iat('RedrawWindow')
 em.label('sync_os_ret'); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
 
 # V8.6.1：文件面板的滚轮分流。指针落在文件列表矩形内时滚动三行，顶部索引钳制到
@@ -2177,10 +2175,8 @@ em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.mov_r32_imm('rdx',0x018E); em.x
 em.call_label('files_scroll_layout')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.mov_r32_imm('rdx',0x0197); em.mov_r32_ripmem('r8',bsyms['files_scroll_top']); em.xor32('r9'); em.call_iat('SendMessageW')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_files_scroll']); em.test64('rcx'); em.jcc(0x84,'sync_fs_ret')
-em.mov_r32_ripmem('rax',bsyms['files_scroll_visible']); em.test32('rax'); em.jcc(0x84,'sync_fs_hide')
-em.mov_r32_imm('rdx',5); em.call_iat('ShowWindow')
-em.mov_r64_ripmem('rcx',bsyms['hwnd_files_scroll']); em.xor32('rdx'); em.xor32('r8'); em.mov_r32_imm('r9',0x105); em.call_iat('RedrawWindow'); em.jmp('sync_fs_ret')
-em.label('sync_fs_hide'); em.xor32('rdx'); em.call_iat('ShowWindow')
+# 与大纲同一契约：常驻显示、只按可见标志决定是否画 thumb。
+em.xor32('rdx'); em.xor32('r8'); em.mov_r32_imm('r9',0x105); em.call_iat('RedrawWindow')
 em.label('sync_fs_ret'); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
 
 # V8.6.1：文件面板的 thumb 拖动。与大纲同构（有符号钳制 + MulDiv 映射回行号）。
@@ -2518,16 +2514,14 @@ em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.mov_r32_imm('rdx',5); em.call_i
 em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.mov_r32_imm('rdx',5); em.call_iat('ShowWindow')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_outline_gutter']); em.mov_r32_imm('rdx',5); em.call_iat('ShowWindow')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_splitter']); em.mov_r32_imm('rdx',5); em.call_iat('ShowWindow')
-# The custom surface is physically hidden while idle. The permanent gutter keeps
-# geometry stable, and showing the surface never changes ListBox width.
-em.mov_r32_ripmem('rax',bsyms['outline_scroll_visible']); em.test32('rax'); em.jcc(0x84,'resize_scroll_hidden')
-em.mov_r64_ripmem('rcx',bsyms['hwnd_outline_scroll']); em.mov_r32_imm('rdx',5); em.call_iat('ShowWindow'); em.jmp('resize_files_scroll')
-em.label('resize_scroll_hidden'); em.mov_r64_ripmem('rcx',bsyms['hwnd_outline_scroll']); em.xor32('rdx'); em.call_iat('ShowWindow')
-# V8.6.1：文件面板滚动面同规则（有内容可滚才显示），两个面板表现一致。
-em.label('resize_files_scroll')
-em.mov_r32_ripmem('rax',bsyms['files_scroll_visible']); em.test32('rax'); em.jcc(0x84,'resize_files_scroll_hidden')
-em.mov_r64_ripmem('rcx',bsyms['hwnd_files_scroll']); em.mov_r32_imm('rdx',5); em.call_iat('ShowWindow'); em.jmp('resize_doc')
-em.label('resize_files_scroll_hidden'); em.mov_r64_ripmem('rcx',bsyms['hwnd_files_scroll']); em.xor32('rdx'); em.call_iat('ShowWindow'); em.jmp('resize_doc')
+# V8.6.1：两块滚动面只要侧栏可见就常驻显示——它们同时负责把这两条槽位刷成面板
+# 底色。是否画 thumb 由几何（max_top>0）决定。曾经的"不可滚动就整窗隐藏"会让
+# 文档留下的文字一直粘在槽位上（反复开关侧栏后的残留），也会让启动时出现一条
+# 与列表底色不同的灰条。
+em.mov_r64_ripmem('rcx',bsyms['hwnd_outline_scroll']); em.mov_r32_imm('rdx',5); em.call_iat('ShowWindow')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_outline_scroll']); em.xor32('rdx'); em.xor32('r8'); em.mov_r32_imm('r9',0x0101); em.call_iat('RedrawWindow')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_files_scroll']); em.mov_r32_imm('rdx',5); em.call_iat('ShowWindow')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_files_scroll']); em.xor32('rdx'); em.xor32('r8'); em.mov_r32_imm('r9',0x0101); em.call_iat('RedrawWindow'); em.jmp('resize_doc')
 em.label('resize_sidebar_hidden')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_files_header']); em.xor32('rdx'); em.call_iat('ShowWindow')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_panel_divider']); em.xor32('rdx'); em.call_iat('ShowWindow')
@@ -2552,7 +2546,13 @@ em.label('resize_doc')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.test64('rcx'); em.jcc(0x84,'resize_preview_surface'); em.mov_r32_ripmem('rdx',bsyms['content_x']); em.xor32('r8'); em.mov_r32_ripmem('r9',bsyms['content_w']); em.mov_r32_ripmem('r11',bsyms['content_h']); em.mov_mrsp_reg32(0x20,'r11'); em.mov_mrsp_imm32(0x28,1,qword=True); em.call_iat('MoveWindow')
 em.label('resize_preview_surface')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_preview']); em.test64('rcx'); em.jcc(0x84,'resize_ret'); em.mov_r32_ripmem('rdx',bsyms['content_x']); em.xor32('r8'); em.mov_r32_ripmem('r9',bsyms['content_w']); em.mov_r32_ripmem('r11',bsyms['content_h']); em.mov_mrsp_reg32(0x20,'r11'); em.mov_mrsp_imm32(0x28,1,qword=True); em.call_iat('MoveWindow')
-em.label('resize_ret'); em.call_label('sync_outline_scrollbar'); em.call_label('repaint_splitter_surface'); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
+# V8.6.1：拖动分隔条时文档面同时改变位置与宽度，必须显式重绘——否则 RichEdit
+# 会留下旧像素（拖动时花屏），要等下一次偶然重绘才恢复。RDW_INVALIDATE|RDW_ERASE|
+# RDW_ALLCHILDREN（不加 UPDATENOW，让连续拖动自然合并到下一帧）。
+em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.test64('rcx'); em.jcc(0x84,'resize_redraw_preview'); em.xor32('rdx'); em.xor32('r8'); em.mov_r32_imm('r9',0x0085); em.call_iat('RedrawWindow')
+em.label('resize_redraw_preview'); em.mov_r64_ripmem('rcx',bsyms['hwnd_preview']); em.test64('rcx'); em.jcc(0x84,'resize_redraw_done'); em.xor32('rdx'); em.xor32('r8'); em.mov_r32_imm('r9',0x0085); em.call_iat('RedrawWindow')
+em.label('resize_redraw_done')
+em.label('resize_ret'); em.call_label('sync_outline_scrollbar'); em.call_label('sync_files_scrollbar'); em.call_label('repaint_splitter_surface'); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
 
 # Helper: create a new source EDIT font for current zoom_pct. Preview uses
 # RichEdit EM_SETZOOM, so changing zoom never reparses/reformats the whole Markdown document.
@@ -5669,6 +5669,22 @@ for _layout in ("scroll_layout", "files_scroll_layout"):
         '%s must publish scrollbar visibility from the geometry' % _layout
 for _visibility in ("scroll_visible_store", "fsl_visible_store"):
     assert _visibility in em.labels, 'missing always-visible rule: %s' % _visibility
+# 滚动面负责刷槽位底色，因此只要侧栏可见就必须常驻显示；"不可滚动就整窗隐藏"
+# 会让文档文字留在槽位上（反复开关侧栏后的残留），也会让启动时出现一条与列表
+# 底色不同的灰条。
+for _hidden_label in ("resize_scroll_hidden", "resize_files_scroll_hidden",
+                      "sync_os_hide", "sync_fs_hide"):
+    assert _hidden_label not in em.labels, \
+        'the scroll strips must stay visible while the sidebar is: %s' % _hidden_label
+_resize_src = _routine_src('resize_children', 120)
+for _surface in ("hwnd_outline_scroll", "hwnd_files_scroll"):
+    assert ("bsyms['%s']); em.mov_r32_imm('rdx',5); em.call_iat('ShowWindow')" % _surface) in _resize_src, \
+        'resize_children must show %s unconditionally' % _surface
+# 拖动分隔条/开关侧栏都会改变文档面的位置与宽度：必须显式重绘，否则会花屏。
+_resize_ret_src = _routine_src('resize_ret', 6)
+assert "call_label('sync_files_scrollbar')" in _resize_ret_src and \
+       "mov_r32_imm('r9',0x0085)" in _production_source, \
+    'resize must resync the file scrollbar and force the document surfaces to repaint'
 
 # (W) 快捷键方案：与 Rabbit 对齐的键位必须唯一且指向正确命令，菜单里的提示必须与
 #     加速键表一致，为后续功能预留的键位不得被占用。

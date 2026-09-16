@@ -150,6 +150,33 @@ Build-time assertions keep the two bars unified: the file list may not carry
 not recompute thumb geometry, and both layouts must publish the same 6px
 centred rect plus the always-visible rule.
 
+## V8.6.1 — Sidebar strips repaint, drag no longer smears
+
+Three defects reported from use, all in the same area:
+
+1. **A lighter gutter column at startup.** The scroll surfaces were hidden
+   whenever a list did not overflow, so nothing painted that 17px strip and the
+   window background showed through instead of the panel background. The
+   surfaces are now permanently shown while the sidebar is visible: they always
+   paint the strip in the panel colour, and only the *thumb* depends on the
+   overflow (6px calm / 11px hot).
+2. **Dragging the sidebar smeared the document.** `resize_children` moved and
+   resized the document surfaces without invalidating them, so RichEdit kept
+   stale pixels until an unrelated repaint. The resize path now forces
+   `RDW_INVALIDATE|RDW_ERASE|RDW_ALLCHILDREN` on both surfaces and re-syncs the
+   file scrollbar.
+3. **Repeated sidebar toggles left document text glued to the scroll strip.**
+   Same root cause as (1): with the surface hidden, that strip was never
+   repainted, so whatever the document had drawn there stayed. With the surface
+   always visible and repainted on every resize, the strip can no longer hold
+   stale content.
+
+Evidence: `tools/test_v8_6_theme_picker.py` toggles the sidebar three times and
+asserts both strips stay visible, keep the panel background pixel, and that the
+preview surface is byte-identical to a forced clean repaint; build-time
+assertions forbid hiding the surfaces while the sidebar is visible and require
+the resize repaint plus the file-scrollbar resync.
+
 V8.6 is scoped to "browse a directory and open files from it" while the
 application still owns a single writable document. The plan
 (`docs/MILESTONE_PLAN.md` §6) deliberately defers destructive file operations,
