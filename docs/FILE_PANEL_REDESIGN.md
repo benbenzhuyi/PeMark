@@ -335,6 +335,15 @@ PeMark 是纯 Direct-PE 机器码生成，没有 DOM 与第三方控件，因此
 - 按行 flags 绘制缩进、箭头、目录后缀与类型色；箭头区与行区命中分流；
 - 验收：像素证据显示缩进行位移正确、箭头字形随展开状态变化；点击箭头区只切换
   展开（不改变根），点击行其他区域行为符合表格；滚动条几何与行数同步。
+  - 已完成：文件列表现在是 `tree_rows` 的投影，行文本由
+    `tree_display_name` 生成（缩进、`▸/▾`、末级名称、目录反斜杠）；每个
+    ListBox 项通过 `LB_SETITEMDATA` 保存树行索引；owner-draw 从
+    `DRAWITEMSTRUCT.itemData` 取行并读取 `TREE_OFF_FLAGS`。目录激活切换展开
+    集合并重建投影，文件激活复用现有 Open 事务。枚举改为目录优先的两遍
+    `FindFirstFileW`，保持旧的目录排序契约。
+  - 证据：`tools/test_v8_6_tree_ui.py` 使用真实进程验证投影、itemData、目录展开
+    和文件打开；`tools/test_v8_6_panel.py` 与 `test_v8_6_navigation.py` 已更新为
+    新的树行文本契约。
 
 ### 切片 3：文件操作（重命名 / 新建 / 删除 / 复制路径）
 

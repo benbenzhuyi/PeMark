@@ -3,6 +3,26 @@
 V8.5.4 shipped as the first stable release; its full record is
 `docs/CHANGELOG_V8_5_4.md`.
 
+## V8.6.1 candidate — File-tree projection and activation (slice 2)
+
+The flattened tree model is now the file panel's only list source:
+
+- `rebuild_file_list` projects `tree_rows` into `hwnd_files`, stores each row
+  index in `LB_SETITEMDATA`, and derives the visible text with indentation,
+  `▸/▾` directory arrows, path-component names and directory suffixes;
+- owner-draw reads the item data from `DRAWITEMSTRUCT` and colours directories
+  from `TREE_OFF_FLAGS`, never from the Outline level table;
+- directory activation toggles the expanded set and rebuilds the projection;
+  file activation sets `temp_path` and reuses the existing Open transaction;
+- directory enumeration is two-pass (directories first, then files), so the
+  prior flat-list ordering expectations are preserved within the tree.
+
+Evidence: `tools/test_v8_6_tree_ui.py` drives a real process with a temporary
+directory tree, verifies ListBox projection/itemData, expands a directory and
+opens a file through the shared Open transaction. `tools/test_v8_6_tree_model.py`
+continues to cover filtering, depth and unreadable-root errors;
+`smoke_test_v8_5_1.py` remains 17/17.
+
 ## V8.6.1 candidate — File-tree model (slice 1)
 
 The file panel now has a model-only flattened tree, independent of the still

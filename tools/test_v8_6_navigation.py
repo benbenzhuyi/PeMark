@@ -156,29 +156,34 @@ def main():
 
             probe(app, root, 3)
             wait_for(lambda: lb_count(app, lb) == 3, 4, "file panel")
-            assert rows(app, lb, 3)[0] == "sub\\", rows(app, lb, 3)
+            assert rows(app, lb, 3)[0] == "▸ sub\\", rows(app, lb, 3)
             assert ws_path(app) == str(root)
             painted = status_path_pixels(app)
             assert painted > 50, \
                 "the status bar must paint the workspace directory (%d px)" % painted
 
-            # --- enter a directory through the double-click path --------------
+            # --- expand a directory through the activation path --------------
             post_double_click(app, lb, 0)
-            wait_for(lambda: ws_path(app) == str(sub), 5,
-                     "double-clicking a directory must make it the root")
+            wait_for(lambda: lb_count(app, lb) == 4, 5, "sub-directory expansion")
+            assert rows(app, lb, 4)[1] == "  inner.md", rows(app, lb, 4)
+            assert ws_path(app) == str(root)
+            post_double_click(app, lb, 0)
+            wait_for(lambda: lb_count(app, lb) == 3, 5, "sub-directory collapse")
+
+            # --- set a nested root, then go up one level ----------------------
+            probe(app, sub, 1)
             wait_for(lambda: lb_count(app, lb) == 1, 5, "sub-directory listing")
-            assert app.read32("ws_entry_count") == 1
             assert rows(app, lb, 1) == ["inner.md"], rows(app, lb, 1)
             assert ws_path(app) == str(sub)
             assert status_path_pixels(app) > 50
 
-            # --- going up one level ------------------------------------------
             # The Backspace focus condition is asserted at build time
             # (keydown_event must compare GetFocus() against hwnd_files); the
             # navigation itself goes through the same shared command.
             select_row(app, lb, 0)
             app.post_command(CMD_GO_UP)
             wait_for(lambda: ws_path(app) == str(root), 5, "go up to the parent")
+            wait_for(lambda: lb_count(app, lb) == 3, 5, "parent listing")
             wait_for(lambda: lb_count(app, lb) == 3, 4, "parent listing again")
 
             # --- open a file -------------------------------------------------

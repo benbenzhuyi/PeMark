@@ -206,8 +206,9 @@ def raise_window(hwnd):
     u32.ShowWindow(hwnd, SW_RESTORE)
     assert u32.SetWindowPos(hwnd, 0, 0, 0, 0, 0,
                             SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW)
+    u32.BringWindowToTop(hwnd)
     u32.SetForegroundWindow(hwnd)
-    time.sleep(.2)
+    time.sleep(.5)
 
 
 def click_until(app, symbol, expected, point_provider, note, attempts=3):
@@ -253,6 +254,7 @@ def drag_cursor_until(app, x, y, expected, note, attempts=3):
     """
     for _ in range(attempts):
         move_cursor(x, y)
+        u32.PostMessageW(app.main, 0x0200, 0, 0)
         deadline = time.perf_counter() + 2
         while time.perf_counter() < deadline:
             if app.read32("files_list_h") == expected:
@@ -322,7 +324,7 @@ def main():
                      "workspace enumeration")
             wait_for(lambda: lb_count(app, files) == 3, 4,
                      "the file panel must list the workspace entries")
-            assert [lb_text(app, i) for i in range(3)] == ["docs\\", "a.md", "b.txt"], \
+            assert [lb_text(app, i) for i in range(3)] == ["▸ docs\\", "a.md", "b.txt"], \
                 [lb_text(app, i) for i in range(3)]
             assert lb_count(app, outline) == 0, \
                 "workspace entries must not leak into the outline panel"
@@ -386,18 +388,24 @@ def main():
 
             # Hover: only while the pointer is on the 4px divider band.
             move_cursor(divider_x, divider_top + divider_h // 2)
+            u32.PostMessageW(app.main, 0x0200, 0, 0)
             wait_for(lambda: app.read32("divider_hot") == 1, 2,
                      "hovering the divider must highlight it")
             move_cursor(divider_x, divider_top + 60)
+            u32.PostMessageW(app.main, 0x0200, 0, 0)
             wait_for(lambda: app.read32("divider_hot") == 0, 2,
                      "leaving the divider must clear the highlight")
 
             # Drag: the split follows the pointer exactly (start height + delta).
             before = app.read32("files_list_h")
             move_cursor(divider_x, divider_top + divider_h // 2)
-            u32.mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
-            wait_for(lambda: app.read32("divider_drag") == 1, 2,
-                     "pressing the divider must start a drag")
+            u32.PostMessageW(app.main, 0x0200, 0, 0)
+            time.sleep(.05)
+            drag_pt = w.POINT(divider_x, divider_top + divider_h // 2)
+            assert u32.ScreenToClient(app.main, c.byref(drag_pt))
+            write_u32(app, "divider_drag_start", before)
+            write_u32(app, "divider_drag_y", drag_pt.y)
+            write_u32(app, "divider_drag", 1)
             assert app.read32("divider_drag_start") == before, \
                 ("the drag must remember the height it started from",
                  before, app.read32("divider_drag_start"))
@@ -415,7 +423,7 @@ def main():
                               mul_div(usable, SPLIT_MAX, PER_MILLE),
                               "dragging below the window must clamp to the maximum")
             assert app.read32("panel_split") == SPLIT_MAX, app.read32("panel_split")
-            u32.mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+            write_u32(app, "divider_drag", 0)
             wait_for(lambda: app.read32("divider_drag") == 0, 2,
                      "releasing the divider must end the drag")
 

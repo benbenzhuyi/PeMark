@@ -11,11 +11,11 @@
 | `.reloc` | `0x29000` | 512 | 512 | `0x42000040` |
 | `.pdata` | `0x2A000` | 1024 | 1024 | `0x40000040` |
 
-text 实际代码 49753 字节（预算 61440），rdata 5532 字节，idata 4428 字节，BSS 虚拟 81920 字节。
+text 实际代码 50478 字节（预算 61440），rdata 5576 字节，idata 4428 字节，BSS 虚拟 81920 字节。
 
-本次构建：text 实际 49753 字节（余量 11687 字节）；BSS 符号 282 个，最终虚拟 BSS 81920 字节。
+本次构建：text 实际 50478 字节（余量 10962 字节）；BSS 符号 284 个，最终虚拟 BSS 81920 字节。
 
-SHA-256：`c17ba2fd86036be9e09bb8254f95ccc759e005f8ac6377b5458438a567c326d2`
+SHA-256：`7d687333900f109d9a878581b16e637571ad01d429ef861393b568a5b79ce3a3`
 
 | Symbol | RVA | Size |
 |---|---:|---:|
@@ -266,38 +266,40 @@ SHA-256：`c17ba2fd86036be9e09bb8254f95ccc759e005f8ac6377b5458438a567c326d2`
 | `tree_expand_index` | `0x28218` | 4 |
 | `tree_expand_depth` | `0x2821C` | 4 |
 | `tree_expand_path` | `0x28220` | 8 |
-| `panel_mode` | `0x28228` | 4 |
-| `open_bypass_picker` | `0x2822C` | 4 |
-| `ws_path_buf` | `0x28230` | 1024 |
-| `browseinfo` | `0x28630` | 64 |
-| `fod_ptr` | `0x28670` | 8 |
-| `fod_options` | `0x28678` | 4 |
-| `fod_chosen` | `0x2867C` | 4 |
-| `shell_item` | `0x28680` | 8 |
-| `item_path` | `0x28688` | 8 |
-| `fod_probe_coinit` | `0x28690` | 4 |
-| `fod_probe_hresult` | `0x28694` | 4 |
-| `fod_probe_options_hresult` | `0x28698` | 4 |
-| `fod_probe_vtbl` | `0x286A0` | 8 |
-| `fod_probe_entered` | `0x286A8` | 4 |
-| `widebuf` | `0x286B0` | 8 |
-| `wide_capacity` | `0x286B8` | 4 |
-| `bytebuf` | `0x286C0` | 8 |
-| `byte_capacity` | `0x286C8` | 4 |
-| `document_revision` | `0x286D0` | 8 |
-| `saved_revision` | `0x286D8` | 8 |
-| `pending_destructive_action` | `0x286E0` | 4 |
-| `save_target_is_temp` | `0x286E4` | 4 |
-| `inject_write_call_count` | `0x286E8` | 4 |
-| `inject_flush_call_count` | `0x286EC` | 4 |
-| `inject_replace_call_count` | `0x286F0` | 4 |
-| `save_stage_path` | `0x28700` | 1024 |
-| `inject_create_call_count` | `0x28B00` | 4 |
-| `inject_close_call_count` | `0x28B04` | 4 |
-| `eol_state` | `0x28B08` | 4 |
-| `candidate_encoding_state` | `0x28B0C` | 4 |
-| `candidate_eol_state` | `0x28B10` | 4 |
-| `outline_srcpos` | `0x28B18` | 8 |
-| `outline_renderpos` | `0x28B20` | 8 |
-| `outline_level` | `0x28B28` | 8 |
-| `outline_capacity` | `0x28B30` | 4 |
+| `tree_enum_pass` | `0x28228` | 4 |
+| `rfl_item_index` | `0x2822C` | 4 |
+| `panel_mode` | `0x28230` | 4 |
+| `open_bypass_picker` | `0x28234` | 4 |
+| `ws_path_buf` | `0x28240` | 1024 |
+| `browseinfo` | `0x28640` | 64 |
+| `fod_ptr` | `0x28680` | 8 |
+| `fod_options` | `0x28688` | 4 |
+| `fod_chosen` | `0x2868C` | 4 |
+| `shell_item` | `0x28690` | 8 |
+| `item_path` | `0x28698` | 8 |
+| `fod_probe_coinit` | `0x286A0` | 4 |
+| `fod_probe_hresult` | `0x286A4` | 4 |
+| `fod_probe_options_hresult` | `0x286A8` | 4 |
+| `fod_probe_vtbl` | `0x286B0` | 8 |
+| `fod_probe_entered` | `0x286B8` | 4 |
+| `widebuf` | `0x286C0` | 8 |
+| `wide_capacity` | `0x286C8` | 4 |
+| `bytebuf` | `0x286D0` | 8 |
+| `byte_capacity` | `0x286D8` | 4 |
+| `document_revision` | `0x286E0` | 8 |
+| `saved_revision` | `0x286E8` | 8 |
+| `pending_destructive_action` | `0x286F0` | 4 |
+| `save_target_is_temp` | `0x286F4` | 4 |
+| `inject_write_call_count` | `0x286F8` | 4 |
+| `inject_flush_call_count` | `0x286FC` | 4 |
+| `inject_replace_call_count` | `0x28700` | 4 |
+| `save_stage_path` | `0x28710` | 1024 |
+| `inject_create_call_count` | `0x28B10` | 4 |
+| `inject_close_call_count` | `0x28B14` | 4 |
+| `eol_state` | `0x28B18` | 4 |
+| `candidate_encoding_state` | `0x28B1C` | 4 |
+| `candidate_eol_state` | `0x28B20` | 4 |
+| `outline_srcpos` | `0x28B28` | 8 |
+| `outline_renderpos` | `0x28B30` | 8 |
+| `outline_level` | `0x28B38` | 8 |
+| `outline_capacity` | `0x28B40` | 4 |

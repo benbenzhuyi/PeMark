@@ -82,6 +82,12 @@ jobs:
           PEMARK_GENERATOR: ${{ github.workspace }}/src/candidate/generate_markdown_editor_v8_6.py
           PEMARK_TREE_EXE: ${{ github.workspace }}/bin/candidate/pemark_x64_v8_6_candidate.exe
         run: python tools/test_v8_6_tree_model.py
+      - name: Exercise the file-tree projection and activation
+        if: ${{ hashFiles('tools/test_v8_6_tree_ui.py') != '' }}
+        env:
+          PEMARK_GENERATOR: ${{ github.workspace }}/src/candidate/generate_markdown_editor_v8_6.py
+          PEMARK_TREE_EXE: ${{ github.workspace }}/bin/candidate/pemark_x64_v8_6_candidate.exe
+        run: python tools/test_v8_6_tree_ui.py
       - name: Exercise sidebar panel modes
         if: ${{ hashFiles('tools/test_v8_6_panel.py') != '' }}
         env:

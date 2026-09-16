@@ -181,6 +181,8 @@ wstr('m_panel_files','&Files Panel')
 wstr('m_panel_outline','&Outline Panel')
 wstr('panel_files','Files')
 wstr('panel_outline','Outline')
+wstr('tree_arrow_closed','▸')
+wstr('tree_arrow_open','▾')
 wstr('m_light','&Light')
 wstr('m_dark','&Dark\tCtrl+Alt+T')
 wstr('m_about','&About\tF1')
@@ -623,6 +625,8 @@ bss_alloc('tree_insert_path', 8, 8)
 bss_alloc('tree_expand_index', 4, 4)
 bss_alloc('tree_expand_depth', 4, 4)
 bss_alloc('tree_expand_path', 8, 8)
+bss_alloc('tree_enum_pass', 4, 4)
+bss_alloc('rfl_item_index', 4, 4)
 # V8.6 切片 2：侧边栏面板模式。0 = 大纲，1 = 文件。两个模式共用同一个
 # ListBox 控件与同一套滚动条几何，只改变列表内容、行文本与行颜色。
 bss_alloc('panel_mode', 4, 4)
@@ -3914,6 +3918,45 @@ em.add_r64_r64('rax','rcx')
 em.mov_r64_ripmem('rcx',bsyms['tree_rows']); em.add_r64_r64('rax','rcx')
 em.emit(0xC3)
 
+# rcx = tree row, rdx = destination: emit indentation, the directory arrow and
+# the last path component. Leaf; only volatile registers are touched.
+em.label('tree_display_name')
+em.mov_r64_r64('r10','rcx')
+em.mov_r32_mreg('r11','r10',TREE_OFF_FLAGS)
+em.mov_r32_mreg('r9','r10',TREE_OFF_DEPTH)
+em.test32('r9'); em.jcc(0x89,'tdn_depth_ok'); em.xor32('r9')
+em.label('tdn_depth_ok')
+em.xor32('r8')
+# depth * 2 spaces
+em.mov_r32_r32('rax','r9'); em.add_r32_r32('rax','rax')
+em.label('tdn_space')
+em.test32('rax'); em.jcc(0x84,'tdn_arrow')
+em.mov_word_index2_imm16('rdx','r8',0x20); em.add_r32_imm8('r8',1); em.sub_r32_imm8('rax',1); em.jmp('tdn_space')
+em.label('tdn_arrow')
+em.mov_r32_r32('rax','r11'); em.and_r32_imm('rax',TREE_FLAG_DIR); em.test32('rax'); em.jcc(0x84,'tdn_scan')
+em.mov_r32_r32('rax','r11'); em.and_r32_imm('rax',TREE_FLAG_EXPANDED); em.test32('rax'); em.jcc(0x84,'tdn_arrow_closed')
+em.mov_r32_imm('rax',0x25BE); em.jmp('tdn_arrow_write')  # ▾ expanded
+em.label('tdn_arrow_closed'); em.mov_r32_imm('rax',0x25B8)  # ▸ collapsed
+em.label('tdn_arrow_write'); em.mov_word_index2_reg('rdx','r8','rax'); em.add_r32_imm8('r8',1)
+em.mov_word_index2_imm16('rdx','r8',0x20); em.add_r32_imm8('r8',1)
+# find the last separator
+em.label('tdn_scan')
+em.xor32('r9'); em.xor32('rcx')
+em.label('tdn_scan_loop')
+em.movzx_r32_word_index2('rax','r10','r9'); em.test32('rax'); em.jcc(0x84,'tdn_copy_start')
+em.cmp_r32_imm('rax',0x5C); em.jcc(0x85,'tdn_scan_next')
+em.mov_r32_r32('rcx','r9'); em.add_r32_imm8('rcx',1)
+em.label('tdn_scan_next'); em.add_r32_imm8('r9',1); em.cmp_r32_imm('r9',TREE_PATH_UNITS); em.jcc(0x82,'tdn_scan_loop')
+em.label('tdn_copy_start')
+em.mov_r32_r32('r9','rcx'); em.xor32('rax')
+em.label('tdn_copy')
+em.movzx_r32_word_index2('r11','r10','r9'); em.test32('r11'); em.jcc(0x84,'tdn_copy_done')
+em.mov_word_index2_reg('rdx','r8','r11'); em.add_r32_imm8('r8',1); em.add_r32_imm8('r9',1); em.jmp('tdn_copy')
+em.label('tdn_copy_done')
+em.mov_r32_mreg('rax','r10',TREE_OFF_FLAGS); em.test32('rax'); em.jcc(0x84,'tdn_terminate')
+em.mov_word_index2_imm16('rdx','r8',0x5C); em.add_r32_imm8('r8',1)
+em.label('tdn_terminate'); em.mov_word_index2_zero('rdx','r8'); em.emit(0xC3)
+
 # rcx = name -> eax = 1 when it ends in .md / .markdown / .txt (ASCII, case-insensitive)
 em.label('ws_suffix_match')
 em.xor32('rdx')                                                          # length
@@ -4069,9 +4112,8 @@ em.mov_r64_r64('r12','rcx')
 em.lea_rip('rcx',bsyms['ws_root_path']); em.mov_r64_r64('rdx','r12'); em.call_iat('lstrcpyW')
 em.lea_rip('rcx',bsyms['ws_current_path']); em.mov_r64_r64('rdx','r12'); em.call_iat('lstrcpyW')
 em.call_label('workspace_refresh')
-# 文件树模型从同一个授权根重建；当前 UI 仍使用单层文件列表。
+# 文件树模型从同一个授权根重建；rebuild_file_list 是唯一的树投影写者。
 em.lea_rip('rcx',bsyms['tree_root_path']); em.mov_r64_r64('rdx','r12'); em.call_iat('lstrcpyW')
-em.call_label('tree_rebuild')
 # V8.6.1：文件面板始终存在，新的根目录枚举完成后立即刷新文件列表与状态栏。
 em.call_label('rebuild_file_list')
 em.call_label('update_status')
@@ -4117,6 +4159,26 @@ em.label('tie_yes'); em.mov_r32_imm('rax',1); em.jmp('tie_ret')
 em.label('tie_no'); em.xor32('rax')
 em.label('tie_ret'); em.add_r64_imm8('rsp',0x30); em.emit(0x41,0x5E); em.emit(0x41,0x5D); em.emit(0x41,0x5C); em.emit(0xC3)
 
+# rcx = destination path slot, rdx = source path: copy one 512-unit path.
+em.label('tree_copy_path_entry')
+em.mov_r64_r64('rsi','rdx'); em.mov_r64_r64('rdi','rcx'); em.mov_r32_imm('rax',128)
+em.label('tcpe_loop'); em.mov_r64_mreg('r10','rsi',0); em.mov_mreg_reg64('rdi',0,'r10'); em.add_r64_imm8('rsi',8); em.add_r64_imm8('rdi',8); em.sub_r32_imm8('rax',1); em.jcc(0x85,'tcpe_loop'); em.emit(0xC3)
+
+# rcx = path -> eax = expanded index, or -1.
+em.label('tree_find_expanded_index')
+em.emit(0x41,0x54); em.emit(0x41,0x55); em.emit(0x41,0x56); em.emit(0x48,0x83,0xEC,0x30)
+em.mov_r64_r64('r12','rcx')
+em.mov_r32_ripmem('r13',bsyms['tree_expanded_count']); em.xor32('r14')
+em.label('tfei_loop')
+em.cmp_r32_r32('r14','r13'); em.jcc(0x8D,'tfei_no')
+em.mov_r64_r64('rcx','r12'); em.mov_r32_imm('rdx',0xFFFFFFFF)
+em.lea_rip('r8',bsyms['tree_expanded']); em.mov_r32_r32('rax','r14'); em.shl_r32_imm8('rax',10); em.add_r64_r64('r8','rax')
+em.mov_r32_imm('r9',0xFFFFFFFF); em.mov_mrsp_imm32(0x20,0); em.call_iat('CompareStringOrdinal'); em.cmp_r32_imm('rax',2); em.jcc(0x84,'tfei_yes')
+em.add_r32_imm8('r14',1); em.jmp('tfei_loop')
+em.label('tfei_yes'); em.mov_r32_r32('rax','r14'); em.jmp('tfei_ret')
+em.label('tfei_no'); em.mov_r32_imm('rax',0xFFFFFFFF)
+em.label('tfei_ret'); em.add_r64_imm8('rsp',0x30); em.emit(0x41,0x5E); em.emit(0x41,0x5D); em.emit(0x41,0x5C); em.emit(0xC3)
+
 # rcx = directory path, edx = first insert row, r8d = child depth.
 em.label('tree_expand_children')
 em.emit(0x41,0x54); em.emit(0x41,0x55); em.emit(0x41,0x56); em.emit(0x41,0x57); em.emit(0x48,0x83,0xEC,0x38)
@@ -4129,6 +4191,7 @@ em.lea_rip('rcx',bsyms['ws_pattern']); em.test32('r12'); em.jcc(0x84,'tree_pat_s
 em.mov_r32_r32('rdx','r12'); em.sub_r32_imm8('rdx',1); em.movzx_r32_word_index2('rax','rcx','rdx'); em.cmp_r32_imm('rax',0x5C); em.jcc(0x84,'tree_pat_star')
 em.mov_word_index2_imm16('rcx','r12',0x5C); em.add_r32_imm8('r12',1)
 em.label('tree_pat_star'); em.mov_word_index2_imm16('rcx','r12',0x2A); em.add_r32_imm8('r12',1); em.mov_word_index2_zero('rcx','r12')
+em.mov_ripmem_imm32(bsyms['tree_enum_pass'],0)
 em.lea_rip('rcx',bsyms['ws_pattern']); em.lea_rip('rdx',bsyms['ws_find_data']); em.call_iat('FindFirstFileW'); em.cmp_rax_neg1(); em.jcc(0x84,'tree_expand_error'); em.mov_r64_r64('r15','rax')
 em.label('tree_enum_loop')
 em.lea_rip('r13',bsyms['ws_find_data']); em.add_r64_imm8('r13',44)
@@ -4139,6 +4202,11 @@ em.add_r64_imm8('rcx',2); em.movzx_eax_word_ptr('rcx'); em.test32('rax'); em.jcc
 em.jmp('tree_enum_next')
 em.label('tree_enum_kind')
 em.mov_r32_ripmem('r14',bsyms['ws_find_data']); em.and_r32_imm('r14',0x10)
+em.mov_r32_ripmem('rax',bsyms['tree_enum_pass']); em.test32('rax'); em.jcc(0x85,'tree_enum_files')
+em.test32('r14'); em.jcc(0x84,'tree_enum_next')
+em.jmp('tree_enum_add')
+em.label('tree_enum_files'); em.test32('r14'); em.jcc(0x85,'tree_enum_next')
+em.label('tree_enum_add')
 em.mov_ripmem_imm32(bsyms['tree_insert_flags'],0); em.test32('r14'); em.jcc(0x84,'tree_enum_file')
 em.mov_ripmem_imm32(bsyms['tree_insert_flags'],1)
 em.label('tree_enum_file')
@@ -4156,7 +4224,11 @@ em.call_label('tree_insert_row'); em.test32('rax'); em.jcc(0x84,'tree_enum_nomem
 em.mov_r32_ripmem('rax',bsyms['tree_expand_index']); em.add_r32_imm8('rax',1); em.mov_ripmem_r32(bsyms['tree_expand_index'],'rax')
 em.label('tree_enum_next')
 em.mov_r64_r64('rcx','r15'); em.lea_rip('rdx',bsyms['ws_find_data']); em.call_iat('FindNextFileW'); em.test32('rax'); em.jcc(0x85,'tree_enum_loop')
-em.mov_r64_r64('rcx','r15'); em.call_iat('FindClose'); em.mov_r32_imm('rax',1); em.jmp('tree_expand_ret')
+em.mov_r32_ripmem('rax',bsyms['tree_enum_pass']); em.test32('rax'); em.jcc(0x85,'tree_enum_pass_done')
+em.mov_r64_r64('rcx','r15'); em.call_iat('FindClose'); em.mov_ripmem_imm32(bsyms['tree_enum_pass'],1)
+em.lea_rip('rcx',bsyms['ws_pattern']); em.lea_rip('rdx',bsyms['ws_find_data']); em.call_iat('FindFirstFileW'); em.cmp_rax_neg1(); em.jcc(0x84,'tree_enum_pass_one_empty'); em.mov_r64_r64('r15','rax'); em.jmp('tree_enum_loop')
+em.label('tree_enum_pass_one_empty'); em.mov_r32_imm('rax',1); em.jmp('tree_expand_ret')
+em.label('tree_enum_pass_done'); em.mov_r64_r64('rcx','r15'); em.call_iat('FindClose'); em.mov_r32_imm('rax',1); em.jmp('tree_expand_ret')
 em.label('tree_enum_nomem'); em.mov_ripmem_imm32(bsyms['tree_last_error'],8); em.mov_r64_r64('rcx','r15'); em.call_iat('FindClose'); em.xor32('rax'); em.jmp('tree_expand_ret')
 em.label('tree_expand_error'); em.call_iat('GetLastError'); em.mov_ripmem_r32(bsyms['tree_last_error'],'rax'); em.xor32('rax')
 em.label('tree_expand_ret'); em.add_r64_imm8('rsp',0x38); em.emit(0x41,0x5F); em.emit(0x41,0x5E); em.emit(0x41,0x5D); em.emit(0x41,0x5C); em.emit(0xC3)
@@ -4194,9 +4266,24 @@ em.mov_r32_ripmem('rax',bsyms['tree_row_count']); em.sub_r32_imm8('rax',1); em.m
 em.mov_r32_imm('rax',1); em.jmp('tree_rebuild_ret')
 em.label('tree_rebuild_empty'); em.xor32('rax')
 em.jmp('tree_rebuild_ret')
-em.label('tree_rebuild_fail'); em.xor32('rax'); em.jmp('tree_rebuild_ret')
+em.label('tree_rebuild_fail'); em.mov_ripmem_imm32(bsyms['tree_row_count'],0); em.xor32('rax'); em.jmp('tree_rebuild_ret')
 em.label('tree_rebuild_done'); em.mov_r32_imm('rax',1)
 em.label('tree_rebuild_ret'); em.add_r64_imm8('rsp',0x38); em.emit(0x5F); em.emit(0x5E); em.emit(0x41,0x5F); em.emit(0x41,0x5E); em.emit(0x41,0x5D); em.emit(0x41,0x5C); em.emit(0xC3)
+
+# rcx = directory path: add or remove it from the expanded set, then rebuild
+# both the model and the ListBox projection.
+em.label('tree_toggle_path')
+em.emit(0x41,0x54); em.emit(0x41,0x55); em.emit(0x41,0x56); em.emit(0x41,0x57); em.emit(0x56); em.emit(0x57); em.emit(0x48,0x83,0xEC,0x28)
+em.mov_r64_r64('r12','rcx'); em.call_label('tree_find_expanded_index'); em.cmp_r32_imm('rax',0xFFFFFFFF); em.jcc(0x85,'ttp_remove')
+em.mov_r32_ripmem('r14',bsyms['tree_expanded_count']); em.cmp_r32_imm('r14',TREE_EXPANDED_MAX); em.jcc(0x83,'ttp_apply')
+em.mov_r32_r32('rax','r14'); em.shl_r32_imm8('rax',10); em.lea_rip('rcx',bsyms['tree_expanded']); em.add_r64_r64('rcx','rax'); em.mov_r64_r64('rdx','r12'); em.call_label('tree_copy_path_entry')
+em.mov_r32_ripmem('rax',bsyms['tree_expanded_count']); em.add_r32_imm8('rax',1); em.mov_ripmem_r32(bsyms['tree_expanded_count'],'rax'); em.jmp('ttp_apply')
+em.label('ttp_remove')
+em.mov_r32_r32('r13','rax'); em.mov_r32_ripmem('r14',bsyms['tree_expanded_count']); em.mov_r32_r32('rax','r13'); em.add_r32_imm8('rax',1); em.cmp_r32_r32('rax','r14'); em.jcc(0x8D,'ttp_remove_last')
+em.mov_r32_r32('rax','r14'); em.sub_r32_imm8('rax',1); em.shl_r32_imm8('rax',10); em.lea_rip('rdx',bsyms['tree_expanded']); em.add_r64_r64('rdx','rax'); em.mov_r32_r32('rax','r13'); em.shl_r32_imm8('rax',10); em.lea_rip('rcx',bsyms['tree_expanded']); em.add_r64_r64('rcx','rax'); em.call_label('tree_copy_path_entry')
+em.label('ttp_remove_last'); em.mov_r32_ripmem('rax',bsyms['tree_expanded_count']); em.sub_r32_imm8('rax',1); em.mov_ripmem_r32(bsyms['tree_expanded_count'],'rax')
+em.label('ttp_apply'); em.call_label('rebuild_file_list'); em.call_label('update_status')
+em.add_r64_imm8('rsp',0x28); em.emit(0x5F); em.emit(0x5E); em.emit(0x41,0x5F); em.emit(0x41,0x5E); em.emit(0x41,0x5D); em.emit(0x41,0x5C); em.emit(0xC3)
 
 # V8.6 切片 2：用 workspace 条目重建 ListBox（文件模式）。复用同一个控件、
 # 同一套滚动条几何、同一套主题刷子：布局、命中测试、滚轮、hover 与
@@ -4205,25 +4292,22 @@ em.label('tree_rebuild_ret'); em.add_r64_imm8('rsp',0x38); em.emit(0x5F); em.emi
 em.label('rebuild_file_list')
 em.emit(0x41,0x54); em.emit(0x41,0x55); em.emit(0x41,0x56); em.emit(0x41,0x57); em.emit(0x48,0x83,0xEC,0x28)
 em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.test64('rcx'); em.jcc(0x84,'rfl_ret')
+# Slice 2: the ListBox is now a projection of the flattened visible tree.
+em.call_label('tree_rebuild')
 em.mov_r32_imm('rdx',0x000B); em.xor32('r8'); em.xor32('r9'); em.call_iat('SendMessageW')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.mov_r32_imm('rdx',0x0184); em.xor32('r8'); em.xor32('r9'); em.call_iat('SendMessageW')
-# V8.6.1：文件列表有自己的 ListBox，不再借用大纲控件，因此大纲计数不受影响。
-em.mov_r32_ripmem('r13',bsyms['ws_entry_count'])
-em.mov_r64_ripmem('r14',bsyms['ws_entries'])
+# Each ListBox item stores its tree-row index in itemData. The owner-draw code
+# and the click handlers both consume that single index.
+em.mov_r32_ripmem('r13',bsyms['tree_row_count'])
 em.xor32('r12')
 em.label('rfl_loop')
 em.cmp_r32_r32('r12','r13'); em.jcc(0x83,'rfl_done')
-em.test64('r14'); em.jcc(0x84,'rfl_done')
-em.mov_r32_r32('rax','r12'); em.mov_r32_r32('rcx','r12')
-em.shl_r32_imm8('rcx',9); em.shl_r32_imm8('rax',5); em.add_r32_r32('rax','rcx')
-em.mov_r64_r64('r15','r14'); em.add_r64_r64('r15','rax')
-em.lea_rip('rcx',bsyms['outline_titlebuf']); em.mov_r64_r64('rdx','r15'); em.call_iat('lstrcpyW')
-em.mov_r32_mreg('r10','r15',WS_OFF_KIND); em.test32('r10'); em.jcc(0x84,'rfl_add')
-em.lea_rip('rcx',bsyms['outline_titlebuf']); em.call_iat('lstrlenW')
-em.lea_rip('rcx',bsyms['outline_titlebuf'])
-em.mov_word_index2_imm16('rcx','rax',0x5C); em.add_r32_imm8('rax',1); em.mov_word_index2_zero('rcx','rax')
-em.label('rfl_add')
+em.mov_r32_r32('rdx','r12'); em.call_label('tree_row_ptr')
+em.mov_r64_r64('rcx','rax'); em.lea_rip('rdx',bsyms['outline_titlebuf']); em.call_label('tree_display_name')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.mov_r32_imm('rdx',0x0180); em.xor32('r8'); em.lea_rip('r9',bsyms['outline_titlebuf']); em.call_iat('SendMessageW')
+em.cmp_r32_imm('rax',0xFFFFFFFF); em.jcc(0x84,'rfl_done')
+em.mov_ripmem_r32(bsyms['rfl_item_index'],'rax')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.mov_r32_imm('rdx',0x019A); em.mov_r32_ripmem('r8',bsyms['rfl_item_index']); em.mov_r32_r32('r9','r12'); em.call_iat('SendMessageW')
 em.add_r32_imm8('r12',1); em.jmp('rfl_loop')
 em.label('rfl_done')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.mov_r32_imm('rdx',0x000B); em.mov_r32_imm('r8',1); em.xor32('r9'); em.call_iat('SendMessageW')
@@ -4262,8 +4346,8 @@ em.label('spmm_ret'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
 
 em.label('cmd_panel_files'); em.mov_r32_imm('rcx',1); em.call_label('set_panel_mode'); em.jmp('msg_loop')
 em.label('cmd_panel_outline'); em.xor32('rcx'); em.call_label('set_panel_mode'); em.jmp('msg_loop')
-# Build/test probe for the model-only tree slice. It has no menu entry.
-em.label('cmd_tree_rebuild'); em.call_label('tree_rebuild'); em.jmp('msg_loop')
+# Build/test probe for the tree projection. It has no menu entry.
+em.label('cmd_tree_rebuild'); em.call_label('rebuild_file_list'); em.jmp('msg_loop')
 
 # V8.6.1：兑现一次待定的标题栏单击——三态循环 half(1) → minimized(2) →
 # maximized(0) → half(1)，与 Rabbit 的 (state + 1) % 3 一致。目标标题栏取自
@@ -4328,17 +4412,14 @@ em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.test64('rcx'); em.jcc(0x84,'woe
 em.mov_r32_imm('rdx',0x0188); em.xor32('r8'); em.xor32('r9'); em.call_iat('SendMessageW')
 em.cmp_r32_imm('rax',0xFFFFFFFF); em.jcc(0x84,'woe_ret')
 em.mov_r32_r32('r12','rax')
-em.mov_r64_ripmem('r13',bsyms['ws_entries']); em.test64('r13'); em.jcc(0x84,'woe_ret')
-em.mov_r32_ripmem('r14',bsyms['ws_entry_count']); em.cmp_r32_r32('r12','r14'); em.jcc(0x83,'woe_ret')
-em.mov_r32_r32('rax','r12'); em.mov_r32_r32('rcx','r12')
-em.shl_r32_imm8('rcx',9); em.shl_r32_imm8('rax',5); em.add_r32_r32('rax','rcx')
-em.mov_r64_r64('r15','r13'); em.add_r64_r64('r15','rax')
-em.lea_rip('rcx',bsyms['ws_current_path']); em.mov_r64_r64('rdx','r15'); em.call_label('ws_join_path')
-em.mov_r32_mreg('r10','r15',WS_OFF_KIND); em.test32('r10'); em.jcc(0x84,'woe_file')
-em.mov_r64_r64('rcx','rax'); em.call_label('workspace_set_root'); em.call_label('update_status')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.mov_r32_imm('rdx',0x0199); em.mov_r32_r32('r8','r12'); em.xor32('r9'); em.call_iat('SendMessageW')
+em.cmp_r32_imm('rax',0xFFFFFFFF); em.jcc(0x84,'woe_ret')
+em.mov_r32_r32('r12','rax'); em.mov_r32_r32('rdx','r12'); em.call_label('tree_row_ptr'); em.mov_r64_r64('r15','rax')
+em.mov_r32_mreg('r10','r15',TREE_OFF_FLAGS); em.test32('r10'); em.jcc(0x84,'woe_file')
+em.mov_r64_r64('rcx','r15'); em.call_label('tree_toggle_path')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.call_iat('SetFocus'); em.jmp('woe_ret')
 em.label('woe_file')
-em.lea_rip('rcx',bsyms['temp_path']); em.mov_r64_r64('rdx','rax'); em.call_iat('lstrcpyW')
+em.lea_rip('rcx',bsyms['temp_path']); em.mov_r64_r64('rdx','r15'); em.call_iat('lstrcpyW')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.call_iat('SetFocus')
 em.mov_ripmem_imm32(bsyms['open_bypass_picker'],1)
 em.mov_ripmem_imm32(bsyms['pending_destructive_action'],2)
@@ -5148,7 +5229,11 @@ em.mov_r64_ripmem('rax',bsyms['hwnd_outline']); em.cmp_r64_r64('r9','rax'); em.j
 em.mov_r32_r32('r10','r8'); em.shr_r32_imm8('r10',16); em.cmp_r32_imm('r10',1); em.jcc(0x85,'wp_child_return')
 em.mov_r32_imm('rdx',0x8005); em.xor32('r8'); em.xor32('r9'); em.call_iat('PostMessageW'); em.jmp('wp_child_return')
 em.label('wp_cmd_files_child')
-em.mov_r32_r32('r10','r8'); em.shr_r32_imm8('r10',16); em.cmp_r32_imm('r10',2); em.jcc(0x85,'wp_child_return')
+em.mov_r32_r32('r10','r8'); em.shr_r32_imm8('r10',16); em.cmp_r32_imm('r10',1); em.jcc(0x85,'wp_cmd_files_dbl')
+# LBN_SELCHANGE + left button down = Rabbit's single-click open/toggle.
+em.mov_r32_imm('rcx',1); em.call_iat('GetKeyState'); em.and_r32_imm('rax',0x8000); em.test32('rax'); em.jcc(0x84,'wp_child_return')
+em.jmp('wp_cmd_outline_activate')
+em.label('wp_cmd_files_dbl'); em.cmp_r32_imm('r10',2); em.jcc(0x85,'wp_child_return')
 em.label('wp_cmd_outline_activate'); em.mov_r32_imm('rdx',0x8007); em.xor32('r8'); em.xor32('r9'); em.call_iat('PostMessageW'); em.jmp('wp_child_return')
 # Ignore notifications from preview/status and other child controls; menu WM_COMMAND has lParam == 0.
 em.label('wp_cmd_other_child'); em.test64('r9'); em.jcc(0x85,'wp_child_return')
@@ -5324,10 +5409,9 @@ em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r32_mreg('r10','r9',8); em
 em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r32_mreg('rax','r9',4); em.cmp_r32_imm('rax',14); em.jcc(0x84,'wp_file_row_branch')
 em.jmp('wp_outline_level_row')
 em.label('wp_file_row_branch')
-em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r32_mreg('rax','r9',8)
-em.mov_r32_r32('rcx','rax'); em.shl_r32_imm8('rcx',9); em.shl_r32_imm8('rax',5); em.add_r32_r32('rax','rcx')
-em.mov_r64_ripmem('rcx',bsyms['ws_entries']); em.test64('rcx'); em.jcc(0x84,'wp_draw_outline_done')
-em.add_r64_r64('rax','rcx'); em.mov_r32_mreg('r10','rax',WS_OFF_KIND)
+em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r64_mreg('r10','r9',56)
+em.mov_r32_r32('rdx','r10'); em.call_label('tree_row_ptr'); em.mov_r64_r64('r15','rax')
+em.mov_r32_mreg('r10','r15',TREE_OFF_FLAGS)
 em.mov_r32_ripmem('rax',bsyms['theme_dark']); em.test32('rax'); em.jcc(0x84,'wp_outline_file_light')
 em.test32('r10'); em.jcc(0x84,'wp_outline_dark_file')
 em.mov_r32_imm('rdx',0x00F4C843); em.jmp('wp_outline_color_send')
@@ -6389,12 +6473,12 @@ for _panel_routine in ('rebuild_file_list', 'set_panel_mode', 'refresh_panel_lis
 _panel_draw_src = _production_source[
     _production_source.index("em.label('wp_outline_text')"):
     _production_source.index("em.label('wp_outline_level_row')")]
-assert "WS_OFF_KIND" in _panel_draw_src and "bsyms['outline_level']" not in _panel_draw_src, \
-    'the file row branch must colour from the workspace table, never outline_level'
+assert "TREE_OFF_FLAGS" in _panel_draw_src and "bsyms['outline_level']" not in _panel_draw_src, \
+    'the file row branch must colour from the tree row, never outline_level'
 _panel_list_src = _production_source[
     _production_source.index("em.label('rebuild_file_list')"):
     _production_source.index("em.label('set_panel_mode')")]
-assert "call_iat('lstrcpyW')" in _panel_list_src and \
+assert "call_label('tree_display_name')" in _panel_list_src and \
        "bsyms['hwnd_files']" in _panel_list_src and \
        "call_label('sync_outline_scrollbar')" in _panel_list_src, \
     'rebuild_file_list must own the row text and fill its own ListBox'
@@ -6440,8 +6524,8 @@ _nav_open_src = _production_source[
     _production_source.index("em.label('woe_ret')")]
 assert "mov_ripmem_imm32(bsyms['pending_destructive_action'],2)" in _nav_open_src and \
        "em.jmp('destructive_request')" in _nav_open_src and \
-       "call_label('workspace_set_root')" in _nav_open_src, \
-    'the list must enter directories and route files through the shared Open transaction'
+       "call_label('tree_toggle_path')" in _nav_open_src, \
+    'the list must toggle directories and route files through the shared Open transaction'
 _nav_dispatch_src = _production_source[
     _production_source.index("em.label('destructive_open')"):
     _production_source.index("em.label('destructive_close')")]
