@@ -22,6 +22,14 @@ EnumChildWindows + WS_VISIBLE 即等价于"看"窗口状态；进程存活即等
 """
 import ctypes
 import ctypes.wintypes as wt
+import sys
+
+# This script prints Chinese progress lines. A non-UTF-8 console code page
+# (an English Windows runner uses cp1252) would abort the run with
+# UnicodeEncodeError, so pin the stream instead of depending on the console.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
 import subprocess
 import sys
 import time
