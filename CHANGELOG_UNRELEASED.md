@@ -3,6 +3,12 @@
 V8.5.4 shipped as the first stable release; its full record is
 `docs/CHANGELOG_V8_5_4.md`.
 
+Scope revision (2026-09-16): the file panel is being redesigned to follow the
+Rabbit editor's explorer — an expandable directory tree with new/rename/delete/
+refresh/collapse — replacing the earlier "single flat list, read-only" decision.
+The design, the Rabbit reference behaviour and the remaining slices A–E are in
+`docs/FILE_PANEL_REDESIGN.md`; no code has been written against it yet.
+
 V8.6 is scoped to "browse a directory and open files from it" while the
 application still owns a single writable document. The plan
 (`docs/MILESTONE_PLAN.md` §6) deliberately defers destructive file operations,
