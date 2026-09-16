@@ -2040,7 +2040,7 @@ em.cmp_r32_imm('rax',0x0100); em.jcc(0x85,'dispatch_theme_refresh_done')
 em.jmp('dispatch_theme_schedule')
 em.label('dispatch_theme_schedule')
 # 180ms 太短：连续滚动时定时器会在手指停顿的间隙里触发，导致滚动中重排（卡顿）。
-em.mov_r64_ripmem('rcx',bsyms['hwnd_main']); em.mov_r32_imm('rdx',0x4D); em.mov_r32_imm('r8',450); em.xor32('r9'); em.call_iat('SetTimer')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_main']); em.mov_r32_imm('rdx',0x4D); em.mov_r32_imm('r8',150); em.xor32('r9'); em.call_iat('SetTimer')
 em.label('dispatch_theme_refresh_done')
 # V8.4.4: do NOT refresh the owner-drawn status bar after every dispatched
 # message. WM_MOUSEMOVE used to cause six SB_SETTEXT redraws per message,
@@ -2401,11 +2401,11 @@ em.mov_r64_ripmem('rcx',bsyms['hwnd_preview']); em.call_label('capture_surface_s
 # Suppress all intermediate paints while selection/ranges are temporarily changed.
 em.mov_r64_ripmem('rcx',bsyms['hwnd_preview']); em.mov_r32_imm('rdx',0x000B); em.xor32('r8'); em.xor32('r9'); em.call_iat('SendMessageW')
 em.call_label('set_visible_format_window'); em.mov_ripmem_imm32(bsyms['preview_visible_format_only'],1); em.call_label('apply_styles'); em.mov_ripmem_imm32(bsyms['preview_visible_format_only'],0)
-# V8.6.1 第 1 步（首屏优先 + 空闲预渲染）：可见区已格式化后，再把"当前视口往前
-# 8 万字符"一并补好。这样大幅度滚动/跳转停下时，落点附近通常已经在格式化范围内，
+# V8.6.1 第 1 步（首屏优先 + 空闲预渲染）：可见区已格式化后，再向前补 8k 字符。
+# 注意：这个值不能大——8 万字符的样式套用会连带整篇重排，实测会造成 2~3 秒延迟。这样大幅度滚动/跳转停下时，落点附近通常已经在格式化范围内，
 # 不会再出现成片未渲染；代价是每次空闲多做一段（毫秒~几十毫秒级），不阻塞输入、
 # 也不需要新增定时器——复用的就是这条 450ms 去抖后的刷新。
-em.mov_r32_ripmem('rax',bsyms['view_top_pos']); em.mov_r32_imm('r10',80000); em.add_r32_r32('rax','r10')
+em.mov_r32_ripmem('rax',bsyms['view_top_pos']); em.mov_r32_imm('r10',8000); em.add_r32_r32('rax','r10')
 em.mov_r32_ripmem('r11',bsyms['render_len']); em.cmp_r32_r32('rax','r11'); em.jcc(0x86,'lookahead_ready'); em.mov_r32_r32('rax','r11')
 em.label('lookahead_ready'); em.mov_ripmem_r32(bsyms['format_visible_end'],'rax')
 em.mov_ripmem_imm32(bsyms['preview_visible_format_only'],1); em.call_label('apply_styles'); em.mov_ripmem_imm32(bsyms['preview_visible_format_only'],0)
