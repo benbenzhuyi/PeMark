@@ -159,6 +159,8 @@ wstr('m_outline','Left &Sidebar\tCtrl+B')
 wstr('m_openfolder','Open &Folder...\tCtrl+Shift+O')
 wstr('m_panel_files','&Files Panel')
 wstr('m_panel_outline','&Outline Panel')
+wstr('panel_files','Files')
+wstr('panel_outline','Outline')
 wstr('m_light','&Light')
 wstr('m_dark','&Dark\tCtrl+Alt+T')
 wstr('m_about','&About\tF1')
@@ -291,6 +293,10 @@ bss_alloc('hwnd_outline_gutter', 8, 8)
 # V8.6.1 双面板：文件面板拥有自己的列表与 gutter（标题栏与分界线在后续步骤加入）。
 bss_alloc('hwnd_files', 8, 8)
 bss_alloc('hwnd_files_gutter', 8, 8)
+# V8.6.1：每个面板 28px 标题栏 + 4px 分界线（标题栏可点击切换三态）。
+bss_alloc('hwnd_files_header', 8, 8)
+bss_alloc('hwnd_outline_header', 8, 8)
+bss_alloc('hwnd_panel_divider', 8, 8)
 bss_alloc('hwnd_status', 8, 8)
 bss_alloc('hwnd_corner', 8, 8)
 bss_alloc('hfont', 8, 8)
@@ -349,6 +355,12 @@ bss_alloc('outline_width', 4, 4)
 bss_alloc('files_list_h', 4, 4)
 bss_alloc('outline_list_y', 4, 4)
 bss_alloc('outline_list_h', 4, 4)
+bss_alloc('files_list_y', 4, 4)
+bss_alloc('divider_y', 4, 4)
+# V8.6.1 面板三态：0 = maximized，1 = half，2 = minimized（默认 half）。
+bss_alloc('files_state', 4, 4)
+bss_alloc('outline_state', 4, 4)
+bss_alloc('panel_split', 4, 4)   # 文件面板占可用高度的千分比（默认 500）
 bss_alloc('splitter_drag', 4, 4)
 bss_alloc('scrollbar_w', 4, 4)
 bss_alloc('scroll_trim_w', 4, 4)
@@ -1045,6 +1057,21 @@ em.xor32('rcx'); em.lea_rip('rdx',rsyms['class_static']); em.lea_rip('r8',rsyms[
 em.mov_mrsp_imm32(0x20,210); em.mov_mrsp_imm32(0x28,0); em.mov_mrsp_imm32(0x30,18); em.mov_mrsp_imm32(0x38,250)
 em.mov_mrsp_reg64(0x40,'rbx'); em.mov_mrsp_imm32(0x48,15,qword=True); em.mov_mrsp_reg64(0x50,'r15'); em.mov_mrsp_imm32(0x58,0,qword=True)
 em.call_iat('CreateWindowExW'); em.mov_ripmem_r64(bsyms['hwnd_files_gutter'],'rax'); em.test64('rax'); em.jcc(0x84,'exit')
+# 文件标题栏（ID 16）、大纲标题栏（ID 17）、分界线（ID 18）。
+em.xor32('rcx'); em.lea_rip('rdx',rsyms['class_static']); em.lea_rip('r8',rsyms['empty']); em.mov_r32_imm('r9',0x5400000D)
+em.mov_mrsp_imm32(0x20,0); em.mov_mrsp_imm32(0x28,0); em.mov_mrsp_imm32(0x30,228); em.mov_mrsp_imm32(0x38,28)
+em.mov_mrsp_reg64(0x40,'rbx'); em.mov_mrsp_imm32(0x48,16,qword=True); em.mov_mrsp_reg64(0x50,'r15'); em.mov_mrsp_imm32(0x58,0,qword=True)
+em.call_iat('CreateWindowExW'); em.mov_ripmem_r64(bsyms['hwnd_files_header'],'rax'); em.test64('rax'); em.jcc(0x84,'exit')
+em.xor32('rcx'); em.lea_rip('rdx',rsyms['class_static']); em.lea_rip('r8',rsyms['empty']); em.mov_r32_imm('r9',0x5400000D)
+em.mov_mrsp_imm32(0x20,0); em.mov_mrsp_imm32(0x28,300); em.mov_mrsp_imm32(0x30,228); em.mov_mrsp_imm32(0x38,28)
+em.mov_mrsp_reg64(0x40,'rbx'); em.mov_mrsp_imm32(0x48,17,qword=True); em.mov_mrsp_reg64(0x50,'r15'); em.mov_mrsp_imm32(0x58,0,qword=True)
+em.call_iat('CreateWindowExW'); em.mov_ripmem_r64(bsyms['hwnd_outline_header'],'rax'); em.test64('rax'); em.jcc(0x84,'exit')
+em.xor32('rcx'); em.lea_rip('rdx',rsyms['class_static']); em.lea_rip('r8',rsyms['empty']); em.mov_r32_imm('r9',0x5400000D)
+em.mov_mrsp_imm32(0x20,0); em.mov_mrsp_imm32(0x28,296); em.mov_mrsp_imm32(0x30,228); em.mov_mrsp_imm32(0x38,4)
+em.mov_mrsp_reg64(0x40,'rbx'); em.mov_mrsp_imm32(0x48,18,qword=True); em.mov_mrsp_reg64(0x50,'r15'); em.mov_mrsp_imm32(0x58,0,qword=True)
+em.call_iat('CreateWindowExW'); em.mov_ripmem_r64(bsyms['hwnd_panel_divider'],'rax'); em.test64('rax'); em.jcc(0x84,'exit')
+em.mov_ripmem_imm32(bsyms['files_state'],1); em.mov_ripmem_imm32(bsyms['outline_state'],1)
+em.mov_ripmem_imm32(bsyms['panel_split'],500)
 em.call_label('apply_theme'); em.call_label('update_preview'); em.call_label('resize_children'); em.call_label('sync_outline_scrollbar'); em.call_label('sync_panel_menu'); em.call_label('update_status')
 
 # Message pump
@@ -2038,27 +2065,42 @@ em.mov_r32_ripmem('rax',bsyms['outline_flag']); em.test32('rax'); em.jcc(0x84,'r
 em.mov_r32_ripmem('r10',bsyms['outline_width']); em.mov_r32_ripmem('r11',bsyms['scrollbar_w']); em.mov_r32_r32('rax','r10'); em.sub_r32_r32('rax','r11')  # rax = content/listbox width
 # document begins after total sidebar + 1px divider
 em.mov_r32_r32('r11','r10'); em.add_r32_imm8('r11',1); em.mov_ripmem_r32(bsyms['content_x'],'r11'); em.mov_r32_ripmem('rcx',bsyms['client_w']); em.sub_r32_r32('rcx','r11'); em.mov_ripmem_r32(bsyms['content_w'],'rcx')
-# V8.6.1 双面板：文件列表占上半，大纲列表占下半，各自带自己的 gutter。
-em.mov_r32_ripmem('r10',bsyms['content_h']); em.shr_r32_imm8('r10',1); em.mov_ripmem_r32(bsyms['files_list_h'],'r10')
-em.mov_ripmem_r32(bsyms['outline_list_y'],'r10')
-em.mov_r32_ripmem('r11',bsyms['content_h']); em.sub_r32_r32('r11','r10'); em.mov_ripmem_r32(bsyms['outline_list_h'],'r11')
-# 文件列表（上半；r9 = 列表宽）。
-em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.xor32('rdx'); em.xor32('r8')
+# V8.6.1 双面板：两个 28px 标题栏 + 4px 分界线，剩余高度按 panel_split 分配。
+em.mov_r32_ripmem('r10',bsyms['content_h']); em.sub_r32_imm8('r10',60)
+em.test32('r10'); em.jcc(0x89,'rc_usable_ok'); em.xor32('r10')
+em.label('rc_usable_ok')
+em.mov_r32_r32('rcx','r10'); em.mov_r32_ripmem('rdx',bsyms['panel_split']); em.mov_r32_imm('r8',1000); em.call_iat('MulDiv')
+em.mov_ripmem_r32(bsyms['files_list_h'],'rax')
+# MulDiv 是 API 调用，会破坏 volatile 寄存器：可用高度必须重新推导，
+# 不能沿用调用前的 r10（否则大纲高度会变成 content_h - 文件高度的错值）。
+em.mov_r32_ripmem('r11',bsyms['content_h']); em.sub_r32_imm8('r11',60); em.sub_r32_r32('r11','rax')
+em.mov_ripmem_r32(bsyms['outline_list_h'],'r11')
+em.mov_ripmem_imm32(bsyms['files_list_y'],28)
+em.add_r32_imm8('rax',28); em.mov_ripmem_r32(bsyms['divider_y'],'rax')
+em.mov_r32_ripmem('r11',bsyms['divider_y']); em.add_r32_imm8('r11',32); em.mov_ripmem_r32(bsyms['outline_list_y'],'r11')
+# 文件标题栏
+em.mov_r64_ripmem('rcx',bsyms['hwnd_files_header']); em.xor32('rdx'); em.xor32('r8'); em.mov_r32_ripmem('r9',bsyms['outline_width']); em.mov_mrsp_imm32(0x20,28); em.mov_mrsp_imm32(0x28,1,qword=True); em.call_iat('MoveWindow')
+# 文件列表
+em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.xor32('rdx'); em.mov_r32_imm('r8',28)
 em.mov_r32_ripmem('r9',bsyms['outline_width']); em.mov_r32_ripmem('r10',bsyms['scrollbar_w']); em.sub_r32_r32('r9','r10')
 em.mov_r32_ripmem('r11',bsyms['files_list_h']); em.mov_mrsp_reg32(0x20,'r11'); em.mov_mrsp_imm32(0x28,1,qword=True); em.call_iat('MoveWindow')
-# 文件 gutter 与列表同高。
+# 文件 gutter
 em.mov_r64_ripmem('rcx',bsyms['hwnd_files_gutter']); em.mov_r32_ripmem('r10',bsyms['scrollbar_w'])
-em.mov_r32_ripmem('rdx',bsyms['outline_width']); em.sub_r32_r32('rdx','r10'); em.xor32('r8'); em.mov_r32_r32('r9','r10')
+em.mov_r32_ripmem('rdx',bsyms['outline_width']); em.sub_r32_r32('rdx','r10'); em.mov_r32_imm('r8',28); em.mov_r32_r32('r9','r10')
 em.mov_r32_ripmem('r11',bsyms['files_list_h']); em.mov_mrsp_reg32(0x20,'r11'); em.mov_mrsp_imm32(0x28,1,qword=True); em.call_iat('MoveWindow')
-# 大纲列表（下半）。
+# 分界线
+em.mov_r64_ripmem('rcx',bsyms['hwnd_panel_divider']); em.xor32('rdx'); em.mov_r32_ripmem('r8',bsyms['divider_y']); em.mov_r32_ripmem('r9',bsyms['outline_width']); em.mov_mrsp_imm32(0x20,4); em.mov_mrsp_imm32(0x28,1,qword=True); em.call_iat('MoveWindow')
+# 大纲标题栏
+em.mov_r64_ripmem('rcx',bsyms['hwnd_outline_header']); em.xor32('rdx'); em.mov_r32_ripmem('r8',bsyms['divider_y']); em.add_r32_imm8('r8',4); em.mov_r32_ripmem('r9',bsyms['outline_width']); em.mov_mrsp_imm32(0x20,28); em.mov_mrsp_imm32(0x28,1,qword=True); em.call_iat('MoveWindow')
+# 大纲列表
 em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.xor32('rdx'); em.mov_r32_ripmem('r8',bsyms['outline_list_y'])
 em.mov_r32_ripmem('r9',bsyms['outline_width']); em.mov_r32_ripmem('r10',bsyms['scrollbar_w']); em.sub_r32_r32('r9','r10')
 em.mov_r32_ripmem('r11',bsyms['outline_list_h']); em.mov_mrsp_reg32(0x20,'r11'); em.mov_mrsp_imm32(0x28,1,qword=True); em.call_iat('MoveWindow')
-# 大纲 gutter 与大纲列表同矩形。
+# 大纲 gutter
 em.mov_r64_ripmem('rcx',bsyms['hwnd_outline_gutter']); em.mov_r32_ripmem('r10',bsyms['scrollbar_w'])
 em.mov_r32_ripmem('rdx',bsyms['outline_width']); em.sub_r32_r32('rdx','r10'); em.mov_r32_ripmem('r8',bsyms['outline_list_y']); em.mov_r32_r32('r9','r10')
 em.mov_r32_ripmem('r11',bsyms['outline_list_h']); em.mov_mrsp_reg32(0x20,'r11'); em.mov_mrsp_imm32(0x28,1,qword=True); em.call_iat('MoveWindow')
-# 滚动条 overlay 与大纲 gutter 同矩形（切片 0 第一步仍只服务大纲面板）。
+# 滚动条 overlay（暂与大纲 gutter 同矩形）
 em.mov_r64_ripmem('rcx',bsyms['hwnd_outline_scroll']); em.mov_r32_ripmem('r10',bsyms['scrollbar_w'])
 em.mov_r32_ripmem('rdx',bsyms['outline_width']); em.sub_r32_r32('rdx','r10'); em.mov_r32_ripmem('r8',bsyms['outline_list_y']); em.mov_r32_r32('r9','r10')
 em.mov_r32_ripmem('r11',bsyms['outline_list_h']); em.mov_mrsp_reg32(0x20,'r11'); em.mov_mrsp_imm32(0x28,1,qword=True); em.call_iat('MoveWindow')
@@ -2067,6 +2109,9 @@ em.mov_r64_ripmem('rcx',bsyms['hwnd_outline_scroll']); em.xor32('rdx'); em.xor32
 # One-pixel visual divider after the gutter.
 em.mov_r64_ripmem('rcx',bsyms['hwnd_splitter']); em.mov_r32_ripmem('rdx',bsyms['outline_width']); em.xor32('r8'); em.mov_r32_imm('r9',1); em.mov_r32_ripmem('r11',bsyms['content_h']); em.mov_mrsp_reg32(0x20,'r11'); em.mov_mrsp_imm32(0x28,1,qword=True); em.call_iat('MoveWindow')
 # Ensure stable visibility without changing any geometry.
+em.mov_r64_ripmem('rcx',bsyms['hwnd_files_header']); em.mov_r32_imm('rdx',5); em.call_iat('ShowWindow')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_panel_divider']); em.mov_r32_imm('rdx',5); em.call_iat('ShowWindow')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_outline_header']); em.mov_r32_imm('rdx',5); em.call_iat('ShowWindow')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.mov_r32_imm('rdx',5); em.call_iat('ShowWindow')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_files_gutter']); em.mov_r32_imm('rdx',5); em.call_iat('ShowWindow')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.mov_r32_imm('rdx',5); em.call_iat('ShowWindow')
@@ -2078,6 +2123,9 @@ em.mov_r32_ripmem('rax',bsyms['outline_scroll_visible']); em.test32('rax'); em.j
 em.mov_r64_ripmem('rcx',bsyms['hwnd_outline_scroll']); em.mov_r32_imm('rdx',5); em.call_iat('ShowWindow'); em.jmp('resize_doc')
 em.label('resize_scroll_hidden'); em.mov_r64_ripmem('rcx',bsyms['hwnd_outline_scroll']); em.xor32('rdx'); em.call_iat('ShowWindow'); em.jmp('resize_doc')
 em.label('resize_sidebar_hidden')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_files_header']); em.xor32('rdx'); em.call_iat('ShowWindow')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_panel_divider']); em.xor32('rdx'); em.call_iat('ShowWindow')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_outline_header']); em.xor32('rdx'); em.call_iat('ShowWindow')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.xor32('rdx'); em.call_iat('ShowWindow')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_files_gutter']); em.xor32('rdx'); em.call_iat('ShowWindow')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.xor32('rdx'); em.call_iat('ShowWindow')
@@ -3716,7 +3764,7 @@ em.label('wp_measure_set'); em.mov_mreg_imm32('r9',16,30); em.mov_r32_imm('rax',
 # Owner-draw status bar and outline rows.
 em.label('wp_drawitem')
 em.mov_ripmem_r64(bsyms['drawitem_ptr'],'r9')
-em.mov_r32_mreg('rax','r9',4); em.cmp_r32_imm('rax',2); em.jcc(0x84,'wp_draw_status'); em.cmp_r32_imm('rax',4); em.jcc(0x84,'wp_draw_outline'); em.cmp_r32_imm('rax',14); em.jcc(0x84,'wp_draw_outline'); em.cmp_r32_imm('rax',5); em.jcc(0x84,'wp_draw_corner'); em.cmp_r32_imm('rax',6); em.jcc(0x84,'wp_draw_splitter'); em.cmp_r32_imm('rax',7); em.jcc(0x84,'wp_draw_gutter'); em.cmp_r32_imm('rax',15); em.jcc(0x84,'wp_draw_gutter'); em.jmp('wp_default')
+em.mov_r32_mreg('rax','r9',4); em.cmp_r32_imm('rax',2); em.jcc(0x84,'wp_draw_status'); em.cmp_r32_imm('rax',4); em.jcc(0x84,'wp_draw_outline'); em.cmp_r32_imm('rax',14); em.jcc(0x84,'wp_draw_outline'); em.cmp_r32_imm('rax',5); em.jcc(0x84,'wp_draw_corner'); em.cmp_r32_imm('rax',6); em.jcc(0x84,'wp_draw_splitter'); em.cmp_r32_imm('rax',7); em.jcc(0x84,'wp_draw_gutter'); em.cmp_r32_imm('rax',15); em.jcc(0x84,'wp_draw_gutter'); em.cmp_r32_imm('rax',16); em.jcc(0x84,'wp_draw_files_header'); em.cmp_r32_imm('rax',17); em.jcc(0x84,'wp_draw_outline_header'); em.cmp_r32_imm('rax',18); em.jcc(0x84,'wp_draw_panel_divider'); em.jmp('wp_default')
 
 # V8.6.1：当前 owner-draw 行属于哪个 ListBox（ID 14 = 文件面板，其余 = 大纲）。
 # 行文本与"行类型表"必须来自同一个控件。
@@ -3724,6 +3772,31 @@ em.label('wp_row_hwnd')
 em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r32_mreg('rax','r9',4); em.cmp_r32_imm('rax',14); em.jcc(0x84,'wp_row_hwnd_files')
 em.mov_r64_ripmem('rax',bsyms['hwnd_outline']); em.emit(0xC3)
 em.label('wp_row_hwnd_files'); em.mov_r64_ripmem('rax',bsyms['hwnd_files']); em.emit(0xC3)
+
+# V8.6.1 面板框架：分界线背景 + 两个标题栏（背景与左对齐小标题）。
+em.label('wp_draw_panel_divider')
+em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r64_mreg('rcx','r9',32); em.mov_r64_r64('rdx','r9'); em.add_r64_imm8('rdx',40); em.mov_r64_ripmem('r8',bsyms['hbrush_splitter']); em.call_iat('FillRect')
+em.mov_r32_imm('rax',1); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
+
+def emit_panel_header(title_sym, tag):
+    em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r64_mreg('rcx','r9',32); em.mov_r64_r64('rdx','r9'); em.add_r64_imm8('rdx',40); em.mov_r64_ripmem('r8',bsyms['hbrush_status']); em.call_iat('FillRect')
+    em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r64_mreg('rcx','r9',32); em.mov_r32_ripmem('rax',bsyms['theme_dark']); em.test32('rax'); em.jcc(0x84,'wp_hdr_light_' + tag)
+    em.mov_r32_imm('rdx',0x00E6E6E6); em.jmp('wp_hdr_color_' + tag)
+    em.label('wp_hdr_light_' + tag); em.mov_r32_imm('rdx',0x00202020)
+    em.label('wp_hdr_color_' + tag); em.call_iat('SetTextColor')
+    em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r64_mreg('rcx','r9',32); em.mov_r32_imm('rdx',1); em.call_iat('SetBkMode')
+    # SetBkMode 会破坏 volatile 的 R9：重新加载 drawitem 指针再读矩形。
+    em.mov_r64_ripmem('r9',bsyms['drawitem_ptr'])
+    em.lea_rip('rcx',bsyms['draw_rect']); em.mov_r32_mreg('rax','r9',40); em.mov_ptr_r32('rcx','rax')
+    em.mov_r32_mreg('rax','r9',44); em.mov_mreg_reg32('rcx',4,'rax')
+    em.mov_r32_mreg('rax','r9',48); em.mov_mreg_reg32('rcx',8,'rax')
+    em.mov_r32_mreg('rax','r9',52); em.mov_mreg_reg32('rcx',12,'rax')
+    em.mov_r32_mreg('rax','rcx',0); em.add_r32_imm8('rax',10); em.mov_ptr_r32('rcx','rax')
+    em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r64_mreg('rcx','r9',32); em.lea_rip('rdx',rsyms[title_sym]); em.mov_r32_imm('r8',0xFFFFFFFF); em.lea_rip('r9',bsyms['draw_rect']); em.mov_mrsp_imm32(0x20,0x0824); em.call_iat('DrawTextW')
+    em.mov_r32_imm('rax',1); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
+
+em.label('wp_draw_files_header'); emit_panel_header('panel_files', 'files')
+em.label('wp_draw_outline_header'); emit_panel_header('panel_outline', 'outline')
 
 em.label('wp_draw_status')
 # Owner-draw callbacks do not guarantee our WM_SETFONT font is selected into
@@ -4135,9 +4208,12 @@ for _i, _ln in enumerate(_scan_lines):
         _ctx = '\n'.join(_scan_lines[max(0, _i - 3):_i + 1])
         if any(_t in _ctx for _t in _geo_targets):
             _geo_owners.add(_owner(_i))
-assert _geo_owners <= {'resize_children', 'resize_content', 'resize_doc',
-                       'resize_preview_surface', 'repaint_splitter_surface'}, \
-    f'架构违规：布局几何出现在 LayoutManager 外的例程 {_geo_owners - {"resize_children", "resize_content", "resize_doc", "resize_preview_surface", "repaint_splitter_surface"}}'
+_layout_family = {'resize_children', 'resize_content', 'resize_doc',
+                  'resize_preview_surface', 'repaint_splitter_surface',
+                  'rc_usable_ok', 'rc_files_min', 'rc_files_max',
+                  'rc_outline_min', 'rc_outline_max'}
+assert _geo_owners <= _layout_family, \
+    f'架构违规：布局几何出现在 LayoutManager 外的例程 {_geo_owners - _layout_family}'
 
 # (D) 调和逻辑退役：机器码不再调用 IsWindowVisible（导入表亦无此槽）。
 assert 'IsWindowVisible' not in imports, 'IsWindowVisible 应已从导入表移除'

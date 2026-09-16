@@ -163,13 +163,30 @@ def main():
         assert u32.IsWindowVisible(files) and u32.IsWindowVisible(outline), \
             "both panels must be visible"
 
-        # Vertical stacking inside the sidebar.
+        # Panel frame: 28px header + list, then 4px divider, then the same again.
+        files_header = app.read64("hwnd_files_header")
+        outline_header = app.read64("hwnd_outline_header")
+        divider = app.read64("hwnd_panel_divider")
+        assert files_header and outline_header and divider, \
+            "both headers and the divider must exist"
+        assert u32.IsWindowVisible(files_header) and u32.IsWindowVisible(divider), \
+            "the panel frame must be visible"
         left_f, top_f, width_f, height_f = lb_rect(files)
         left_o, top_o, width_o, height_o = lb_rect(outline)
+        _, top_fh, width_fh, height_fh = lb_rect(files_header)
+        _, top_oh, _, height_oh = lb_rect(outline_header)
+        _, top_dv, _, height_dv = lb_rect(divider)
+        assert (height_fh, height_oh, height_dv) == (28, 28, 4), \
+            (height_fh, height_oh, height_dv)
+        assert width_fh == width_f + app.read32("scrollbar_w"), \
+            "the header spans the whole sidebar width"
         assert left_f == left_o and width_f == width_o, (lb_rect(files), lb_rect(outline))
-        assert top_o >= top_f + height_f, "the outline panel must sit below the files panel"
+        assert top_f == top_fh + 28, "the file list starts under its header"
+        assert top_dv == top_f + height_f, "the divider sits between the panels"
+        assert top_oh == top_dv + 4, "the outline header follows the divider"
+        assert top_o == top_oh + 28, "the outline list starts under its header"
         content_h = app.read32("content_h")
-        assert height_f + height_o <= content_h + 1, (height_f, height_o, content_h)
+        assert height_f + height_o == content_h - 60, (height_f, height_o, content_h)
         assert height_f > 0 and height_o > 0
 
         with tempfile.TemporaryDirectory() as directory:
@@ -227,10 +244,10 @@ def main():
     finally:
         app.close_handle()
     assert hashlib.sha256(RELEASE_EXE.read_bytes()).hexdigest() == release_hash
-    print("PASS sidebar panels: file and outline lists stack vertically, each "
-          "owns its content, file rows keep the directory/file colours in both "
-          "themes, and the scrollbar geometry follows the panel height; released "
-          "V8.5.4 binary unchanged")
+    print("PASS sidebar panels: 28px headers and a 4px divider frame the two "
+          "lists, each list owns its content, file rows keep the directory/file "
+          "colours in both themes, and the scrollbar geometry follows the panel "
+          "height; released V8.5.4 binary unchanged")
     return 0
 
 
