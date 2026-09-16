@@ -3,15 +3,21 @@
 import ctypes as c
 from ctypes import wintypes as w
 import hashlib
+import os
 from pathlib import Path
 import struct
 import subprocess
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
-GEN = ROOT / "src/candidate/generate_markdown_editor_v8_5_4.py"
-EXE = ROOT / "bin/candidate/pemark_x64_v8_5_4_candidate.exe"
-RELEASE_EXE = ROOT / "bin/current/pemark_x64_v8_5_3.exe"
+GEN = Path(os.environ.get(
+    "PEMARK_GENERATOR",
+    ROOT / "src/candidate/generate_markdown_editor_v8_5_4.py"))
+EXE = Path(os.environ.get(
+    "PEMARK_EXE",
+    ROOT / "bin/candidate/pemark_x64_v8_5_4_candidate.exe"))
+RELEASE_EXE = ROOT / "bin/current/pemark_x64_v8_5_4.exe"
+VERSION_TAG = GEN.stem.replace("generate_markdown_editor_", "")
 
 ADDR_MODE_FLAT = 3
 CONTEXT_FULL = 0x00100007
@@ -61,7 +67,9 @@ def build():
     ns = {"__file__": str(GEN), "__name__": "__pemark_unwind__"}
     exec(compile(source, str(GEN), "exec"), ns)
     out = Path(ns["out"])
-    assert out.name == "pemark_x64_v8_5_4_candidate.exe", out.name
+    expected = (f"pemark_x64_{VERSION_TAG}.exe" if ns.get("_RELEASE_CHANNEL")
+                else f"pemark_x64_{VERSION_TAG}_candidate.exe")
+    assert out.name == expected, out.name
     return ns, out
 
 

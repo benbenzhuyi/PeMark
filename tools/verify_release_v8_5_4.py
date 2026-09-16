@@ -12,6 +12,7 @@ suites. The last block of output is a JSON summary - paste that back as-is.
 import ctypes as c
 import hashlib
 import json
+import os
 import platform
 import subprocess
 import sys
@@ -30,10 +31,11 @@ def sha256(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def run(label, args, cwd=None, timeout=900):
+def run(label, args, cwd=None, timeout=900, env=None):
     started = time.perf_counter()
     proc = subprocess.run([sys.executable] + args, cwd=str(cwd or ROOT),
-                          capture_output=True, text=True, timeout=timeout)
+                          capture_output=True, text=True, timeout=timeout,
+                          env=env)
     return {
         "step": label,
         "status": "PASS" if proc.returncode == 0 else "FAIL",
@@ -94,13 +96,20 @@ def main():
         results.append(run("machine-code regressions",
                            ["tools/test_v8_5_1.py",
                             "src/current/generate_markdown_editor_v8_5_4.py"]))
+        # The suites default to the development channel; point them at the
+        # release channel so what is verified is the shipped artifact.
+        release_env = dict(os.environ)
+        release_env["PEMARK_GENERATOR"] = str(GENERATOR)
+        release_env["PEMARK_EXE"] = str(BINARY)
         results.append(run("section separation, ASLR and page protections",
-                           ["tools/test_v8_5_4_sections.py"], cwd=TOOLS))
+                           ["tools/test_v8_5_4_sections.py"], env=release_env))
+        results.append(run("unwind metadata structure",
+                           ["tools/test_v8_5_4_unwind.py"], env=release_env))
         results.append(run("Open / encoding transaction matrix",
-                           ["tools/test_v8_5_2_open_encoding.py"], cwd=TOOLS))
+                           ["tools/test_v8_5_2_open_encoding.py"], env=release_env))
         results.append(run("GUI smoke suite",
                            ["tools/smoke_test_v8_5_1.py",
-                            "bin/current/pemark_x64_v8_5_4.exe"], cwd=TOOLS))
+                            "bin/current/pemark_x64_v8_5_4.exe"]))
 
     failed = [r["step"] for r in results if r["status"] == "FAIL"]
     summary = {

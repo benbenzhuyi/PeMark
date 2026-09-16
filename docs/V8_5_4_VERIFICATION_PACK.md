@@ -42,6 +42,8 @@ python tools/verify_release_v8_5_4.py
 - PE 检查显示 6 个节，`.text` 为 `0x60000020`（RX）、`.bss` 为 `0xC0000080`（RW），
   `dllChars=0x0140`；
 - 机器码回归 13/13；
+- 栈回溯元数据结构：42 条 `RUNTIME_FUNCTION`、版本 1 的 unwind info、dbghelp 能为
+  我们的地址解析条目（脚本会打印"未跨帧"的备注，这属于已知限制，不算失败）；
 - 节权限与 ASLR：加载后的 `.text` 为 `PAGE_EXECUTE_READ`、`.rdata` 为
   `PAGE_READONLY`、`.idata`/`.bss` 为 `PAGE_READWRITE`，且加载基址不等于
   `0x140000000`；
@@ -59,3 +61,13 @@ python tools/verify_release_v8_5_4.py
 - GUI 步骤报"找不到窗口"：确认是在交互式桌面会话中运行，而不是 SSH/服务会话；
 - 关闭类检查偶发超时：脚本会如实报告；请重跑一次并在回报中说明，维护者会结合
   两次结果判断是环境干扰还是真实问题。
+
+## 脚本行为说明
+
+验证脚本会**重新构建**发布二进制（两次）并与清单中的 SHA-256 比对。构建是
+确定性的，所以这一步不会改变文件内容；如果哈希不匹配，脚本会直接报 FAIL，而不会
+静默通过。
+
+节权限、ASLR、栈回溯、打开/编码这几个套件默认面向开发通道，验证脚本会通过
+`PEMARK_GENERATOR` / `PEMARK_EXE` 把它们指向 `src/current` 与 `bin/current`，
+确保验证对象就是发布产物本身。
