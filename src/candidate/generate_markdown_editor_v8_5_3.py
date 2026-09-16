@@ -28,7 +28,9 @@ if OPEN_READ_INJECTION_MODE not in _OPEN_READ_INJECTION_MODES:
 _ARENA_ALLOC_INJECTION_MODES = {'release', 'fail_first', 'fail_second',
                                 'style_fail_first', 'style_fail_second',
                                 'render_fail_first', 'render_fail_second',
-                                'document_fail_first', 'document_fail_second'}
+                                'document_fail_first', 'document_fail_second',
+                                'wide_fail_first', 'wide_fail_second',
+                                'byte_fail_first', 'byte_fail_second'}
 if ARENA_ALLOC_INJECTION_MODE not in _ARENA_ALLOC_INJECTION_MODES:
     raise ValueError('unknown ARENA_ALLOC_INJECTION_MODE: %r' %
                      ARENA_ALLOC_INJECTION_MODE)
@@ -40,6 +42,10 @@ RENDER_ALLOC_INJECTED = ARENA_ALLOC_INJECTION_MODE in {'render_fail_first',
                                                        'render_fail_second'}
 DOCUMENT_ALLOC_INJECTED = ARENA_ALLOC_INJECTION_MODE in {'document_fail_first',
                                                          'document_fail_second'}
+WIDE_ALLOC_INJECTED = ARENA_ALLOC_INJECTION_MODE in {'wide_fail_first',
+                                                     'wide_fail_second'}
+BYTE_ALLOC_INJECTED = ARENA_ALLOC_INJECTION_MODE in {'byte_fail_first',
+                                                     'byte_fail_second'}
 OPEN_TEST_BUILD = OPEN_TEST_BUILD or OPEN_READ_INJECTION_MODE != 'release'
 _WRITE_INJECTION_MODES = {'release', 'short_then_complete', 'zero_success',
                           'fail_first', 'late_failure', 'flush_failure',
@@ -424,8 +430,13 @@ WIDE_CHARS = 8_500_000
 # WIDE_CHARS 决定，因此可见行为不变。
 DOC_COMMIT_CHUNK = 262_144
 MAX_FILE_BYTES = 4_194_304
-# Saving UTF-16 source as UTF-8 can take up to 4 bytes/code unit; leave headroom.
-BYTE_CAP = 34_500_000
+# V8.5.3 Phase E：解码/编码 scratch 也改按需分配。
+# Saving UTF-16 source as UTF-8 can take up to 4 bytes per code unit, so the
+# byte arena ceiling stays 4 * WIDE_CHARS + 3; capacity is committed in
+# 64 KiB blocks and never shrinks while the process lives.
+BYTE_CAP = 4 * 8_500_000 + 3
+WIDE_CHUNK = 65_536
+BYTE_CHUNK = 65_536
 bss_alloc('document_len', 4, 4)
 bss_alloc('suppress_edit_change', 4, 4)
 bss_alloc('render_len', 4, 4)
@@ -441,8 +452,10 @@ bss_alloc('document_model', 8, 8)        # pointer into the reserved document ar
 bss_alloc('document_capacity', 4, 4)     # committed units
 bss_alloc('document_reserved', 4, 4)     # reserved units (policy bound)
 bss_alloc('sync_text_len', 4, 4)         # editor length kept across the ensure call
-bss_alloc('widebuf', WIDE_CHARS*2, 16)
-bss_alloc('bytebuf', BYTE_CAP+16, 16)
+bss_alloc('widebuf', 8, 8)            # pointer into the decode/serialize arena
+bss_alloc('wide_capacity', 4, 4)      # committed units
+bss_alloc('bytebuf', 8, 8)            # pointer into the file-byte arena
+bss_alloc('byte_capacity', 4, 4)      # committed bytes
 # Append new state after the complete V8.5.1 layout. This preserves every
 # historical symbol address while the candidate state layout is evaluated.
 bss_alloc('document_revision', 8, 8)
@@ -473,6 +486,12 @@ if RENDER_ALLOC_INJECTED:
     bss_alloc('open_alloc_error_count', 4, 4)
 if DOCUMENT_ALLOC_INJECTED:
     bss_alloc('inject_document_alloc_call_count', 4, 4)
+    bss_alloc('open_alloc_error_count', 4, 4)
+if WIDE_ALLOC_INJECTED:
+    bss_alloc('inject_wide_alloc_call_count', 4, 4)
+    bss_alloc('open_alloc_error_count', 4, 4)
+if BYTE_ALLOC_INJECTED:
+    bss_alloc('inject_byte_alloc_call_count', 4, 4)
     bss_alloc('open_alloc_error_count', 4, 4)
 if OPEN_TEST_BUILD:
     bss_alloc('open_decode_error_count', 4, 4)
@@ -1111,7 +1130,11 @@ em.test32('r13'); em.jcc(0x85,'read_nonempty'); em.mov_r64_r64('rcx','r12'); em.
 # Complete-read loop. The size snapshot in r13 remains authoritative; r14/r15
 # own the next buffer position and remaining byte count.
 em.label('read_nonempty')
-em.lea_rip('r14',bsyms['bytebuf']); em.mov_r32_r32('r15','r13')
+# V8.5.3：解码与编码 scratch 现在是按需 arena；读取前必须保证两个缓冲区
+# 都能容纳本次文件（字节数 + NUL，以及解码后最坏情况的单元数）。
+em.mov_r32_r32('rcx','r13'); em.add_r32_imm8('rcx',2); em.call_label('ensure_byte_arena'); em.test32('rax'); em.jcc(0x84,'open_alloc_close')
+em.mov_r32_r32('rcx','r13'); em.add_r32_imm8('rcx',1); em.call_label('ensure_wide_arena'); em.test32('rax'); em.jcc(0x84,'open_alloc_close')
+em.mov_r64_ripmem('r14',bsyms['bytebuf']); em.mov_r32_r32('r15','r13')
 em.label('open_read_loop'); em.test32('r15'); em.jcc(0x84,'open_read_complete')
 em.mov_r64_r64('rcx','r12'); em.mov_r64_r64('rdx','r14'); em.mov_r32_r32('r8','r15'); em.lea_rip('r9',bsyms['io_count']); em.mov_mrsp_imm32(0x20,0,qword=True)
 if OPEN_READ_INJECTION_MODE != 'release': em.call_label('injected_ReadFile')
@@ -1121,36 +1144,36 @@ em.add_r64_r64('r14','rax'); em.sub_r32_r32('r15','rax'); em.jmp('open_read_loop
 em.label('open_read_complete')
 em.mov_r64_r64('rcx','r12'); em.call_iat('CloseHandle')
 # NUL terminate raw buffer at actual byte count returned by ReadFile
-em.lea_rip('rdx',bsyms['bytebuf']); em.mov_r32_r32('rax','r13'); em.add_r64_r64('rdx','rax'); em.mov_word_ptr_reg_zero('rdx')
+em.mov_r64_ripmem('rdx',bsyms['bytebuf']); em.mov_r32_r32('rax','r13'); em.add_r64_r64('rdx','rax'); em.mov_word_ptr_reg_zero('rdx')
 # Empty file is valid text.
 em.test32('r13'); em.jcc(0x84,'decode_empty')
 # BOM detection
-em.lea_rip('r14',bsyms['bytebuf']); em.cmp_r32_imm('r13',2); em.jcc(0x82,'decode_8bit')
+em.mov_r64_ripmem('r14',bsyms['bytebuf']); em.cmp_r32_imm('r13',2); em.jcc(0x82,'decode_8bit')
 em.movzx_eax_word_ptr('r14'); em.cmp_r32_imm('rax',0xFEFF); em.jcc(0x84,'decode_utf16')
 em.cmp_r32_imm('r13',3); em.jcc(0x82,'decode_8bit')
 em.mov_eax_ptr('r14'); em.and_r32_imm('rax',0x00FFFFFF); em.cmp_r32_imm('rax',0x00BFBBEF); em.jcc(0x85,'decode_8bit')
 em.add_r64_imm8('r14',3); em.mov_r32_r32('r15','r13'); em.sub_r32_imm8('r15',3); em.mov_ripmem_imm32(bsyms['candidate_encoding_state'],2); em.jmp('decode_utf8_call')
 
 em.label('decode_8bit')
-em.lea_rip('r14',bsyms['bytebuf']); em.mov_r32_r32('r15','r13'); em.mov_ripmem_imm32(bsyms['candidate_encoding_state'],0)
+em.mov_r64_ripmem('r14',bsyms['bytebuf']); em.mov_r32_r32('r15','r13'); em.mov_ripmem_imm32(bsyms['candidate_encoding_state'],0)
 em.label('decode_utf8_call')
 # Strict UTF-8 only. MB_ERR_INVALID_CHARS rejects malformed byte sequences;
 # legacy code-page fallback is deliberately outside the V8.5.3 contract.
 em.test32('r15'); em.jcc(0x84,'decode_empty_utf8_bom')
-em.mov_r32_imm('rcx',65001); em.mov_r32_imm('rdx',8); em.mov_r64_r64('r8','r14'); em.mov_r32_r32('r9','r15'); em.lea_rip('rax',bsyms['widebuf']); em.mov_mrsp_reg64(0x20,'rax'); em.mov_mrsp_imm32(0x28,WIDE_CHARS); em.call_iat('MultiByteToWideChar'); em.test32('rax'); em.jcc(0x84,'err_decode')
+em.mov_r32_imm('rcx',65001); em.mov_r32_imm('rdx',8); em.mov_r64_r64('r8','r14'); em.mov_r32_r32('r9','r15'); em.mov_r64_ripmem('rax',bsyms['widebuf']); em.mov_mrsp_reg64(0x20,'rax'); em.mov_r32_ripmem('rax',bsyms['wide_capacity']); em.mov_mrsp_reg32(0x28,'rax'); em.call_iat('MultiByteToWideChar'); em.test32('rax'); em.jcc(0x84,'err_decode')
 em.label('decode_done')
-em.mov_r32_r32('r15','rax'); em.lea_rip('rdx',bsyms['widebuf']); em.mov_word_index2_zero('rdx','r15')
-em.lea_rip('rcx',bsyms['widebuf']); em.mov_r32_r32('rdx','r15'); em.call_label('validate_wide_no_nul'); em.test32('rax'); em.jcc(0x84,'err_decode')
-em.lea_rip('rcx',bsyms['widebuf']); em.mov_r32_r32('rdx','r15'); em.call_label('detect_preferred_eol'); em.mov_ripmem_r32(bsyms['candidate_eol_state'],'rax')
-em.lea_rip('rcx',bsyms['widebuf']); em.call_label('candidate_normalized_length'); em.mov_r32_r32('rcx','rax'); em.call_label('ensure_outline_arena'); em.test32('rax'); em.jcc(0x84,'err_open_alloc')
-em.lea_rip('rcx',bsyms['widebuf']); em.call_label('candidate_normalized_length'); em.mov_r32_r32('rcx','rax'); em.call_label('ensure_style_arena'); em.test32('rax'); em.jcc(0x84,'err_open_alloc')
-em.lea_rip('rcx',bsyms['widebuf']); em.call_label('candidate_normalized_length'); em.mov_r32_r32('rcx','rax'); em.call_label('ensure_render_arena'); em.test32('rax'); em.jcc(0x84,'err_open_alloc')
-em.lea_rip('rcx',bsyms['widebuf']); em.call_label('candidate_normalized_length'); em.mov_r32_r32('rcx','rax'); em.call_label('ensure_document_arena'); em.test32('rax'); em.jcc(0x84,'err_open_alloc')
-em.lea_rip('rcx',bsyms['widebuf']); em.call_label('normalize_to_document_model'); em.call_label('load_model_into_editor')
+em.mov_r32_r32('r15','rax'); em.mov_r64_ripmem('rdx',bsyms['widebuf']); em.mov_word_index2_zero('rdx','r15')
+em.mov_r64_ripmem('rcx',bsyms['widebuf']); em.mov_r32_r32('rdx','r15'); em.call_label('validate_wide_no_nul'); em.test32('rax'); em.jcc(0x84,'err_decode')
+em.mov_r64_ripmem('rcx',bsyms['widebuf']); em.mov_r32_r32('rdx','r15'); em.call_label('detect_preferred_eol'); em.mov_ripmem_r32(bsyms['candidate_eol_state'],'rax')
+em.mov_r64_ripmem('rcx',bsyms['widebuf']); em.call_label('candidate_normalized_length'); em.mov_r32_r32('rcx','rax'); em.call_label('ensure_outline_arena'); em.test32('rax'); em.jcc(0x84,'err_open_alloc')
+em.mov_r64_ripmem('rcx',bsyms['widebuf']); em.call_label('candidate_normalized_length'); em.mov_r32_r32('rcx','rax'); em.call_label('ensure_style_arena'); em.test32('rax'); em.jcc(0x84,'err_open_alloc')
+em.mov_r64_ripmem('rcx',bsyms['widebuf']); em.call_label('candidate_normalized_length'); em.mov_r32_r32('rcx','rax'); em.call_label('ensure_render_arena'); em.test32('rax'); em.jcc(0x84,'err_open_alloc')
+em.mov_r64_ripmem('rcx',bsyms['widebuf']); em.call_label('candidate_normalized_length'); em.mov_r32_r32('rcx','rax'); em.call_label('ensure_document_arena'); em.test32('rax'); em.jcc(0x84,'err_open_alloc')
+em.mov_r64_ripmem('rcx',bsyms['widebuf']); em.call_label('normalize_to_document_model'); em.call_label('load_model_into_editor')
 em.jmp('open_commit')
 
 em.label('decode_empty_utf8_bom')
-em.lea_rip('rax',bsyms['widebuf']); em.mov_word_ptr_reg_zero('rax'); em.mov_ripmem_imm32(bsyms['candidate_eol_state'],0)
+em.mov_r64_ripmem('rax',bsyms['widebuf']); em.mov_word_ptr_reg_zero('rax'); em.mov_ripmem_imm32(bsyms['candidate_eol_state'],0)
 em.xor32('rcx'); em.call_label('ensure_outline_arena'); em.test32('rax'); em.jcc(0x84,'err_open_alloc')
 em.xor32('rcx'); em.call_label('ensure_style_arena'); em.test32('rax'); em.jcc(0x84,'err_open_alloc')
 em.xor32('rcx'); em.call_label('ensure_render_arena'); em.test32('rax'); em.jcc(0x84,'err_open_alloc')
@@ -1168,10 +1191,10 @@ em.jmp('open_commit')
 
 em.label('decode_utf16')
 em.mov_r32_r32('r15','r13'); em.sub_r32_imm8('r15',2); em.mov_r32_r32('rax','r15'); em.and_r32_imm('rax',1); em.test32('rax'); em.jcc(0x85,'err_decode'); em.shr_r32_imm8('r15',1)
-em.lea_rip('rcx',bsyms['bytebuf']); em.add_r64_imm8('rcx',2); em.mov_r32_r32('rdx','r15'); em.call_label('validate_wide_no_nul'); em.test32('rax'); em.jcc(0x84,'err_decode')
+em.mov_r64_ripmem('rcx',bsyms['bytebuf']); em.add_r64_imm8('rcx',2); em.mov_r32_r32('rdx','r15'); em.call_label('validate_wide_no_nul'); em.test32('rax'); em.jcc(0x84,'err_decode')
 em.mov_ripmem_imm32(bsyms['candidate_encoding_state'],1)
-em.lea_rip('rcx',bsyms['bytebuf']); em.add_r64_imm8('rcx',2); em.mov_r32_r32('rdx','r15'); em.call_label('detect_preferred_eol'); em.mov_ripmem_r32(bsyms['candidate_eol_state'],'rax')
-em.lea_rip('r14',bsyms['bytebuf']); em.add_r64_imm8('r14',2); em.mov_r64_r64('rcx','r14'); em.call_label('candidate_normalized_length'); em.mov_r32_r32('rcx','rax'); em.call_label('ensure_outline_arena'); em.test32('rax'); em.jcc(0x84,'err_open_alloc')
+em.mov_r64_ripmem('rcx',bsyms['bytebuf']); em.add_r64_imm8('rcx',2); em.mov_r32_r32('rdx','r15'); em.call_label('detect_preferred_eol'); em.mov_ripmem_r32(bsyms['candidate_eol_state'],'rax')
+em.mov_r64_ripmem('r14',bsyms['bytebuf']); em.add_r64_imm8('r14',2); em.mov_r64_r64('rcx','r14'); em.call_label('candidate_normalized_length'); em.mov_r32_r32('rcx','rax'); em.call_label('ensure_outline_arena'); em.test32('rax'); em.jcc(0x84,'err_open_alloc')
 em.mov_r64_r64('rcx','r14'); em.call_label('candidate_normalized_length'); em.mov_r32_r32('rcx','rax'); em.call_label('ensure_style_arena'); em.test32('rax'); em.jcc(0x84,'err_open_alloc')
 em.mov_r64_r64('rcx','r14'); em.call_label('candidate_normalized_length'); em.mov_r32_r32('rcx','rax'); em.call_label('ensure_render_arena'); em.test32('rax'); em.jcc(0x84,'err_open_alloc')
 em.mov_r64_r64('rcx','r14'); em.call_label('candidate_normalized_length'); em.mov_r32_r32('rcx','rax'); em.call_label('ensure_document_arena'); em.test32('rax'); em.jcc(0x84,'err_open_alloc')
@@ -1193,6 +1216,9 @@ if OPEN_TEST_BUILD:
     em.mov_r32_ripmem('rax',bsyms['open_read_error_count']); em.add_r32_imm8('rax',1); em.mov_ripmem_r32(bsyms['open_read_error_count'],'rax'); em.jmp('msg_loop')
 else:
     em.jmp('err_open')
+
+em.label('open_alloc_close')
+em.mov_r64_r64('rcx','r12'); em.call_iat('CloseHandle'); em.jmp('err_open_alloc')
 
 em.label('err_open')
 em.mov_r64_r64('rcx','rbx'); em.lea_rip('rdx',rsyms['err_open']); em.lea_rip('r8',rsyms['err_title']); em.mov_r32_imm('r9',0x10); em.call_iat('MessageBoxW'); em.jmp('msg_loop')
@@ -1220,16 +1246,20 @@ em.mov_ripmem_imm32(bsyms['save_target_is_temp'],1)
 
 em.label('do_save')
 # Persist only the canonical Document Model. Synchronize once in case a queued EN_CHANGE is pending.
-em.call_label('sync_model_from_editor'); em.call_label('serialize_preferred_eol'); em.mov_r32_r32('r13','rax'); em.cmp_r32_imm('r13',WIDE_CHARS-1); em.jcc(0x87,'err_save')
+em.call_label('sync_model_from_editor')
+# V8.5.3：serialize 写 widebuf、编码写 bytebuf，先保证两个 arena 都能容纳本次输出。
+em.mov_r32_ripmem('rcx',bsyms['document_len']); em.add_r32_imm8('rcx',1); em.call_label('ensure_wide_arena'); em.test32('rax'); em.jcc(0x84,'err_save')
+em.mov_r32_ripmem('rcx',bsyms['document_len']); em.shl_r32_imm8('rcx',2); em.add_r32_imm8('rcx',3); em.call_label('ensure_byte_arena'); em.test32('rax'); em.jcc(0x84,'err_save')
+em.call_label('serialize_preferred_eol'); em.mov_r32_r32('r13','rax'); em.cmp_r32_imm('r13',WIDE_CHARS-1); em.jcc(0x87,'err_save')
 # Encode the EOL-adjusted UTF-16 scratch according to committed document metadata.
 em.mov_r32_ripmem('rax',bsyms['encoding_state']); em.cmp_r32_imm('rax',1); em.jcc(0x84,'save_encode_utf16'); em.cmp_r32_imm('rax',2); em.jcc(0x84,'save_encode_utf8_bom')
 em.test32('r13'); em.jcc(0x84,'save_zero_bytes')
-em.mov_r32_imm('rcx',65001); em.xor32('rdx'); em.lea_rip('r8',bsyms['widebuf']); em.mov_r32_r32('r9','r13'); em.lea_rip('rax',bsyms['bytebuf']); em.mov_mrsp_reg64(0x20,'rax'); em.mov_mrsp_imm32(0x28,BYTE_CAP); em.mov_mrsp_imm32(0x30,0,qword=True); em.mov_mrsp_imm32(0x38,0,qword=True); em.call_iat('WideCharToMultiByte'); em.test32('rax'); em.jcc(0x84,'err_save'); em.mov_r32_r32('r13','rax'); em.jmp('save_create')
+em.mov_r32_imm('rcx',65001); em.xor32('rdx'); em.mov_r64_ripmem('r8',bsyms['widebuf']); em.mov_r32_r32('r9','r13'); em.mov_r64_ripmem('rax',bsyms['bytebuf']); em.mov_mrsp_reg64(0x20,'rax'); em.mov_r32_ripmem('rax',bsyms['byte_capacity']); em.mov_mrsp_reg32(0x28,'rax'); em.mov_mrsp_imm32(0x30,0,qword=True); em.mov_mrsp_imm32(0x38,0,qword=True); em.call_iat('WideCharToMultiByte'); em.test32('rax'); em.jcc(0x84,'err_save'); em.mov_r32_r32('r13','rax'); em.jmp('save_create')
 em.label('save_encode_utf8_bom')
-em.mov_r32_imm('rcx',65001); em.xor32('rdx'); em.lea_rip('r8',bsyms['widebuf']); em.mov_r32_r32('r9','r13'); em.lea_rip('rax',bsyms['bytebuf']); em.add_r64_imm8('rax',3); em.mov_mrsp_reg64(0x20,'rax'); em.mov_mrsp_imm32(0x28,BYTE_CAP-3); em.mov_mrsp_imm32(0x30,0,qword=True); em.mov_mrsp_imm32(0x38,0,qword=True); em.call_iat('WideCharToMultiByte'); em.test32('r13'); em.jcc(0x84,'save_utf8_bom_prefix'); em.test32('rax'); em.jcc(0x84,'err_save')
-em.label('save_utf8_bom_prefix'); em.mov_r32_r32('r13','rax'); em.add_r32_imm8('r13',3); em.lea_rip('rcx',bsyms['bytebuf']); em.mov_byte_ptr_imm8('rcx',0xEF); em.add_r64_imm8('rcx',1); em.mov_byte_ptr_imm8('rcx',0xBB); em.add_r64_imm8('rcx',1); em.mov_byte_ptr_imm8('rcx',0xBF); em.jmp('save_create')
+em.mov_r32_imm('rcx',65001); em.xor32('rdx'); em.mov_r64_ripmem('r8',bsyms['widebuf']); em.mov_r32_r32('r9','r13'); em.mov_r64_ripmem('rax',bsyms['bytebuf']); em.add_r64_imm8('rax',3); em.mov_mrsp_reg64(0x20,'rax'); em.mov_r32_ripmem('rax',bsyms['byte_capacity']); em.sub_r32_imm8('rax',3); em.mov_mrsp_reg32(0x28,'rax'); em.mov_mrsp_imm32(0x30,0,qword=True); em.mov_mrsp_imm32(0x38,0,qword=True); em.call_iat('WideCharToMultiByte'); em.test32('r13'); em.jcc(0x84,'save_utf8_bom_prefix'); em.test32('rax'); em.jcc(0x84,'err_save')
+em.label('save_utf8_bom_prefix'); em.mov_r32_r32('r13','rax'); em.add_r32_imm8('r13',3); em.mov_r64_ripmem('rcx',bsyms['bytebuf']); em.mov_byte_ptr_imm8('rcx',0xEF); em.add_r64_imm8('rcx',1); em.mov_byte_ptr_imm8('rcx',0xBB); em.add_r64_imm8('rcx',1); em.mov_byte_ptr_imm8('rcx',0xBF); em.jmp('save_create')
 em.label('save_encode_utf16')
-em.lea_rip('rcx',bsyms['bytebuf']); em.xor32('r8'); em.mov_word_index2_imm16('rcx','r8',0xFEFF); em.lea_rip('rdx',bsyms['widebuf']); em.xor32('r8'); em.mov_r32_imm('r9',1)
+em.mov_r64_ripmem('rcx',bsyms['bytebuf']); em.xor32('r8'); em.mov_word_index2_imm16('rcx','r8',0xFEFF); em.mov_r64_ripmem('rdx',bsyms['widebuf']); em.xor32('r8'); em.mov_r32_imm('r9',1)
 em.label('save_utf16_copy'); em.cmp_r32_r32('r8','r13'); em.jcc(0x83,'save_utf16_done'); em.movzx_r32_word_index2('rax','rdx','r8'); em.mov_word_index2_reg('rcx','r9','rax'); em.add_r32_imm8('r8',1); em.add_r32_imm8('r9',1); em.jmp('save_utf16_copy')
 em.label('save_utf16_done'); em.shl_r32_imm8('r13',1); em.add_r32_imm8('r13',2); em.jmp('save_create')
 em.label('save_zero_bytes'); em.xor32('r13')
@@ -1254,7 +1284,7 @@ em.cmp_rax_neg1(); em.jcc(0x84,'save_create_failed'); em.mov_r64_r64('r12','rax'
 # Complete-write loop. WriteFile success may legally report fewer bytes than
 # requested. Advance by io_count until no bytes remain; zero progress or an
 # impossible count above remaining is a hard failure.
-em.lea_rip('r14',bsyms['bytebuf']); em.mov_r32_r32('r15','r13')
+em.mov_r64_ripmem('r14',bsyms['bytebuf']); em.mov_r32_r32('r15','r13')
 em.label('save_write_loop'); em.test32('r15'); em.jcc(0x84,'save_write_complete')
 em.mov_r64_r64('rcx','r12'); em.mov_r64_r64('rdx','r14'); em.mov_r32_r32('r8','r15'); em.lea_rip('r9',bsyms['io_count']); em.mov_mrsp_imm32(0x20,0,qword=True)
 if WRITE_CALL_INJECTED: em.call_label('injected_WriteFile')
@@ -2113,6 +2143,20 @@ if DOCUMENT_ALLOC_INJECTED:
     em.cmp_r32_imm('rax',_document_fail_ordinal); em.jcc(0x85,'injected_document_alloc_real'); em.xor32('rax'); em.emit(0xC3)
     em.label('injected_document_alloc_real'); em.emit(0x48,0x83,0xEC,0x28); em.call_iat('VirtualAlloc'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
 
+if WIDE_ALLOC_INJECTED:
+    em.label('injected_WideVirtualAlloc')
+    em.mov_r32_ripmem('rax',bsyms['inject_wide_alloc_call_count']); em.add_r32_imm8('rax',1); em.mov_ripmem_r32(bsyms['inject_wide_alloc_call_count'],'rax')
+    _wide_fail_ordinal = 1 if ARENA_ALLOC_INJECTION_MODE == 'wide_fail_first' else 2
+    em.cmp_r32_imm('rax',_wide_fail_ordinal); em.jcc(0x85,'injected_wide_alloc_real'); em.xor32('rax'); em.emit(0xC3)
+    em.label('injected_wide_alloc_real'); em.emit(0x48,0x83,0xEC,0x28); em.call_iat('VirtualAlloc'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
+
+if BYTE_ALLOC_INJECTED:
+    em.label('injected_ByteVirtualAlloc')
+    em.mov_r32_ripmem('rax',bsyms['inject_byte_alloc_call_count']); em.add_r32_imm8('rax',1); em.mov_ripmem_r32(bsyms['inject_byte_alloc_call_count'],'rax')
+    _byte_fail_ordinal = 1 if ARENA_ALLOC_INJECTION_MODE == 'byte_fail_first' else 2
+    em.cmp_r32_imm('rax',_byte_fail_ordinal); em.jcc(0x85,'injected_byte_alloc_real'); em.xor32('rax'); em.emit(0xC3)
+    em.label('injected_byte_alloc_real'); em.emit(0x48,0x83,0xEC,0x28); em.call_iat('VirtualAlloc'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
+
 if WRITE_CALL_INJECTED:
     em.label('injected_WriteFile')
     em.mov_r32_ripmem('rax',bsyms['inject_write_call_count']); em.add_r32_imm8('rax',1); em.mov_ripmem_r32(bsyms['inject_write_call_count'],'rax')
@@ -2199,7 +2243,7 @@ em.add_r64_imm8('rsp',0x28); em.emit(0x41,0x5D); em.emit(0x41,0x5C); em.emit(0x5
 # DocumentModel is canonical CRLF. Produce UTF-16 scratch using preferred_eol:
 # 0 keeps CRLF, 1 writes LF, 2 writes CR. Returns output UTF-16 length in eax.
 em.label('serialize_preferred_eol')
-em.mov_r64_ripmem('rcx',bsyms['document_model']); em.lea_rip('rdx',bsyms['widebuf']); em.mov_r32_ripmem('r11',bsyms['eol_state']); em.mov_r32_ripmem('r10',bsyms['document_len']); em.xor32('r8'); em.xor32('r9')
+em.mov_r64_ripmem('rcx',bsyms['document_model']); em.mov_r64_ripmem('rdx',bsyms['widebuf']); em.mov_r32_ripmem('r11',bsyms['eol_state']); em.mov_r32_ripmem('r10',bsyms['document_len']); em.xor32('r8'); em.xor32('r9')
 em.label('serialize_eol_loop'); em.cmp_r32_r32('r8','r10'); em.jcc(0x83,'serialize_eol_done'); em.movzx_r32_word_index2('rax','rcx','r8')
 em.test32('r11'); em.jcc(0x84,'serialize_eol_copy'); em.cmp_r32_imm('rax',0x0D); em.jcc(0x85,'serialize_eol_copy')
 em.cmp_r32_imm('r11',1); em.jcc(0x84,'serialize_eol_emit_lf'); em.mov_r32_imm('rax',0x0D); em.jmp('serialize_eol_emit')
@@ -2341,6 +2385,35 @@ em.test64('rax'); em.jcc(0x84,'doc_arena_fail'); em.mov_ripmem_r32(bsyms['docume
 em.label('doc_arena_ok'); em.mov_r32_imm('rax',1); em.jmp('doc_arena_ret')
 em.label('doc_arena_fail'); em.xor32('rax')
 em.label('doc_arena_ret'); em.add_r64_imm8('rsp',0x28); em.emit(0x41,0x5F); em.emit(0x41,0x5E); em.emit(0x41,0x5D); em.emit(0x41,0x5C); em.emit(0xC3)
+
+# V8.5.3 Phase E：解码/编码 scratch arena。两者结构相同——容量按 64 KiB 块向上
+# 取整、只增不减、失败时不发布新指针——所以由同一个模板生成。
+def emit_ensure_scratch_arena(entry, ptr_sym, cap_sym, chunk, unit_scale,
+                              inject_label=None):
+    em.label(entry)
+    em.emit(0x41,0x54); em.emit(0x41,0x55); em.emit(0x41,0x56); em.emit(0x41,0x57); em.emit(0x48,0x83,0xEC,0x28)
+    em.mov_r32_r32('r13','rcx'); em.add_r32_imm8('r13',1)
+    em.mov_r32_imm('rax',chunk-1); em.add_r32_r32('r13','rax'); em.and_r32_imm('r13',~(chunk-1) & 0xFFFFFFFF)
+    em.cmp_r32_imm('r13',chunk); em.jcc(0x83,entry+'_ready'); em.mov_r32_imm('r13',chunk)
+    em.label(entry+'_ready')
+    em.mov_r32_ripmem('rax',bsyms[cap_sym]); em.cmp_r32_r32('rax','r13'); em.jcc(0x83,entry+'_ok')
+    em.mov_r32_r32('r14','r13')
+    if unit_scale == 2: em.shl_r32_imm8('r14',1)
+    em.xor32('rcx'); em.mov_r32_r32('rdx','r14'); em.mov_r32_imm('r8',0x3000); em.mov_r32_imm('r9',4)
+    if inject_label: em.call_label(inject_label)
+    else: em.call_iat('VirtualAlloc')
+    em.test64('rax'); em.jcc(0x84,entry+'_fail'); em.mov_r64_r64('r15','rax')
+    em.mov_r64_ripmem('r12',bsyms[ptr_sym]); em.test64('r12'); em.jcc(0x84,entry+'_commit')
+    em.mov_r64_r64('rcx','r12'); em.xor32('rdx'); em.mov_r32_imm('r8',0x8000); em.call_iat('VirtualFree')
+    em.label(entry+'_commit'); em.mov_ripmem_r64(bsyms[ptr_sym],'r15'); em.mov_ripmem_r32(bsyms[cap_sym],'r13')
+    em.label(entry+'_ok'); em.mov_r32_imm('rax',1); em.jmp(entry+'_ret')
+    em.label(entry+'_fail'); em.xor32('rax')
+    em.label(entry+'_ret'); em.add_r64_imm8('rsp',0x28); em.emit(0x41,0x5F); em.emit(0x41,0x5E); em.emit(0x41,0x5D); em.emit(0x41,0x5C); em.emit(0xC3)
+
+emit_ensure_scratch_arena('ensure_wide_arena','widebuf','wide_capacity',WIDE_CHUNK,2,
+                          'injected_WideVirtualAlloc' if WIDE_ALLOC_INJECTED else None)
+emit_ensure_scratch_arena('ensure_byte_arena','bytebuf','byte_capacity',BYTE_CHUNK,1,
+                          'injected_ByteVirtualAlloc' if BYTE_ALLOC_INJECTED else None)
 
 # ---------------- V8.4.25 统一扫描：大纲条目推送例程 ----------------
 # 契约：统一扫描器（update_preview 的 pv8 循环）在围栏代码块之外识别出
@@ -2859,10 +2932,12 @@ em.label('find_next_select')
 em.emit(0x48,0x83,0xEC,0x38)
 em.lea_rip('rcx',bsyms['findbuf']); em.call_iat('lstrlenW'); em.mov_ripmem_r32(bsyms['find_len'],'rax'); em.test32('rax'); em.jcc(0x84,'find_none')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.call_iat('GetWindowTextLengthW'); em.mov_ripmem_r32(bsyms['total_chars'],'rax')
-em.mov_r32_r32('r8','rax'); em.add_r32_imm8('r8',1); em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.lea_rip('rdx',bsyms['widebuf']); em.call_iat('GetWindowTextW')
+# V8.5.3：搜索快照写入 widebuf，先保证 arena 有容量；失败即视为未找到。
+em.mov_r32_ripmem('rcx',bsyms['total_chars']); em.add_r32_imm8('rcx',1); em.call_label('ensure_wide_arena'); em.test32('rax'); em.jcc(0x84,'find_none')
+em.mov_r32_r32('r8','rax'); em.add_r32_imm8('r8',1); em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.mov_r64_ripmem('rdx',bsyms['widebuf']); em.call_iat('GetWindowTextW')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.mov_r32_imm('rdx',0x00B0); em.lea_rip('r8',bsyms['sel_start']); em.lea_rip('r9',bsyms['sel_end']); em.call_iat('SendMessageW')
 # pointer = widebuf + 2*sel_end
-em.lea_rip('rcx',bsyms['widebuf']); em.mov_r32_ripmem('rax',bsyms['sel_end']); em.add_r64_r64('rax','rax'); em.add_r64_r64('rcx','rax'); em.lea_rip('rdx',bsyms['findbuf'])
+em.mov_r64_ripmem('rcx',bsyms['widebuf']); em.mov_r32_ripmem('rax',bsyms['sel_end']); em.add_r64_r64('rax','rax'); em.add_r64_r64('rcx','rax'); em.lea_rip('rdx',bsyms['findbuf'])
 em.mov_r32_ripmem('rax',bsyms['find_flags']); em.and_r32_imm('rax',4); em.test32('rax'); em.jcc(0x85,'find_case_first')
 em.call_iat('StrStrIW'); em.jmp('find_first_done')
 em.label('find_case_first'); em.call_iat('StrStrW')
@@ -2870,12 +2945,12 @@ em.label('find_first_done'); em.test64('rax'); em.jcc(0x85,'find_got')
 # Wrap only for ordinary Find Next; Replace All disables this.
 em.mov_r32_ripmem('r10',bsyms['search_wrap_flag']); em.test32('r10'); em.jcc(0x84,'find_none')
 em.mov_r32_ripmem('r10',bsyms['sel_end']); em.test32('r10'); em.jcc(0x84,'find_none')
-em.lea_rip('rcx',bsyms['widebuf']); em.lea_rip('rdx',bsyms['findbuf']); em.mov_r32_ripmem('r10',bsyms['find_flags']); em.and_r32_imm('r10',4); em.test32('r10'); em.jcc(0x85,'find_case_wrap')
+em.mov_r64_ripmem('rcx',bsyms['widebuf']); em.lea_rip('rdx',bsyms['findbuf']); em.mov_r32_ripmem('r10',bsyms['find_flags']); em.and_r32_imm('r10',4); em.test32('r10'); em.jcc(0x85,'find_case_wrap')
 em.call_iat('StrStrIW'); em.jmp('find_wrap_done')
 em.label('find_case_wrap'); em.call_iat('StrStrW')
 em.label('find_wrap_done'); em.test64('rax'); em.jcc(0x84,'find_none')
 em.label('find_got')
-em.lea_rip('r10',bsyms['widebuf']); em.sub_r64_r64('rax','r10'); em.shr_r64_imm8('rax',1); em.mov_ripmem_r32(bsyms['match_start'],'rax')
+em.mov_r64_ripmem('r10',bsyms['widebuf']); em.sub_r64_r64('rax','r10'); em.shr_r64_imm8('rax',1); em.mov_ripmem_r32(bsyms['match_start'],'rax')
 em.mov_r32_r32('r10','rax'); em.mov_r32_ripmem('r11',bsyms['find_len']); em.add_r32_r32('r10','r11'); em.mov_ripmem_r32(bsyms['match_end'],'r10')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.mov_r32_imm('rdx',0x00B1); em.mov_r32_ripmem('r8',bsyms['match_start']); em.mov_r32_ripmem('r9',bsyms['match_end']); em.call_iat('SendMessageW')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.mov_r32_imm('rdx',0x00B7); em.xor32('r8'); em.xor32('r9'); em.call_iat('SendMessageW')
@@ -2889,9 +2964,11 @@ em.emit(0x48,0x83,0xEC,0x38)
 em.lea_rip('rcx',bsyms['findbuf']); em.call_iat('lstrlenW'); em.mov_ripmem_r32(bsyms['find_len'],'rax'); em.test32('rax'); em.jcc(0x84,'replace_no')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.mov_r32_imm('rdx',0x00B0); em.lea_rip('r8',bsyms['sel_start']); em.lea_rip('r9',bsyms['sel_end']); em.call_iat('SendMessageW')
 em.mov_r32_ripmem('r10',bsyms['sel_end']); em.mov_r32_ripmem('r11',bsyms['sel_start']); em.sub_r32_r32('r10','r11'); em.mov_r32_ripmem('r11',bsyms['find_len']); em.cmp_r32_r32('r10','r11'); em.jcc(0x85,'replace_no')
-em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.call_iat('GetWindowTextLengthW'); em.mov_r32_r32('r8','rax'); em.add_r32_imm8('r8',1); em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.lea_rip('rdx',bsyms['widebuf']); em.call_iat('GetWindowTextW')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.call_iat('GetWindowTextLengthW'); em.mov_ripmem_r32(bsyms['total_chars'],'rax')
+em.mov_r32_r32('rcx','rax'); em.add_r32_imm8('rcx',1); em.call_label('ensure_wide_arena'); em.test32('rax'); em.jcc(0x84,'replace_no')
+em.mov_r32_ripmem('r8',bsyms['total_chars']); em.add_r32_imm8('r8',1); em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.mov_r64_ripmem('rdx',bsyms['widebuf']); em.call_iat('GetWindowTextW')
 # CompareStringOrdinal(selected, find_len, findbuf, find_len, ignoreCase)
-em.lea_rip('rcx',bsyms['widebuf']); em.mov_r32_ripmem('rax',bsyms['sel_start']); em.add_r64_r64('rax','rax'); em.add_r64_r64('rcx','rax')
+em.mov_r64_ripmem('rcx',bsyms['widebuf']); em.mov_r32_ripmem('rax',bsyms['sel_start']); em.add_r64_r64('rax','rax'); em.add_r64_r64('rcx','rax')
 em.mov_r32_ripmem('rdx',bsyms['find_len']); em.lea_rip('r8',bsyms['findbuf']); em.mov_r32_ripmem('r9',bsyms['find_len'])
 em.mov_r32_ripmem('rax',bsyms['find_flags']); em.and_r32_imm('rax',4); em.test32('rax'); em.jcc(0x85,'replace_matchcase'); em.mov_mrsp_imm32(0x20,1); em.jmp('replace_compare')
 em.label('replace_matchcase'); em.mov_mrsp_imm32(0x20,0)
@@ -3774,6 +3851,43 @@ assert "call_label('ensure_document_arena')" in _sync_src and \
     'editor sync must reserve document capacity and roll back on failure'
 assert "em.mov_r32_imm('r8',WIDE_CHARS-1)" in _production_source, \
     'editor text limit must keep using the WIDE_CHARS policy bound'
+# V8.5.3 Phase E：解码/编码 scratch 也必须经按需 arena 访问。
+assert all(bss_sizes[name] == 8 for name in ('widebuf','bytebuf')), \
+    'decode and file-byte buffers must be arena pointers'
+assert all(bss_sizes[name] == 4 for name in ('wide_capacity','byte_capacity'))
+for _scratch in ('widebuf','bytebuf'):
+    assert "lea_rip(" not in "".join(
+        "lea_rip('%s',bsyms['%s'])" % (_reg,_scratch)
+        for _reg in ('rax','rcx','rdx','r8','r9','r10','r14')
+        if "lea_rip('%s',bsyms['%s'])" % (_reg,_scratch) in _production_source), \
+        '%s must be accessed through its dynamic pointer' % _scratch
+# 这两个例程由 emit_ensure_scratch_arena 模板生成，因此检查生成的标签集合。
+for _arena in ('ensure_wide_arena','ensure_byte_arena'):
+    assert _arena in em.labels, '%s must be emitted' % _arena
+    for _suffix in ('_ready','_ok','_fail','_ret'):
+        assert _arena + _suffix in em.labels, \
+            '%s must keep its checked growth structure' % _arena
+assert "call_label('ensure_byte_arena')" in _production_source and \
+       "call_label('ensure_wide_arena')" in _production_source
+_read_alloc_src = _production_source[
+    _production_source.index("em.label('read_nonempty')"):
+    _production_source.index("em.label('open_read_loop')")]
+assert "call_label('ensure_byte_arena')" in _read_alloc_src and \
+       "call_label('ensure_wide_arena')" in _read_alloc_src and \
+       "'open_alloc_close'" in _read_alloc_src, \
+    'Open must reserve both scratch arenas before reading and close on failure'
+_save_alloc_src = _production_source[
+    _production_source.index("em.label('do_save')"):
+    _production_source.index("call_label('serialize_preferred_eol')")]
+assert "call_label('ensure_wide_arena')" in _save_alloc_src and \
+       "call_label('ensure_byte_arena')" in _save_alloc_src, \
+    'Save must reserve both scratch arenas before encoding'
+assert "mov_mrsp_reg32(0x28,'rax')" in _production_source and \
+       "mov_mrsp_imm32(0x28,WIDE_CHARS)" not in _production_source and \
+       "BYTE_CAP)" not in _production_source, \
+    'encoding APIs must use the published capacities, not compile-time bounds'
+assert _production_source.count("call_label('ensure_wide_arena')") >= 4, \
+    'decode, save and both search paths must reserve the wide arena'
 _save_encode_src = _production_source[_production_source.index("em.label('do_save')"):
                                       _production_source.index("em.label('save_create')")]
 assert "call_label('serialize_preferred_eol')" in _save_encode_src
@@ -3884,6 +3998,10 @@ _output_name = (('pemark_x64_v8_5_3_outline_alloc_%s.exe' % ARENA_ALLOC_INJECTIO
                 if RENDER_ALLOC_INJECTED else
                 ('pemark_x64_v8_5_3_document_alloc_%s.exe' % ARENA_ALLOC_INJECTION_MODE)
                 if DOCUMENT_ALLOC_INJECTED else
+                ('pemark_x64_v8_5_3_wide_alloc_%s.exe' % ARENA_ALLOC_INJECTION_MODE)
+                if WIDE_ALLOC_INJECTED else
+                ('pemark_x64_v8_5_3_byte_alloc_%s.exe' % ARENA_ALLOC_INJECTION_MODE)
+                if BYTE_ALLOC_INJECTED else
                 ('pemark_x64_v8_5_3_open_read_%s.exe' % OPEN_READ_INJECTION_MODE)
                 if OPEN_READ_INJECTION_MODE != 'release' else
                 'pemark_x64_v8_5_3_open_transaction_test.exe' if OPEN_TEST_BUILD

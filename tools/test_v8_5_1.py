@@ -127,7 +127,11 @@ def checks(ns):
     if 'detect_preferred_eol' in ns['em'].labels:
         def document_metadata_helpers():
             m=Machine(ns)
-            scratch=m.base+ns['bsyms']['widebuf']
+            if ns.get('bss_sizes',{}).get('widebuf')==8:
+                m.run('ensure_wide_arena',rcx=4096)
+                scratch=int.from_bytes(m.u.mem_read(m.base+ns['bsyms']['widebuf'],8),'little')
+            else:
+                scratch=m.base+ns['bsyms']['widebuf']
             for text, expected in [('plain',0), ('a\r\nb\n',0),
                                    ('a\nb\r\n',1), ('a\rb\n',2)]:
                 encoded=text.encode('utf-16le')

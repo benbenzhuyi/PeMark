@@ -2,9 +2,9 @@
 
 布局（V8.5.0-pre 扩展）：text @ 0x1000（预算 0xf000 字节）、rdata @ 0x10000、idata @ 0x13000、BSS @ 0x14000（virtual-only 尾部）。
 
-本次构建：text 实际 30154 字节（余量 31286 字节）；BSS 符号 177 个，最终虚拟 BSS 51511296 字节。
+本次构建：text 实际 30672 字节（余量 30768 字节）；BSS 符号 179 个，最终虚拟 BSS 8192 字节。
 
-SHA-256：`e58f4da126bdb655a1839edc0c9424dc2852fd8786a19672144f21c9daced860`
+SHA-256：`98fc268b9bf877f58af61faddc29c8d6ec3ad6e2e13f608d8da737ee92031877`
 
 | Symbol | RVA | Size |
 |---|---:|---:|
@@ -166,22 +166,24 @@ SHA-256：`e58f4da126bdb655a1839edc0c9424dc2852fd8786a19672144f21c9daced860`
 | `document_capacity` | `0x15A80` | 4 |
 | `document_reserved` | `0x15A84` | 4 |
 | `sync_text_len` | `0x15A88` | 4 |
-| `widebuf` | `0x15A90` | 17000000 |
-| `bytebuf` | `0x104C0D0` | 34500016 |
-| `document_revision` | `0x3132E80` | 8 |
-| `saved_revision` | `0x3132E88` | 8 |
-| `pending_destructive_action` | `0x3132E90` | 4 |
-| `save_target_is_temp` | `0x3132E94` | 4 |
-| `inject_write_call_count` | `0x3132E98` | 4 |
-| `inject_flush_call_count` | `0x3132E9C` | 4 |
-| `inject_replace_call_count` | `0x3132EA0` | 4 |
-| `save_stage_path` | `0x3132EB0` | 1024 |
-| `inject_create_call_count` | `0x31332B0` | 4 |
-| `inject_close_call_count` | `0x31332B4` | 4 |
-| `eol_state` | `0x31332B8` | 4 |
-| `candidate_encoding_state` | `0x31332BC` | 4 |
-| `candidate_eol_state` | `0x31332C0` | 4 |
-| `outline_srcpos` | `0x31332C8` | 8 |
-| `outline_renderpos` | `0x31332D0` | 8 |
-| `outline_level` | `0x31332D8` | 8 |
-| `outline_capacity` | `0x31332E0` | 4 |
+| `widebuf` | `0x15A90` | 8 |
+| `wide_capacity` | `0x15A98` | 4 |
+| `bytebuf` | `0x15AA0` | 8 |
+| `byte_capacity` | `0x15AA8` | 4 |
+| `document_revision` | `0x15AB0` | 8 |
+| `saved_revision` | `0x15AB8` | 8 |
+| `pending_destructive_action` | `0x15AC0` | 4 |
+| `save_target_is_temp` | `0x15AC4` | 4 |
+| `inject_write_call_count` | `0x15AC8` | 4 |
+| `inject_flush_call_count` | `0x15ACC` | 4 |
+| `inject_replace_call_count` | `0x15AD0` | 4 |
+| `save_stage_path` | `0x15AE0` | 1024 |
+| `inject_create_call_count` | `0x15EE0` | 4 |
+| `inject_close_call_count` | `0x15EE4` | 4 |
+| `eol_state` | `0x15EE8` | 4 |
+| `candidate_encoding_state` | `0x15EEC` | 4 |
+| `candidate_eol_state` | `0x15EF0` | 4 |
+| `outline_srcpos` | `0x15EF8` | 8 |
+| `outline_renderpos` | `0x15F00` | 8 |
+| `outline_level` | `0x15F08` | 8 |
+| `outline_capacity` | `0x15F10` | 4 |

@@ -3,13 +3,13 @@
 ## Current limits
 
 - input bytes: 4 MiB
-- decode/serialize scratch (`widebuf`): 8.5M code units
 - document text: reserved arena, policy bound 8.5M units, committed in 512 KiB blocks
-- byte output buffer: 34.5M bytes
+- decode/serialize scratch and file bytes: arenas committed in 64 KiB blocks,
+  sized per operation (no fixed cap)
 - render->source map + render text: dynamic arena, `max(4096, normalized_length + 1)` units
 - style spans: dynamic arena, `max(4096, normalized_length/2 + 16)` entries
 - Outline entries: dynamic arena, `max(4096, normalized_length/4 + 1)` entries
-- total virtual BSS: ~49 MiB after retiring the style, Outline, render and document tables
+- total virtual BSS: 8 KiB; PE virtual size 86 KB
 
 The frozen V8.5.2 pre-arena baseline registered exactly 2048 of 2600 headings.
 The first Phase E migration replaces the three fixed Outline arrays with one
@@ -31,8 +31,13 @@ decode and encoded-output buffers are still fixed.
 The fourth migration moves the document text itself: the policy bound is
 reserved once as address space, pages are committed in 512 KiB unit blocks as
 content grows, and the editor text limit keeps using the same policy bound so no
-user-visible behaviour changes. Only `widebuf` and `bytebuf` remain fixed and are
-the last V8.5.3 work.
+user-visible behaviour changes.
+
+The fifth migration removes the last two fixed buffers: decode/serialize scratch
+and file bytes are now committed in 64 KiB blocks sized by the operation, and the
+encoding APIs read their limits from the published capacity. No fixed document,
+render, style, Outline, decode or file-byte array remains, so the image no longer
+declares a large virtual region.
 
 ## Lessons from V8.4.x
 

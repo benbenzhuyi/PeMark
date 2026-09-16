@@ -63,3 +63,9 @@ jobs:
       - name: Exercise V8.5.3 document arena when present
         if: ${{ hashFiles('tools/test_v8_5_3_document_arena.py') != '' }}
         run: python tools/test_v8_5_3_document_arena.py
+      - name: Exercise V8.5.3 scratch arenas when present
+        if: ${{ hashFiles('tools/test_v8_5_3_scratch_arenas.py') != '' }}
+        run: python tools/test_v8_5_3_scratch_arenas.py
+      - name: Observe the V8.5.3 memory plateau when present
+        if: ${{ hashFiles('tools/test_v8_5_3_memory_plateau.py') != '' }}
+        run: python tools/test_v8_5_3_memory_plateau.py

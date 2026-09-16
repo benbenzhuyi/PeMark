@@ -50,3 +50,27 @@ V8.5.2 shipped; its full record is `docs/CHANGELOG_V8_5_2.md`.
   transaction matrix, atomic save fault injection, destructive transition
   matrix, revision ownership, Outline/style/render arena failure, 140000-span
   capacity and the 17/17 GUI smoke suite.
+
+## Scratch arenas (decode/serialize + file bytes) and memory plateau
+
+- Replaced the last two fixed buffers. `widebuf` (decode/serialize scratch) and
+  `bytebuf` (file bytes and encoded output) are now arenas committed in 64 KiB
+  blocks and sized by the operation: Open reserves `file_bytes + 2` bytes and
+  `file_bytes + 1` units before reading, Save reserves `document_len + 1` units
+  and `4 * document_len + 3` bytes before encoding, and both search helpers
+  reserve the editor snapshot length. Encoding API limits now come from the
+  published capacities instead of compile-time constants.
+- Virtual BSS falls from 51,511,296 to 8,192 bytes and the PE virtual size from
+  51,589,120 to 86,016 bytes: no fixed document, render, style, Outline, decode
+  or file-byte array remains.
+- Added `wide_fail_first/second` and `byte_fail_first/second` injection modes and
+  `tools/test_v8_5_3_scratch_arenas.py`: arenas start empty, grow in aligned
+  blocks with the document, are reused and never shrunk, Save encodes through
+  them, and an injected failure preserves text, path, revisions and the previous
+  arena. Arena capacity that was already committed stays reusable, which is
+  cache rather than document state.
+- Added `tools/test_v8_5_3_memory_plateau.py`, the V8.5.3 exit gate: 12 cycles of
+  Open(parse-only) + Preview(parse) + New over small/medium/large fixtures show
+  zero handle growth and about 1.6 MB of private-memory growth between the first
+  and last quarter of the run, i.e. a stable plateau rather than unbounded
+  growth.
