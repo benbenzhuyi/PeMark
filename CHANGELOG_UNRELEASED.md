@@ -3,6 +3,64 @@
 V8.5.4 shipped as the first stable release; its full record is
 `docs/CHANGELOG_V8_5_4.md`.
 
+## V8.6.1 candidate — Keyboard flow and selection persistence (slice 5)
+
+The tree is now drivable from the keyboard, and a rebuild no longer drops the
+selection:
+
+- `Enter` and `Backspace` share one gate in the message pump: the file list
+  must own the focus. `Enter` activates the selected row (directories toggle
+  through `tree_toggle_path`, files reuse the Open transaction) and
+  `Backspace` makes the parent directory the new workspace root;
+- both exits of `ws_open_or_enter` re-focus `hwnd_files`, so opening a file
+  never steals the focus into the editor;
+- expanding and collapsing reuse the same "remember the selected row's path,
+  rebuild, find it again" path as Refresh and Collapse All, so the highlight
+  survives `LB_RESETCONTENT`.
+
+Evidence: `tools/test_v8_6_keyboard.py` clicks a row for focus, expands with
+`Enter` (3 -> 4 rows, directory still selected), collapses again, expands,
+selects the file, opens it with `Enter` (Open transaction commits
+`current_path`, focus stays in the list) and walks up with `Backspace`.
+
+## V8.6.1 candidate — Header buttons, refresh/collapse and default workspace (slice 4)
+
+- the file header shows the root path with `DT_PATH_ELLIPSIS` and carries
+  "collapse all" / "refresh" buttons whose rectangles are cached while
+  painting and reused by the hit test and the hover;
+- a button click only re-posts its command (`1313` refresh / `1314` collapse
+  all) — it never walks the panel state machine and never arms the
+  single-click timer. Both commands also appear in the File menu;
+- refresh re-enumerates and restores the selected row by path; collapse all
+  clears the expansion set and reuses that same rebuild;
+- startup loads the system Documents folder (`SHGetFolderPathW` with
+  `CSIDL_PERSONAL`) and publishes `init_done`, so test hosts wait for the
+  shell lookup and enumeration instead of racing them.
+
+Two defects found while verifying this slice are fixed and pinned by build
+assertions: the header hover routine clobbered `r12` (the pump's `&MSG`), and
+the path label handed an inline BSS buffer to `DrawTextW` by value. Evidence:
+`tools/test_v8_6_header_buttons.py`, plus 17/17 on `smoke_test_v8_5_1.py`.
+
+## V8.6.1 candidate — File operations (slices 3a/3b)
+
+- inline rename in a floating `EDIT` over the selected row: `Enter` commits,
+  `Escape` cancels, focus loss commits; separators, existing targets and the
+  hidden root row are rejected;
+- a right-click context menu whose choices are re-posted as one private
+  command (`0x8009`), so the mouse path and the injected tests share a single
+  implementation;
+- New File / New Folder pick a de-duplicated name inside the selected
+  directory, expand it, select the new row and open the rename editor;
+- Delete confirms, then goes through `SHFileOperationW` with `FOF_ALLOWUNDO`
+  (Recycle Bin); Copy Path writes the absolute row path as `CF_UNICODETEXT`.
+
+`tree_rebuild` removes the hidden root row, so no row can rename or delete the
+authorization root. A mismatched epilogue in `tree_find_row_by_path` corrupted
+the caller's stack and crashed about two seconds after a create; the build now
+asserts push/pop balance across the file-operation region. Evidence:
+`tools/test_v8_6_rename.py` and `tools/test_v8_6_file_ops.py`.
+
 ## V8.6.1 candidate — File-tree projection and activation (slice 2)
 
 The flattened tree model is now the file panel's only list source:
