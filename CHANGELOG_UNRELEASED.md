@@ -18,6 +18,9 @@ The six tool icons use Windows 10/11's system Fluent/MDL2 icon font
 (`Segoe MDL2 Assets`) instead of hand-drawn strokes, so they inherit the OS
 glyph shapes and DPI scaling and only need one text-color swap per theme.
 Each icon keeps a 24px slot and invalidates only the caption surface on hover.
+The left/right panel switches are the exception: they are drawn as Codex-style
+rounded rectangles with the divider on the left/right, and Source mode draws
+the literal `</>` chevrons instead of borrowing a brace-like font glyph.
 Save, find, render/source and dark/light post the existing command IDs, so the
 replacement row does not create a second state owner. The left switch posts
 the existing `View → Left Sidebar` command (`1307`). The gear and right-sidebar
