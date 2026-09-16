@@ -10,10 +10,11 @@ PE32+ 文件结构和 AMD64 机器码字节。
 生产版 EXE 不经过 C/C++、Rust 或 .NET 编译器，也不使用汇编器、链接器、
 解释器打包器或内嵌 Python 运行时。Python 只在构建和测试阶段使用。
 
-> **V8.5.3 Preview** 是当前公开预览版。编辑、预览、大纲、主题、自动换行、
-> 大文档导航和正常退出通过回归测试，未保存内容也已受到保护：脏状态由文档
-> revision 推导，破坏性操作共用一个保存/放弃/取消控制器，保存通过同级暂存
-> 文件原子替换，打开文件采用事务式提交。仍需注意下方的限制说明。
+> **V8.5.4** 是当前稳定版。编辑、预览、大纲、主题、自动换行、大文档导航和
+> 正常退出通过回归测试，未保存内容受到保护：脏状态由文档 revision 推导，
+> 破坏性操作共用一个保存/放弃/取消控制器，保存通过同级暂存文件原子替换，
+> 打开文件采用事务式提交。全部按文档规模固定的缓冲区已退役，映像在权限分离的
+> 六节上强制 W^X 并启用 ASLR。已知限制见下方说明。
 
 ## 主要功能
 
@@ -27,12 +28,12 @@ PE32+ 文件结构和 AMD64 机器码字节。
 
 ## 下载与校验
 
-从 GitHub Releases 下载 `pemark_x64_v8_5_3.exe`。
+从 GitHub Releases 下载 `pemark_x64_v8_5_4.exe`。
 
 SHA-256：
 
 ```text
-6ad87c6dcb3b9d3a35041d1bc37e5792f3cfd16cb79046088a3426200d0bb7d0
+aa8de9cda9ed90a2cf66a3a93e021dc91cc192073078a90c53fa9669f478c5cc
 ```
 
 当前 EXE 尚未进行数字签名。由于它采用直接生成的 PE 结构和单一 RWX 节，
@@ -52,18 +53,18 @@ Windows SmartScreen 或安全软件可能显示警告。运行前请核对哈希
 
 ```powershell
 python -m pip install -r requirements-dev.txt
-python .\src\current\generate_markdown_editor_v8_5_3.py
+python .\src\current\generate_markdown_editor_v8_5_4.py
 ```
 
-输出文件为 `bin/current/pemark_x64_v8_5_3.exe`。
+输出文件为 `bin/current/pemark_x64_v8_5_4.exe`。
 
 ## 验证
 
 ```powershell
 python .\tools\build_current.py
-python .\tools\test_v8_5_1.py .\src\current\generate_markdown_editor_v8_5_3.py
-python .\tools\inspect_pe.py .\bin\current\pemark_x64_v8_5_3.exe
-python .\tools\smoke_test_v8_5_1.py .\bin\current\pemark_x64_v8_5_3.exe
+python .\tools\test_v8_5_1.py .\src\current\generate_markdown_editor_v8_5_4.py
+python .\tools\inspect_pe.py .\bin\current\pemark_x64_v8_5_4.exe
+python .\tools\smoke_test_v8_5_1.py .\bin\current\pemark_x64_v8_5_4.exe
 ```
 
 GUI 冒烟测试必须在可交互的 Windows 桌面会话中运行。
@@ -80,10 +81,10 @@ GUI 冒烟测试必须在可交互的 Windows 桌面会话中运行。
 
 ## 已知限制
 
-V8.5.3 尚未完成以下发布门槛：
+V8.5.4 尚未完成以下发布门槛：
 
 - document、render、position-map 与编码输出缓冲区仍为固定大小，超大输入会被
-  显式拒绝（计划在 V8.5.3 迁移）；
+  显式拒绝（计划在 V8.5.4 迁移）；
 - 旧代码页回退已被有意移除，非 UTF-8/UTF-16 文档需要先转换；
 - 长时间运行的内存与句柄平台测量；
 - 代码签名、ASLR 和 RX/R/RW 分节（计划在 V8.5.4）；
@@ -91,8 +92,8 @@ V8.5.3 尚未完成以下发布门槛：
 
 请勿把重要文档只保存在本预览版中。
 
-详细变更见 [V8.5.3 中文发布说明](docs/RELEASE_V8_5_3_PREVIEW.zh-CN.md)、
-[V8.5.3 验证记录](docs/V8_5_3_RELEASE_RESULTS.md) 和
+详细变更见 [V8.5.4 中文发布说明](docs/RELEASE_V8_5_4_PREVIEW.zh-CN.md)、
+[V8.5.4 验证记录](docs/V8_5_4_RELEASE_RESULTS.md) 和
 [中文文档索引](docs/README.zh-CN.md)。
 安全问题报告方式见 [SECURITY.zh-CN.md](SECURITY.zh-CN.md)，参与开发请见
 [CONTRIBUTING.zh-CN.md](CONTRIBUTING.zh-CN.md)。

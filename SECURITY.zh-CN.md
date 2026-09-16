@@ -4,7 +4,7 @@
 
 ## 支持版本
 
-安全修复目前只面向最新的 V8.5.x Preview 源码和二进制。`archive/` 中的
+安全修复目前只面向最新的 V8.5.x 稳定版源码和二进制。`archive/` 中的
 历史版本仅用于研究，不提供安全支持。
 
 ## 报告安全问题
@@ -16,8 +16,8 @@ GitHub 的 **Settings → Security → Private vulnerability reporting** 中开�
 报告请包含版本和 SHA-256、Windows 版本、可复现步骤、预期与实际行为，以及
 问题是否可能造成文档损坏或泄露。预览阶段的确认和修复时间为尽力而为。
 
-V8.5.3 Preview EXE 的 SHA-256：
+V8.5.4 稳定版 EXE 的 SHA-256：
 
 ```text
-6ad87c6dcb3b9d3a35041d1bc37e5792f3cfd16cb79046088a3426200d0bb7d0
+aa8de9cda9ed90a2cf66a3a93e021dc91cc192073078a90c53fa9669f478c5cc
 ```

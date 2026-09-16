@@ -6,12 +6,12 @@ a compiler, assembler, linker, managed runtime or interpreter packager.
 
 ## Current baseline
 
-- Version: V8.5.3 Preview.
-- Generator: `src/current/generate_markdown_editor_v8_5_3.py`.
-- Binary: `bin/current/pemark_x64_v8_5_3.exe`.
+- Version: V8.5.4 (stable).
+- Generator: `src/current/generate_markdown_editor_v8_5_4.py`.
+- Binary: `bin/current/pemark_x64_v8_5_4.exe`.
 - Expected EXE SHA-256:
-  `6ad87c6dcb3b9d3a35041d1bc37e5792f3cfd16cb79046088a3426200d0bb7d0`.
-- Validation record: `docs/V8_5_3_RELEASE_RESULTS.md`.
+  `aa8de9cda9ed90a2cf66a3a93e021dc91cc192073078a90c53fa9669f478c5cc`.
+- Validation record: `docs/V8_5_4_RELEASE_RESULTS.md`.
 
 V8.5.1 remains available in `src/current/` and `bin/current/` as the previous
 release; V8.4.23 stays frozen under `archive/`. Documents describing earlier
@@ -24,13 +24,13 @@ as active work.
 2. Read `docs/SYSTEM_ARCHITECTURE_LONG_TERM.md`.
 3. Read `docs/MILESTONE_PLAN.md`.
 4. Read `docs/DEVELOPMENT_MANUAL_V8_5_PLUS.md`.
-5. Read `docs/V8_5_3_RELEASE_RESULTS.md`.
+5. Read `docs/V8_5_4_RELEASE_RESULTS.md`.
 6. Read `docs/WIN64_ABI_RULES.md` and `docs/FAILED_APPROACHES.md`.
 7. Run `python tools/build_current.py`.
 8. Run
-   `python tools/test_v8_5_1.py src/current/generate_markdown_editor_v8_5_3.py`.
+   `python tools/test_v8_5_1.py src/current/generate_markdown_editor_v8_5_4.py`.
 9. Inspect the PE with `python tools/inspect_pe.py
-   bin/current/pemark_x64_v8_5_3.exe`.
+   bin/current/pemark_x64_v8_5_4.exe`.
 
 Run `tools/smoke_test_v8_5_1.py` in an interactive Windows desktop session
 after any GUI, message-loop, theme, layout, control recreation or shutdown
@@ -38,7 +38,7 @@ change.
 
 ## Current priorities
 
-V8.5.3 (document safety) is released. Dynamic capacity continues as V8.5.3: the
+V8.5.4 (document safety) is released. Dynamic capacity continues as V8.5.4: the
 document, render, position-map and encoded-output buffers still have fixed sizes,
 and each migration is one bounded change with its own failure evidence. PE
 hardening follows as V8.5.4.

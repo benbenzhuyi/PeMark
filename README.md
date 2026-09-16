@@ -11,13 +11,14 @@ The production executable is built without a compiler, assembler, linker,
 .NET compiler, interpreter packager, or embedded Python runtime. Python is used
 only at build and test time.
 
-> **V8.5.3 Preview** is the current public release. Core editing, Preview,
-> Outline, theme, wrap and large-document navigation pass the documented
-> regression suite, and unsaved work is now protected: dirty state is derived
-> from document revisions, destructive transitions share one Save / Discard /
-> Cancel controller, saving replaces the target atomically through a sibling
-> staging file, and opening is transactional. The remaining limitations are
-> listed below, so this release is still a preview.
+> **V8.5.4** is the current stable release. Core editing, Preview, Outline,
+> theme, wrap and large-document navigation pass the documented regression
+> suite, and unsaved work is protected: dirty state is derived from document
+> revisions, destructive transitions share one Save / Discard / Cancel
+> controller, saving replaces the target atomically through a sibling staging
+> file, and opening is transactional. Every fixed document-sized buffer is gone,
+> and the image enforces W^X with ASLR enabled. The known limitations are listed
+> below.
 
 ## Highlights
 
@@ -31,12 +32,12 @@ only at build and test time.
 
 ## Download
 
-Download `pemark_x64_v8_5_3.exe` from GitHub Releases.
+Download `pemark_x64_v8_5_4.exe` from GitHub Releases.
 
 Expected SHA-256:
 
 ```text
-6ad87c6dcb3b9d3a35041d1bc37e5792f3cfd16cb79046088a3426200d0bb7d0
+aa8de9cda9ed90a2cf66a3a93e021dc91cc192073078a90c53fa9669f478c5cc
 ```
 
 The executable is unsigned. Windows SmartScreen or security products may show a
@@ -64,20 +65,20 @@ python -m pip install unicorn
 From the repository root:
 
 ```powershell
-python .\src\current\generate_markdown_editor_v8_5_3.py
+python .\src\current\generate_markdown_editor_v8_5_4.py
 ```
 
 The generator writes
-`bin/current/pemark_x64_v8_5_3.exe`. No native compiler,
+`bin/current/pemark_x64_v8_5_4.exe`. No native compiler,
 assembler or linker is invoked.
 
 ## Verify
 
 ```powershell
-python .\tools\test_v8_5_1.py .\src\current\generate_markdown_editor_v8_5_3.py
-python .\tools\inspect_pe.py .\bin\current\pemark_x64_v8_5_3.exe
-python .\tools\smoke_test_v8_5_1.py .\bin\current\pemark_x64_v8_5_3.exe
-Get-FileHash -Algorithm SHA256 .\bin\current\pemark_x64_v8_5_3.exe
+python .\tools\test_v8_5_1.py .\src\current\generate_markdown_editor_v8_5_4.py
+python .\tools\inspect_pe.py .\bin\current\pemark_x64_v8_5_4.exe
+python .\tools\smoke_test_v8_5_1.py .\bin\current\pemark_x64_v8_5_4.exe
+Get-FileHash -Algorithm SHA256 .\bin\current\pemark_x64_v8_5_4.exe
 ```
 
 The smoke test controls the real GUI and must run in an interactive Windows
@@ -93,15 +94,15 @@ Current evidence:
 - Arena allocation-failure and 140,000-span capacity cases passed.
 - Two consecutive builds produced the expected SHA-256.
 
-See [V8.5.3 release notes](docs/RELEASE_V8_5_3_PREVIEW.md) and
-[V8.5.3 validation results](docs/V8_5_3_RELEASE_RESULTS.md). The
+See [V8.5.4 release notes](docs/RELEASE_V8_5_4_PREVIEW.md) and
+[V8.5.4 validation results](docs/V8_5_4_RELEASE_RESULTS.md). The
 [documentation index](docs/README.md) separates current guidance from
 historical engineering evidence.
 
 ## Repository layout
 
 ```text
-src/current/        current V8.5.3 Direct-PE generator
+src/current/        current V8.5.4 Direct-PE generator
 bin/current/        matching generated executable
 src/stabilization/  retained stabilization candidates
 archive/            historical generator and binary lineage
@@ -115,7 +116,7 @@ Direct-PE production constraint and Win64 ABI rules are mandatory.
 
 ## Known limitations
 
-V8.5.3 has not completed the release gates for:
+V8.5.4 has not completed the release gates for:
 
 - dynamic capacity for the document, render, position-map and encoded-output
   buffers, which still have fixed sizes and reject oversized input explicitly;
@@ -125,7 +126,7 @@ V8.5.3 has not completed the release gates for:
 - code signing, ASLR and separated RX/R/RW PE sections;
 - workspace, advanced editing and AI features.
 
-Avoid using this preview as the sole copy of important documents.
+Keep an independent copy of important documents; the executable is unsigned.
 
 ## Security
 

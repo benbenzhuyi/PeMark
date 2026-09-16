@@ -7,6 +7,7 @@ English | [简体中文](PUBLISHING_CHECKLIST.zh-CN.md)
 - [x] Promote V8.5.1 to `src/current/` and `bin/current/`.
 - [x] Promote V8.5.2 to `src/current/` and `bin/current/`.
 - [x] Promote V8.5.3 to `src/current/` and `bin/current/`.
+- [x] Promote V8.5.4 to `src/current/` and `bin/current/`.
 - [x] Make generator paths project-relative.
 - [x] Add public README, security policy and contribution guide.
 - [x] Add Git attributes, ignore rules, issue template and Windows CI.
@@ -49,6 +50,21 @@ English | [简体中文](PUBLISHING_CHECKLIST.zh-CN.md)
 - [x] Verify the uploaded asset SHA-256 is
   `6ad87c6dcb3b9d3a35041d1bc37e5792f3cfd16cb79046088a3426200d0bb7d0`.
 - [x] Keep GitHub's “Set as a pre-release” option enabled.
+
+## V8.5.4 Stable release
+
+- [x] Rerun the commit and milestone gates on the release commit and record them
+  in `docs/V8_5_4_RELEASE_RESULTS.md`.
+- [x] Publish the independent-machine verification pack
+  (`docs/V8_5_4_VERIFICATION_PACK.md`, `tools/verify_release_v8_5_4.py`).
+- [ ] Confirm the independent-machine JSON summary reports PASS.
+- [ ] Create annotated tag `v8.5.4`.
+- [ ] Create a GitHub release named `PeMark V8.5.4` **without** marking it a
+  pre-release.
+- [ ] Use `docs/RELEASE_V8_5_4_GITHUB.md` as the release body.
+- [ ] Attach only `bin/current/pemark_x64_v8_5_4.exe` as the release asset.
+- [ ] Verify the uploaded asset SHA-256 is
+  `aa8de9cda9ed90a2cf66a3a93e021dc91cc192073078a90c53fa9669f478c5cc`.
 
 ## Repository settings
 

@@ -1,4 +1,4 @@
-# Win32 API Surface — V8.5.3
+# Win32 API Surface — V8.5.4
 
 Current imported APIs. When adding/removing imports, update this file and run PE inspection.
 
@@ -6,7 +6,7 @@ Current imported APIs. When adding/removing imports, update this file and run PE
 
 `ExitProcess`, `CreateFileW`, `ReadFile`, `WriteFile`, `FlushFileBuffers`, `CloseHandle`, `VirtualAlloc`, `VirtualFree`, `MoveFileExW`, `DeleteFileW`, `GetLastError`, `GetFileSize`, `MultiByteToWideChar`, `WideCharToMultiByte`, `lstrcpyW`, `lstrlenW`, `GetModuleHandleW`, `CompareStringOrdinal`, `LoadLibraryW`, `GetProcAddress`, `MulDiv`
 
-`VirtualAlloc` and `VirtualFree` own the V8.5.3 dynamic Outline arena.
+`VirtualAlloc` and `VirtualFree` own the V8.5.4 dynamic Outline arena.
 
 ## USER32.dll
 

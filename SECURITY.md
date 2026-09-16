@@ -4,7 +4,7 @@ English | [简体中文](SECURITY.zh-CN.md)
 
 ## Supported version
 
-Security fixes currently target the latest V8.5.x Preview source and binary.
+Security fixes currently target the latest stable V8.5.x source and binary.
 Historical binaries under `archive/` are retained for research and are not
 supported.
 
@@ -18,12 +18,12 @@ use that channel for security reports.
 Include the affected version and SHA-256, Windows version, reproducible steps,
 expected and observed behavior, and whether the issue can corrupt or disclose a
 document. Acknowledgement and remediation times are best-effort while the
-project remains a preview.
+project is a small open-source experiment.
 
 ## Binary verification
 
-The V8.5.3 Preview executable is unsigned. Its expected SHA-256 is:
+The V8.5.4 executable is unsigned. Its expected SHA-256 is:
 
 ```text
-6ad87c6dcb3b9d3a35041d1bc37e5792f3cfd16cb79046088a3426200d0bb7d0
+aa8de9cda9ed90a2cf66a3a93e021dc91cc192073078a90c53fa9669f478c5cc
 ```
