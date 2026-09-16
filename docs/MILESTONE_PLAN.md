@@ -173,6 +173,24 @@ commit 与 working set 是期望结果，不是硬性验收条件。
 - directory、alignment、fixup、overlap 构建验证；
 - CFG/CET 可行性结论及可行部分实现。
 
+### 已完成的切片
+
+- 单一可读可写可执行节已拆分为按权限分离的四个节：`.text`（RX 代码）、
+  `.rdata`（R 字符串与只读表）、`.idata`（RW 导入表与 IAT）、`.bss`（RW 零
+  初始化状态）；不存在同时可写且可执行的节。
+- 每个节的 VirtualSize/SizeOfRawData 覆盖到下一节的 RVA 间距，raw 缓冲与 RVA
+  计划保持一一对应。紧凑布局会被 Windows 以 `ERROR_BAD_EXE_FORMAT` 拒绝，
+  该失败变体记录在 `FAILED_APPROACHES.md`。
+- 新增 `tools/test_v8_5_4_sections.py`：既检查磁盘上的节表，也用
+  `VirtualQueryEx` 验证已加载映像的页保护为 RX / R / RW / RW，并做一次真实
+  窗口启动与干净退出。
+
+### 剩余切片
+
+- base relocation 与 ASLR；
+- 适用函数的 `.pdata`/unwind metadata；
+- CFG/CET 可行性结论。
+
 ### Release gate
 
 - writable application data 不可执行；

@@ -37,3 +37,22 @@ Repeated source of crashes/corruption. See ABI guide. Never assume RAX/R9/R10 su
 ## Patching visual artifacts with more redraw calls
 
 Repeated `InvalidateRect/RedrawWindow/SetWindowPos/FRAMECHANGED` may mask a race but increases state coupling. First determine geometry and ownership.
+
+## Packing PE section raw data tightly (V8.5.4)
+
+When the single section was first split into `.text/.rdata/.idata/.bss`, each
+section's `SizeOfRawData` was set to the aligned size of its real payload and the
+raw data was packed back to back. Windows rejected the image with
+`ERROR_BAD_EXE_FORMAT` (WinError 193) before any code ran, while `pefile` parsed
+the same file without warnings, so static checks alone did not catch it.
+
+A second variant made every section span the whole gap to the next RVA
+(`VirtualSize == SizeOfRawData == next_rva - rva`, raw data still laid out at
+`headers_size + (rva - TEXT_RVA)`). That image loads, runs and closes normally.
+Measured rule for this generator: **each section must cover the full RVA gap to
+the next section, and the raw buffer must stay one-to-one with the RVA plan.**
+
+Diagnosis note: the Windows Application log named the faulting module and
+exception (0xC0000005) for the variants that loaded but crashed; the rejected
+variants produced no event at all, which is what pointed at the section table
+rather than at the code.

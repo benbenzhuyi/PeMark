@@ -69,3 +69,9 @@ jobs:
       - name: Observe the V8.5.3 memory plateau when present
         if: ${{ hashFiles('tools/test_v8_5_3_memory_plateau.py') != '' }}
         run: python tools/test_v8_5_3_memory_plateau.py
+      - name: Build and verify V8.5.4 section separation when present
+        if: ${{ hashFiles('src/candidate/generate_markdown_editor_v8_5_4.py') != '' }}
+        run: |
+          python src/candidate/generate_markdown_editor_v8_5_4.py
+          python tools/test_v8_5_1.py src/candidate/generate_markdown_editor_v8_5_4.py
+          python tools/test_v8_5_4_sections.py
