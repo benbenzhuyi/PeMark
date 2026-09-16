@@ -70,6 +70,47 @@ scenarios consume the published `outline_list_h` instead of the whole content
 height, and the height/top matrix drives that same symbol. It still passes
 against the V8.5.1–V8.5.4 generators.
 
+## V8.6.1 — Fixes found by real testing
+
+Four defects reported from hands-on use are fixed:
+
+1. **Theme switch left the sidebar frame stale.** The two 28px headers, the 4px
+   divider and the gutter are owner-drawn children; swapping the brushes is not
+   enough, and nothing repainted them until a resize (hiding and reopening the
+   sidebar) happened to. `apply_theme` now invalidates and updates every frame
+   window explicitly, so a theme switch repaints the frame immediately.
+2. **The file panel had no scrollbar and ignored the wheel.** The file list now
+   owns a native `WS_VSCROLL` + `LBS_DISABLENOSCROLL` scrollbar, gets the same
+   `SetWindowTheme` treatment as the document, and is scrolled by the wheel
+   through the pump's hit-test (three rows per notch, clamped to
+   `max(0, count - visibleRows)`). Its reserved gutter window is retired: the
+   list now spans the sidebar width and draws its own scrollbar.
+3. **The outline scrollbar looked thicker and off-theme.** That bar was the
+   gutter painting the *stale light* brush from item 1; once the frame repaints,
+   the gutter carries the panel background and only the thin hover thumb shows.
+   `tools/test_v8_6_theme_picker.py` pins the palette of all four frame windows
+   in both themes.
+4. **Open Folder used a different dialog family than Open File.** The legacy
+   `SHBrowseForFolderW` tree is now only the fallback: the primary path is the
+   modern common item dialog (`CoCreateInstance(CLSID_FileOpenDialog)` +
+   `FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM`, `GetResult` →
+   `GetDisplayName(SIGDN_FILESYSPATH)`), which shares its look, keyboard and
+   theme with `GetOpenFileNameW`. Cancelling changes nothing; the legacy path
+   stays for machines where the class is unavailable.
+
+One engineering lesson is now enforced at build time: a command handler that is
+entered by `jmp` from the message pump must reserve a stack frame that is a
+multiple of 16. The first version of the picker used `0x38`, which left every
+API call misaligned; `CoCreateInstance` then failed with what looked like "class
+not registered" (`REGDB_E_CLASSNOTREG`) instead of working. The new assertion
+scans every routed command label for exactly that mistake.
+
+Evidence: `tools/test_v8_6_theme_picker.py` (frame palette in three theme
+transitions, file-list scrollbar theme, in-process `CoCreateInstance` +
+`GetOptions`, the opened dialog carries the shell DirectUI view, cancel keeps
+the workspace root) and the extended `tools/test_v8_6_panel.py` (native
+`WS_VSCROLL` style, wheel arithmetic, both clamps).
+
 V8.6 is scoped to "browse a directory and open files from it" while the
 application still owns a single writable document. The plan
 (`docs/MILESTONE_PLAN.md` §6) deliberately defers destructive file operations,

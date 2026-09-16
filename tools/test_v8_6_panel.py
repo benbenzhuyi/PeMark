@@ -40,6 +40,12 @@ CMD_DARK = 1311
 CMD_LIGHT = 1310
 
 LB_GETCOUNT = 0x018B
+LB_GETTOPINDEX = 0x018E
+LB_SETTOPINDEX = 0x0197
+WM_MOUSEWHEEL = 0x020A
+GWL_STYLE = -16
+WS_VSCROLL = 0x00200000
+LBS_DISABLENOSCROLL = 0x00001000
 WM_SETREDRAW = 0x000B
 SRCCOPY = 0x00CC0020
 ROW_HEIGHT = 30
@@ -284,9 +290,15 @@ def main():
         _, top_dv, _, height_dv = lb_rect(divider)
         assert (height_fh, height_oh, height_dv) == (28, 28, 4), \
             (height_fh, height_oh, height_dv)
-        assert width_fh == width_f + app.read32("scrollbar_w"), \
-            "the header spans the whole sidebar width"
-        assert left_f == left_o and width_f == width_o, (lb_rect(files), lb_rect(outline))
+        assert width_fh == width_f, \
+            ("the header spans the whole sidebar width",
+             width_fh, width_f)
+        assert left_f == left_o, (lb_rect(files), lb_rect(outline))
+        # V8.6.1: the file list owns a native scrollbar inside its full-width
+        # rectangle, while the outline keeps its reserved 17px gutter.
+        assert width_f == width_o + app.read32("scrollbar_w"), \
+            ("the file list owns its scrollbar, the outline reserves a gutter",
+             width_f, width_o)
         assert top_f == top_fh + 28, "the file list starts under its header"
         assert top_dv == top_f + height_f, "the divider sits between the panels"
         assert top_oh == top_dv + 4, "the outline header follows the divider"
@@ -453,6 +465,51 @@ def main():
             raise
         finally:
             u32.SetCursorPos(saved_cursor.x, saved_cursor.y)
+
+        # --- File panel: native scrollbar plus wheel routing ------------------
+        style = u32.GetWindowLongW(files, GWL_STYLE)
+        assert style & WS_VSCROLL, \
+            ("the file list must own a native scrollbar", hex(style))
+        assert style & LBS_DISABLENOSCROLL, \
+            ("the scrollbar must stay in place when it is disabled", hex(style))
+
+        with tempfile.TemporaryDirectory() as directory:
+            many = Path(directory) / "many"
+            many.mkdir()
+            for index in range(40):
+                (many / ("file_%02d.md" % index)).write_text("x\n", encoding="utf-8")
+            write_wstr(app, "temp_path", str(many))
+            app.post_command(CMD_WORKSPACE_PROBE)
+            wait_for(lambda: app.read32("ws_entry_count") == 40, 4,
+                     "the workspace must enumerate 40 entries")
+            wait_for(lambda: lb_count(app, files) == 40, 4,
+                     "the file list must hold 40 rows")
+
+            def top_index():
+                return u32.SendMessageW(files, LB_GETTOPINDEX, 0, 0)
+
+            def wheel(delta, notches=1):
+                """Post a wheel event aimed at the file list (screen point in lParam)."""
+                left, top, width, height = lb_rect(files)
+                point = ((left + width // 2) & 0xFFFF) | \
+                    (((top + height // 2) & 0xFFFF) << 16)
+                key_delta = (delta & 0xFFFF) << 16
+                for _ in range(notches):
+                    assert u32.PostMessageW(app.main, WM_MOUSEWHEEL, key_delta, point)
+                time.sleep(.25)
+                return top_index()
+
+            assert top_index() == 0, top_index()
+            assert wheel(-120, 3) == 9, \
+                ("three notches must scroll three rows each", top_index())
+            assert wheel(120) == 6, top_index()
+            assert wheel(120, 5) == 0, \
+                ("scrolling up must stop at the first row", top_index())
+            rows = max(1, app.read32("files_list_h") // ROW_HEIGHT)
+            assert wheel(-120, 40) == 40 - rows, \
+                ("scrolling down must stop at max_top", top_index(), rows)
+            assert app.read32("files_scroll_visible_rows") == rows, \
+                app.read32("files_scroll_visible_rows")
 
         app.post_close()
         assert app.proc.wait(timeout=10) == 0
