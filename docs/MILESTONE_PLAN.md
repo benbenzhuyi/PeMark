@@ -300,6 +300,10 @@ commit 与 working set 是期望结果，不是硬性验收条件。
    - `File → Open Folder…`、`View → Files / Outline` 切换
    - 最近文件（内存内，最多 10 条）列在 File 菜单底部
    - 验收：菜单勾选状态与面板一致；最近文件项能正确打开
+   - 进度：`File → Open Folder…`（`SHBrowseForFolderW` + `ILFree`）与
+     `View → Files Panel / Outline Panel`（共用 `set_panel_mode`，
+     `sync_panel_menu` 保持互斥勾选）已完成，切片 2/3 的机制因此在正式构建里
+     可达；剩余部分是 File 菜单底部的内存内最近文件列表。
 
 ### Release gate
 

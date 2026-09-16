@@ -155,10 +155,14 @@ wstr('m_wrap','&Word Wrap\tCtrl+Shift+W')
 wstr('m_status','&Status Bar\tCtrl+Shift+S')
 wstr('m_preview','Markdown &Preview\tCtrl+Shift+P')
 wstr('m_outline','&Outline\tCtrl+B')
+wstr('m_openfolder','Open &Folder...')
+wstr('m_panel_files','&Files Panel')
+wstr('m_panel_outline','&Outline Panel')
 wstr('m_light','&Light')
 wstr('m_dark','&Dark\tCtrl+Alt+T')
 wstr('m_about','&About\tF1')
 wstr('open_title','Open Markdown or text file')
+wstr('folder_title','Choose a workspace folder')
 wstr('save_title','Save Markdown file as')
 wstr('defext','md')
 wstr('class_status','msctls_statusbar32')
@@ -481,6 +485,8 @@ bss_alloc('panel_mode', 4, 4)
 # 模式串 ws_pattern 混用；open_bypass_picker 记录"已确认的 Open 跳过选择器"。
 bss_alloc('open_bypass_picker', 4, 4)
 bss_alloc('ws_path_buf', 512*2, 16)
+# BROWSEINFOW（x64 共 64 字节）：pszDisplayName 复用 ws_path_buf。
+bss_alloc('browseinfo', 64, 8)
 bss_alloc('widebuf', 8, 8)            # pointer into the decode/serialize arena
 bss_alloc('wide_capacity', 4, 4)      # committed units
 bss_alloc('bytebuf', 8, 8)            # pointer into the file-byte arena
@@ -552,6 +558,8 @@ imports = {
         'CreateAcceleratorTableW','TranslateAcceleratorW','DestroyAcceleratorTable','IsDialogMessageW','SetForegroundWindow','DrawMenuBar','DrawTextW','FillRect','GetMenuStringW','SetMenuInfo','GetWindowDC','ReleaseDC','GetMenuItemRect'
     ],
     'COMDLG32.dll': ['GetOpenFileNameW','GetSaveFileNameW','FindTextW','ReplaceTextW'],
+    'SHELL32.dll': ['SHBrowseForFolderW','SHGetPathFromIDListW','ILFree'],
+    'OLE32.dll': ['CoInitializeEx'],
     'SHLWAPI.dll': ['StrStrW','StrStrIW'],
     'COMCTL32.dll': ['InitCommonControlsEx'],
     'GDI32.dll': ['CreateFontW','DeleteObject','CreateSolidBrush','SetTextColor','SetBkColor','SetBkMode','GetClipBox','SelectObject','SaveDC','RestoreDC','IntersectClipRect'],
@@ -899,7 +907,7 @@ def append_sep(menu):
 def append_popup(main, sub, text_sym):
     em.mov_r64_r64('rcx',main); em.mov_r32_imm('rdx',0x10); em.mov_r64_r64('r8',sub); em.lea_rip('r9',rsyms[text_sym]); em.call_iat('AppendMenuW')
 
-append_imm('r12',0,1001,'m_new'); append_imm('r12',0,1002,'m_open'); append_sep('r12')
+append_imm('r12',0,1001,'m_new'); append_imm('r12',0,1002,'m_open'); append_imm('r12',0,1006,'m_openfolder'); append_sep('r12')
 append_imm('r12',0,1003,'m_save'); append_imm('r12',0,1004,'m_saveas'); append_sep('r12'); append_imm('r12',0,1005,'m_exit')
 append_popup('rdi','r12','menu_file')
 
@@ -920,6 +928,7 @@ em.call_iat('CreatePopupMenu'); em.mov_r64_r64('r12','rax'); em.mov_ripmem_r64(b
 append_imm('r12',0,1301,'m_zoomin'); append_imm('r12',0,1302,'m_zoomout'); append_imm('r12',0,1303,'m_zoomreset')
 append_popup('r14','r12','m_zoom'); append_sep('r14')
 append_imm('r14',0,1306,'m_preview'); append_imm('r14',0x8,1307,'m_outline')
+append_sep('r14'); append_imm('r14',0,1308,'m_panel_files'); append_imm('r14',0x8,1309,'m_panel_outline')
 append_sep('r14'); append_imm('r14',0x8,1304,'m_wrap'); append_imm('r14',0x8,1305,'m_status')
 append_sep('r14'); append_imm('r14',0x8,1310,'m_light'); append_imm('r14',0,1311,'m_dark')
 append_popup('rdi','r14','menu_view')
@@ -1015,7 +1024,7 @@ em.xor32('rcx'); em.lea_rip('rdx',rsyms['class_static']); em.lea_rip('r8',rsyms[
 em.mov_mrsp_imm32(0x20,228); em.mov_mrsp_imm32(0x28,0); em.mov_mrsp_imm32(0x30,1); em.mov_mrsp_imm32(0x38,590)
 em.mov_mrsp_reg64(0x40,'rbx'); em.mov_mrsp_imm32(0x48,6,qword=True); em.mov_mrsp_reg64(0x50,'r15'); em.mov_mrsp_imm32(0x58,0,qword=True)
 em.call_iat('CreateWindowExW'); em.mov_ripmem_r64(bsyms['hwnd_splitter'],'rax'); em.test64('rax'); em.jcc(0x84,'exit')
-em.call_label('apply_theme'); em.call_label('update_preview'); em.call_label('resize_children'); em.call_label('sync_outline_scrollbar'); em.call_label('update_status')
+em.call_label('apply_theme'); em.call_label('update_preview'); em.call_label('resize_children'); em.call_label('sync_outline_scrollbar'); em.call_label('sync_panel_menu'); em.call_label('update_status')
 
 # Message pump
 em.label('msg_loop')
@@ -1177,6 +1186,7 @@ em.mov_eax_mr12(16); em.and_r32_imm('rax',0xFFFF)
 _command_routes = [(1001,'cmd_new'),(1002,'cmd_open'),(1003,'cmd_save'),(1004,'cmd_saveas'),(1005,'cmd_exit'),
                   (1101,'cmd_undo'),(1102,'cmd_cut'),(1103,'cmd_copy'),(1104,'cmd_paste'),(1105,'cmd_selectall'),(1106,'cmd_find'),(1107,'cmd_findnext'),(1108,'cmd_replace'),(1201,'cmd_about'),
                   (1301,'cmd_zoomin'),(1302,'cmd_zoomout'),(1303,'cmd_zoomreset'),(1304,'cmd_wrap'),(1305,'cmd_status'),(1306,'cmd_preview'),(1307,'cmd_outline'),(1310,'cmd_light'),(1311,'cmd_dark'),(1312,'cmd_theme_toggle'),
+                  (1006,'cmd_open_folder'),(1308,'cmd_panel_files'),(1309,'cmd_panel_outline'),
                   (1401,'cmd_md_h1'),(1402,'cmd_md_h2'),(1410,'cmd_md_h3'),(1411,'cmd_md_h4'),(1412,'cmd_md_h5'),(1413,'cmd_md_h6'),(1403,'cmd_md_bold'),(1404,'cmd_md_italic'),(1405,'cmd_md_inline'),(1406,'cmd_md_codeblock'),(1407,'cmd_md_quote'),(1408,'cmd_md_bullet'),(1409,'cmd_md_link')]
 if OPEN_TEST_BUILD:
     _command_routes.append((1901, 'cmd_open_selected'))
@@ -1186,6 +1196,7 @@ if OPEN_TEST_BUILD:
     _command_routes.append((1905, 'cmd_dump_row'))
     _command_routes.append((1906, 'cmd_list_activate'))
     _command_routes.append((1907, 'cmd_go_up'))
+    _command_routes.append((1908, 'cmd_open_folder_selected'))
 for cid,label in _command_routes:
     em.cmp_r32_imm('rax',cid); em.jcc(0x84,label)
 em.jmp('dispatch')
@@ -1208,6 +1219,27 @@ def emit_ofn(title_sym, flags):
     em.lea_rip('rax',rsyms['defext']); em.mov_mr12_reg64(104,'rax')
 
 em.label('cmd_open'); em.mov_ripmem_imm32(bsyms['pending_destructive_action'],2); em.jmp('destructive_request')
+em.label('cmd_open_folder')
+# 选择工作区目录：SHBrowseForFolderW -> 设为根目录 -> 切到文件面板。
+# 新式浏览对话框使用 shell COM，先在调用线程初始化（失败也无妨）。
+em.xor32('rcx'); em.mov_r32_imm('rdx',2); em.call_iat('CoInitializeEx')
+em.lea_rip('rax',bsyms['temp_path']); em.mov_word_ptr_reg_zero('rax')
+em.lea_rip('r15',bsyms['browseinfo'])                                        # r12/r13 need a SIB byte as a base
+em.xor32('rax')
+for _bi_off in (0,8,16,24,32,40,48,56):
+    em.mov_mreg_reg64('r15',_bi_off,'rax')
+em.mov_mreg_reg64('r15',0,'rbx')                                             # hwndOwner
+em.lea_rip('rax',bsyms['ws_path_buf']); em.mov_mreg_reg64('r15',16,'rax')    # pszDisplayName
+em.lea_rip('rax',rsyms['folder_title']); em.mov_mreg_reg64('r15',24,'rax')   # lpszTitle
+em.mov_mreg_imm32('r15',32,0x51)                                             # BIF_RETURNONLYFSDIRS|BIF_EDITBOX|BIF_NEWDIALOGSTYLE
+em.mov_r64_r64('rcx','r15'); em.call_iat('SHBrowseForFolderW')
+em.test64('rax'); em.jcc(0x84,'msg_loop')
+em.mov_r64_r64('r13','rax')
+em.mov_r64_r64('rcx','rax'); em.lea_rip('rdx',bsyms['temp_path']); em.call_iat('SHGetPathFromIDListW'); em.mov_r32_r32('r14','rax')
+em.mov_r64_r64('rcx','r13'); em.call_iat('ILFree')
+em.test32('r14'); em.jcc(0x84,'msg_loop')
+em.lea_rip('rcx',bsyms['temp_path']); em.call_label('workspace_set_root')
+em.mov_r32_imm('rcx',1); em.call_label('set_panel_mode'); em.call_label('update_status'); em.jmp('msg_loop')
 em.label('cmd_open_dialog')
 em.lea_rip('rax',bsyms['temp_path']); em.mov_word_ptr_reg_zero('rax')
 em.emit(*[]) ; emit_ofn('open_title',0x00081804)
@@ -2772,7 +2804,22 @@ em.emit(0x48,0x83,0xEC,0x28)
 em.mov_r32_ripmem('rax',bsyms['panel_mode']); em.test32('rax'); em.jcc(0x84,'rpl_outline')
 em.call_label('rebuild_file_list'); em.jmp('rpl_ret')
 em.label('rpl_outline'); em.call_label('update_preview')
-em.label('rpl_ret'); em.call_label('update_status'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
+em.label('rpl_ret'); em.call_label('sync_panel_menu'); em.call_label('update_status'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
+
+# View 菜单的勾选与 panel_mode 的唯一同步点。
+em.label('sync_panel_menu')
+em.emit(0x48,0x83,0xEC,0x28)
+em.mov_r64_ripmem('rcx',bsyms['hmenu_view']); em.test64('rcx'); em.jcc(0x84,'spmm_ret')
+em.mov_r32_ripmem('rax',bsyms['panel_mode']); em.test32('rax'); em.jcc(0x84,'spmm_outline')
+em.mov_r32_imm('rdx',1308); em.mov_r32_imm('r8',0x8); em.call_iat('CheckMenuItem')
+em.mov_r64_ripmem('rcx',bsyms['hmenu_view']); em.mov_r32_imm('rdx',1309); em.xor32('r8'); em.call_iat('CheckMenuItem'); em.jmp('spmm_ret')
+em.label('spmm_outline')
+em.mov_r32_imm('rdx',1308); em.xor32('r8'); em.call_iat('CheckMenuItem')
+em.mov_r64_ripmem('rcx',bsyms['hmenu_view']); em.mov_r32_imm('rdx',1309); em.mov_r32_imm('r8',0x8); em.call_iat('CheckMenuItem')
+em.label('spmm_ret'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
+
+em.label('cmd_panel_files'); em.mov_r32_imm('rcx',1); em.call_label('set_panel_mode'); em.jmp('msg_loop')
+em.label('cmd_panel_outline'); em.xor32('rcx'); em.call_label('set_panel_mode'); em.jmp('msg_loop')
 
 # ---------------- V8.6 切片 3：目录导航与从列表打开 ----------------
 # rcx = 基路径, rdx = 条目名 -> rax = ws_path_buf 中的拼接结果。
@@ -2862,6 +2909,10 @@ if OPEN_TEST_BUILD:
     # 切片 3：非交互地驱动"激活选中项"与"返回上级"。
     em.label('cmd_list_activate'); em.call_label('ws_open_or_enter'); em.jmp('msg_loop')
     em.label('cmd_go_up'); em.call_label('ws_go_up'); em.jmp('msg_loop')
+    # 切片 4：跳过文件夹浏览对话框，直接采用 temp_path 作为工作区。
+    em.label('cmd_open_folder_selected')
+    em.lea_rip('rcx',bsyms['temp_path']); em.call_label('workspace_set_root')
+    em.mov_r32_imm('rcx',1); em.call_label('set_panel_mode'); em.call_label('update_status'); em.jmp('msg_loop')
 
 
 # ---------------- V8.4.25 统一扫描：大纲条目推送例程 ----------------
@@ -4883,6 +4934,38 @@ for _nav_symbol in ('cmd_list_activate', 'cmd_go_up'):
         'the navigation probes must exist only in the explicit test build'
 assert ((1906, 'cmd_list_activate') in _command_routes) == OPEN_TEST_BUILD and \
        ((1907, 'cmd_go_up') in _command_routes) == OPEN_TEST_BUILD
+
+# (V) V8.6 切片 4：菜单入口的所有权断言。要拦截的错误模式：切片 2/3 的机制在
+#     正式构建里没有可达入口、菜单勾选与 panel_mode 脱钩、选择文件夹后未切换面板。
+for _menu_routine in ('cmd_open_folder', 'cmd_panel_files', 'cmd_panel_outline',
+                      'sync_panel_menu'):
+    assert _menu_routine in em.labels, '%s must be emitted' % _menu_routine
+assert "append_imm('r12',0,1006,'m_openfolder')" in _production_source, \
+    'File must expose Open Folder...'
+assert "append_imm('r14',0,1308,'m_panel_files')" in _production_source and \
+       "append_imm('r14',0x8,1309,'m_panel_outline')" in _production_source, \
+    'View must expose the two panel switches with the outline checked by default'
+for _panel_cmd in ((1006, 'cmd_open_folder'), (1308, 'cmd_panel_files'),
+                   (1309, 'cmd_panel_outline')):
+    assert _panel_cmd in _command_routes, '%r must be routed' % (_panel_cmd,)
+assert "call_label('sync_panel_menu')" in _production_source and \
+       "em.label('spmm_outline')" in _production_source, \
+    'the menu check state must follow panel_mode'
+assert "em.label('cmd_panel_files'); em.mov_r32_imm('rcx',1); em.call_label('set_panel_mode')" in _production_source and \
+       "em.label('cmd_panel_outline'); em.xor32('rcx'); em.call_label('set_panel_mode')" in _production_source, \
+    'both menu items must drive the shared panel switch'
+_menu_folder_src = _production_source[
+    _production_source.index("em.label('cmd_open_folder')"):
+    _production_source.index("em.label('cmd_open_dialog')")]
+assert "call_iat('SHBrowseForFolderW')" in _menu_folder_src and \
+       "call_iat('SHGetPathFromIDListW')" in _menu_folder_src and \
+       "call_iat('ILFree')" in _menu_folder_src and \
+       "call_label('workspace_set_root')" in _menu_folder_src and \
+       "em.mov_r32_imm('rcx',1); em.call_label('set_panel_mode')" in _menu_folder_src, \
+    'Open Folder must browse, adopt the directory and switch to the file panel'
+assert ('cmd_open_folder_selected' in em.labels) == OPEN_TEST_BUILD and \
+       ((1908, 'cmd_open_folder_selected') in _command_routes) == OPEN_TEST_BUILD, \
+    'the picker bypass must exist only in the explicit test build'
 
 _output_channel = 'test' if INJECTED_BUILD else _BUILD_CHANNEL
 _output_name = (('pemark_x64_v8_6_outline_alloc_%s.exe' % ARENA_ALLOC_INJECTION_MODE)

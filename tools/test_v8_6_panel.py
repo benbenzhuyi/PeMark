@@ -38,9 +38,13 @@ CMD_WORKSPACE_PROBE = 1902
 CMD_SHOW_FILES = 1903
 CMD_SHOW_OUTLINE = 1904
 CMD_DUMP_ROW = 1905
+CMD_PANEL_FILES = 1308
+CMD_PANEL_OUTLINE = 1309
 CMD_PREVIEW = 1306
 CMD_LIGHT = 1310
 CMD_DARK = 1311
+MF_CHECKED = 0x00000008
+MF_BYCOMMAND = 0x00000000
 
 LB_ADDSTRING = 0x0180
 LB_SETCURSEL = 0x0186
@@ -79,6 +83,8 @@ g32.GetPixel.restype = w.COLORREF
 g32.BitBlt.argtypes = [w.HDC, c.c_int, c.c_int, c.c_int, c.c_int, w.HDC,
                        c.c_int, c.c_int, w.DWORD]
 g32.BitBlt.restype = w.BOOL
+u32.GetMenuState.argtypes = [w.HMENU, w.UINT, w.UINT]
+u32.GetMenuState.restype = w.UINT
 
 
 def build():
@@ -204,6 +210,13 @@ def row_colours(lb, indices, width, height):
 
 def difference(first, second):
     return sum(abs(a - b) for a, b in zip(first, second))
+
+
+def menu_checked(app, item):
+    """MF_CHECKED state of a View menu item, read through the shared HMENU."""
+    state = u32.GetMenuState(app.read64("hmenu_view"), item, MF_BYCOMMAND)
+    assert state != 0xFFFFFFFF, "menu item %d must exist" % item
+    return bool(state & MF_CHECKED)
 
 
 def main():
@@ -351,6 +364,23 @@ def main():
             app.post_command(CMD_SHOW_OUTLINE)
             wait_for(lambda: lb_count(app, lb) == 2, 6, "outline panel again")
 
+            # --- the View menu drives the same switch -------------------------
+            assert not menu_checked(app, CMD_PANEL_FILES)
+            assert menu_checked(app, CMD_PANEL_OUTLINE), \
+                "the outline panel must be checked by default"
+            app.post_command(CMD_PANEL_FILES)
+            wait_for(lambda: app.read32("panel_mode") == 1, 4,
+                     "the View menu must switch to the file panel")
+            assert menu_checked(app, CMD_PANEL_FILES)
+            assert not menu_checked(app, CMD_PANEL_OUTLINE)
+            assert lb_rect(lb) == geometry_before, \
+                "a menu switch must not move the shared ListBox"
+            app.post_command(CMD_PANEL_OUTLINE)
+            wait_for(lambda: app.read32("panel_mode") == 0, 4,
+                     "the View menu must switch back to the outline")
+            assert menu_checked(app, CMD_PANEL_OUTLINE)
+            assert not menu_checked(app, CMD_PANEL_FILES)
+
         app.post_close()
         app.click_dialog("PeMark", 7)   # IDNO / discard the scratch edit
         assert app.proc.wait(timeout=10) == 0
@@ -360,7 +390,8 @@ def main():
     print("PASS sidebar panels: one ListBox and one scrollbar for both modes, "
           "identical geometry, directory/file row colours in both themes, "
           "selectable and inert file rows, wheel scrolling with clamping, "
-          "outline restored after edits; released V8.5.4 binary unchanged")
+          "outline restored after edits, View menu switches that mirror the "
+          "panel state; released V8.5.4 binary unchanged")
     return 0
 
 

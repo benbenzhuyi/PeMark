@@ -104,3 +104,23 @@ One defect was found and fixed while implementing the slice: the new list
 activation jumped into the never-returning Open path without discarding its own
 return address, which left the stack permanently misaligned by eight bytes and
 crashed the process inside the Open transaction.
+
+## Slice 4 (part 1) — Menu entries that make the panels reachable
+
+The panel mechanisms from slices 2 and 3 existed only behind test-build
+commands, so a user could not reach them at all. This adds the two entries:
+
+- `File → Open Folder...` browses for a directory with `SHBrowseForFolderW`
+  (the returned PIDL is released with `ILFree`), adopts it as the workspace root
+  and switches to the file panel;
+- `View → Files Panel` and `View → Outline Panel` drive the same `panel_mode`
+  through the shared `set_panel_mode`, and `sync_panel_menu` keeps their mutual
+  check state equal to `panel_mode`.
+
+Evidence: `tools/test_v8_6_panel.py` now switches the panel through the real
+menu command ids and asserts the `MF_CHECKED` state of both items follows
+`panel_mode` while the ListBox rectangle stays unchanged;
+`tools/test_v8_6_navigation.py` adopts a second workspace through the
+Open-Folder path and asserts the list, the current directory and the status bar
+all follow. The only part of slice 4 still open is the in-memory recent-file
+list at the bottom of the File menu.

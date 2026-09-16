@@ -34,6 +34,7 @@ GEN = Path(os.environ.get(
 RELEASE_EXE = ROOT / "bin/current/pemark_x64_v8_5_4.exe"
 
 CMD_WORKSPACE_PROBE = 1902
+CMD_OPEN_FOLDER_SELECTED = 1908
 
 LB_SETCURSEL = 0x0186
 LB_GETCURSEL = 0x0188
@@ -236,6 +237,19 @@ def main():
             assert app.read32("encoding_state") == 1, \
                 "a UTF-16LE BOM file must keep its encoding"
             assert app.read32("eol_state") == 1, app.read32("eol_state")
+
+            # --- File -> Open Folder... adopts a new workspace ----------------
+            other = Path(directory) / "other"
+            other.mkdir()
+            (other / "solo.md").write_text("# Solo\n", encoding="utf-8")
+            write_wstr(app, "temp_path", str(other))
+            app.post_command(CMD_OPEN_FOLDER_SELECTED)
+            wait_for(lambda: app.read32("panel_mode") == 1, 4,
+                     "choosing a folder must switch to the file panel")
+            wait_for(lambda: lb_count(app, lb) == 1, 4, "the new workspace listing")
+            assert rows(app, lb, 1) == ["solo.md"], rows(app, lb, 1)
+            assert ws_path(app) == str(other)
+            assert status_path_pixels(app) > 50
 
             # --- the outline panel clears the path segment --------------------
             app.post_command(CMD_SHOW_OUTLINE)
