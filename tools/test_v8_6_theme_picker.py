@@ -4,9 +4,9 @@
 Evidence collected here:
 
 * switching the theme repaints the sidebar frame immediately - the two 28px
-  headers, the 4px divider and the outline gutter all match the new palette
-  without hiding and reopening the sidebar (issue 1), which also removes the
-  stale light band that read as a "too thick" scrollbar (issue 3);
+  headers and the 4px divider all match the new palette without hiding and
+  reopening the sidebar (issue 1); the two lists keep the panel background and
+  own native scrollbars that follow the theme (issues 2 and 3);
 * the folder picker is the modern common item dialog, not the legacy
   SHBrowseForFolder tree (issue 4): the dialog that opens carries the DirectUI
   shell view, and CoCreateInstance(FileOpenDialog) succeeds in-process;
@@ -59,6 +59,8 @@ DARK_HEADER, DARK_DIVIDER, DARK_PANEL = 0x00202020, 0x001D1D1D, 0x001F1F1F
 LIGHT_HEADER, LIGHT_DIVIDER, LIGHT_PANEL = 0x00F5F5F5, 0x00E8EAED, 0x00F3F3F3
 
 u32, k32, g32 = c.windll.user32, c.windll.kernel32, c.windll.gdi32
+u32.GetWindowDC.argtypes = [w.HWND]
+u32.GetWindowDC.restype = w.HDC
 u32.GetDC.argtypes = [w.HWND]
 u32.GetDC.restype = w.HDC
 u32.ReleaseDC.argtypes = [w.HWND, w.HDC]
@@ -107,23 +109,23 @@ def pixel(hwnd, x, y):
         u32.ReleaseDC(hwnd, hdc)
 
 
+def frame_pixel(hwnd):
+    """Far-right pixel of the window frame: where a native scrollbar is drawn."""
+    rect = w.RECT()
+    assert u32.GetWindowRect(hwnd, c.byref(rect))
+    hdc = u32.GetWindowDC(hwnd)
+    try:
+        return g32.GetPixel(hdc, rect.right - rect.left - 8,
+                            (rect.bottom - rect.top) // 2)
+    finally:
+        u32.ReleaseDC(hwnd, hdc)
+
+
 def brightness(colour):
     return ((colour & 0xFF) + ((colour >> 8) & 0xFF) + ((colour >> 16) & 0xFF)) / 3
 
 
-def rect_values(app, symbol):
-    values = (c.c_uint32 * 4)()
-    assert k32.ReadProcessMemory(
-        app.handle, c.c_void_p(app.base + app.bsyms[symbol]), c.byref(values),
-        16, None)
-    return tuple(values)
 
-
-def thumb_pixel(app, surface_symbol, rect_symbol):
-    """Sample the middle of that panel's thumb on its own scrollbar surface."""
-    hwnd = app.read64(surface_symbol)
-    left, top, right, bottom = rect_values(app, rect_symbol)
-    return pixel(hwnd, (left + right) // 2, (top + bottom) // 2)
 
 
 def surface_bytes(hwnd):
@@ -199,8 +201,7 @@ def main():
                  "the panel frame must be created")
         headers = (app.read64("hwnd_files_header"), app.read64("hwnd_outline_header"))
         divider = app.read64("hwnd_panel_divider")
-        gutter = app.read64("hwnd_outline_gutter")
-        assert all((headers[0], headers[1], divider, gutter)), "frame windows"
+        assert all((headers[0], headers[1], divider)), "frame windows"
 
         # Issue 1 + 3: every theme switch repaints the frame with the new palette.
         # Both panels must be scrollable, otherwise their thin scrollbars are
@@ -217,12 +218,12 @@ def main():
                         for index in range(1, 60)), encoding="utf-8")
             write_wstr(app, "temp_path", str(workspace))
             app.post_command(CMD_WORKSPACE_PROBE)
-            wait_for(lambda: app.read32("files_scroll_visible") == 1, 5,
-                     "a 40 row file list must show its scrollbar")
+            wait_for(lambda: app.read32("ws_entry_count") == 40, 5,
+                     "the workspace must enumerate the 40 files")
             write_wstr(app, "temp_path", str(document))
             app.post_command(CMD_OPEN_SELECTED)
-            wait_for(lambda: app.read32("outline_scroll_visible") == 1, 5,
-                     "a long outline must show its scrollbar")
+            wait_for(lambda: app.read64("document_len") > 0, 5,
+                     "the long document must be open")
             # Park the pointer over the document so neither thumb is "hot".
             u32.SetCursorPos(400, 300)
             time.sleep(.3)
@@ -239,23 +240,15 @@ def main():
                     assert got == header, (label, name, hex(got), hex(header))
                 got = pixel(divider, 100, 2)
                 assert got == split, (label, "divider", hex(got), hex(split))
-                # The scrollbar strip keeps the panel background; only the thin
-                # thumb is painted on it. A stale light brush here is what read as
-                # a "too thick, wrong colour" scrollbar.
-                for name, surface in (("outline", "hwnd_outline_scroll"),
-                                      ("files", "hwnd_files_scroll")):
-                    got = pixel(app.read64(surface), 8, 2)
-                    assert got == panel, (label, name + " scrollbar strip",
+                # Both lists keep the panel background and their own native
+                # scrollbar in the frame; the bar must follow the app theme just
+                # like the document's.
+                for name, list_sym in (("files", "hwnd_files"),
+                                       ("outline", "hwnd_outline")):
+                    got = pixel(app.read64(list_sym), 10, 10)
+                    assert got == panel, (label, name + " list background",
                                           hex(got), hex(panel))
-                # Both panels draw the same thin thumb, and it follows the theme.
-                files_thumb = thumb_pixel(app, "hwnd_files_scroll",
-                                          "files_thumb_rect")
-                outline_thumb = thumb_pixel(app, "hwnd_outline_scroll",
-                                            "outline_thumb_rect")
-                assert files_thumb == outline_thumb, \
-                    (label, "the two scrollbars must look identical",
-                     hex(files_thumb), hex(outline_thumb))
-                scrollbar_samples[label] = files_thumb
+                scrollbar_samples[label] = frame_pixel(app.read64("hwnd_files"))
             assert brightness(scrollbar_samples["dark"]) < brightness(
                 scrollbar_samples["light"]) - 60, scrollbar_samples
             assert brightness(scrollbar_samples["dark again"]) < 100, \
@@ -264,26 +257,17 @@ def main():
             # Issues 1 + 3: the strips stay painted with the panel background
             # through repeated sidebar toggles, and the document surface never
             # keeps stale pixels (that is what showed up as smearing/residue).
-            files_bg = pixel(app.read64("hwnd_files"), 10, 10)
-            outline_bg = pixel(app.read64("hwnd_outline"), 10, 10)
             preview = app.read64("hwnd_preview")
             for round_index in range(3):
                 app.post_command(CMD_TOGGLE_SIDEBAR)
                 time.sleep(.5)
                 app.post_command(CMD_TOGGLE_SIDEBAR)
                 time.sleep(.7)
-                for name, surface_sym, height_sym, background in (
-                        ("files", "hwnd_files_scroll", "files_list_h", files_bg),
-                        ("outline", "hwnd_outline_scroll", "outline_list_h",
-                         outline_bg)):
-                    overlay = app.read64(surface_sym)
-                    assert u32.IsWindowVisible(overlay), \
-                        (round_index, name, "the scrollbar strip must stay visible")
-                    height = app.read32(height_sym)
-                    got = pixel(overlay, 4, max(1, height - 6))
-                    assert got == background, \
-                        (round_index, name, "the scrollbar strip must keep the "
-                         "panel background", hex(got), hex(background))
+                for name, list_sym in (("files", "hwnd_files"),
+                                       ("outline", "hwnd_outline")):
+                    listbox = app.read64(list_sym)
+                    assert u32.IsWindowVisible(listbox), \
+                        (round_index, name, "the list must stay visible")
                 after = surface_bytes(preview)
                 u32.RedrawWindow(preview, None, None,
                                  RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN |
@@ -338,8 +322,8 @@ def main():
         app.close_handle()
     assert hashlib.sha256(RELEASE_EXE.read_bytes()).hexdigest() == release_hash
     print("PASS theme + folder picker: the sidebar frame repaints immediately in "
-          "both themes (headers, divider, gutter), the gutter keeps the panel "
-          "background instead of a stale light band, CoCreateInstance("
+          "both themes (headers, divider), both lists keep the panel background "
+          "with native themed scrollbars, CoCreateInstance("
           "FileOpenDialog) and GetOptions succeed in-process, Open Folder opens "
           "the modern shell dialog and cancelling it changes nothing; released "
           "V8.5.4 binary unchanged")

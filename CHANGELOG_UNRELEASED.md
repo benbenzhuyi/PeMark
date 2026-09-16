@@ -177,6 +177,45 @@ preview surface is byte-identical to a forced clean repaint; build-time
 assertions forbid hiding the surfaces while the sidebar is visible and require
 the resize repaint plus the file-scrollbar resync.
 
+## V8.6.1 — Sidebar scrollbars are Windows-native now
+
+The custom overlay scrollbar experiment is over: both panels use the ListBox's
+own scrollbar, exactly like the document uses the EDIT's.
+
+* Both list boxes are created with `WS_VSCROLL | LBS_DISABLENOSCROLL`: the bar is
+  native (so **dragging the thumb works**, with the system's thin/thick hover
+  behaviour and no custom hit-testing), and it stays in place when the list fits
+  so the text width never jumps.
+* Both lists get `AllowDarkModeForWindow` + `SetWindowTheme`, the same treatment
+  the document surface gets, so in dark mode the sidebar bars look like the
+  document's instead of the light classic bar.
+* Both lists now span the whole sidebar width; the reserved gutter, the overlay
+  surface windows, the owner-drawn gutter and the custom input interception are
+  gone. Three guard jumps keep the retired overlay path out of the mouse
+  pipeline (`lbd_after_frame` → splitter test, `lbu_not_scroll` → files test,
+  `mousemove_not_divider_drag` → hover).
+* The wheel still routes by pointer hit-test (so a panel scrolls without being
+  focused first) and drives `LB_SETTOPINDEX`, which keeps the native thumb in
+  sync.
+
+The bug behind "the outline thumb cannot be dragged" was structural: the custom
+hit test compared the pointer's *client* coordinates against the overlay's
+*local* thumb rectangle, so every press looked like a track click. Native
+scrollbars remove the whole class of problem.
+
+Retired but not yet deleted: the overlay routines (`scroll_layout`,
+`sync_*_scrollbar`, `*_scroll_drag_move`, `update_*_hover`, `scrollproc`) and
+their BSS fields are now unreachable dead code. Their deletion is the immediate
+follow-up cleanup; the wheel scratch fields (`files_scroll_*`) are still live.
+
+Evidence: `tools/test_v8_6_panel.py` asserts both lists report
+`WS_VSCROLL|LBS_DISABLENOSCROLL`, that both span the sidebar width, and that the
+wheel still scrolls three rows per notch with both clamps;
+`tools/test_v8_6_theme_picker.py` checks the two list backgrounds and the
+document-repaint invariant through repeated sidebar toggles. Build-time
+assertions pin the styles, the dark-mode opt-in for both lists, the retired
+overlay class never being created and the three guard jumps.
+
 V8.6 is scoped to "browse a directory and open files from it" while the
 application still owns a single writable document. The plan
 (`docs/MILESTONE_PLAN.md` §6) deliberately defers destructive file operations,

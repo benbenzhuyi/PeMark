@@ -1085,27 +1085,13 @@ em.mov_r64_ripmem('rcx',bsyms['hwnd_preview']); em.mov_r32_imm('rdx',0x0030); em
 # Left Markdown outline. V8.4.23 intentionally omits WS_VSCROLL: the ListBox
 # owns only the content rectangle, while a separate SCROLLBAR child lives in a
 # permanently reserved gutter to its right.
-em.xor32('rcx'); em.lea_rip('rdx',rsyms['class_listbox']); em.lea_rip('r8',rsyms['empty']); em.mov_r32_imm('r9',0x54010151)  # no WS_VSCROLL
+em.xor32('rcx'); em.lea_rip('rdx',rsyms['class_listbox']); em.lea_rip('r8',rsyms['empty']); em.mov_r32_imm('r9',0x54211151)  # WS_VSCROLL|LBS_DISABLENOSCROLL
 em.mov_mrsp_imm32(0x20,0); em.mov_mrsp_imm32(0x28,0); em.mov_mrsp_imm32(0x30,210); em.mov_mrsp_imm32(0x38,590)
 em.mov_mrsp_reg64(0x40,'rbx'); em.mov_mrsp_imm32(0x48,4,qword=True); em.mov_mrsp_reg64(0x50,'r15'); em.mov_mrsp_imm32(0x58,0,qword=True)
 em.call_iat('CreateWindowExW'); em.mov_ripmem_r64(bsyms['hwnd_outline'],'rax'); em.test64('rax'); em.jcc(0x84,'exit')
 em.mov_r64_r64('rcx','rax'); em.mov_r32_imm('rdx',0x01A0); em.xor32('r8'); em.mov_r32_imm('r9',30); em.call_iat('SendMessageW')
 # SendMessageW returns an LRESULT in RAX; reload the ListBox HWND before WM_SETFONT.
 em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.mov_r32_imm('rdx',0x0030); em.mov_r64_ripmem('r8',bsyms['hfont_outline']); em.mov_r32_imm('r9',1); em.call_iat('SendMessageW')
-# Permanent scrollbar-gutter background. It remains visible with the Outline even
-# when the actual scrollbar is hidden, so Outline width never changes on hover.
-em.xor32('rcx'); em.lea_rip('rdx',rsyms['class_static']); em.lea_rip('r8',rsyms['empty']); em.mov_r32_imm('r9',0x5400000D)  # owner-draw gutter
-em.mov_mrsp_imm32(0x20,210); em.mov_mrsp_imm32(0x28,0); em.mov_mrsp_imm32(0x30,18); em.mov_mrsp_imm32(0x38,590)
-em.mov_mrsp_reg64(0x40,'rbx'); em.mov_mrsp_imm32(0x48,7,qword=True); em.mov_mrsp_reg64(0x50,'r15'); em.mov_mrsp_imm32(0x58,0,qword=True)
-em.call_iat('CreateWindowExW'); em.mov_ripmem_r64(bsyms['hwnd_outline_gutter'],'rax'); em.test64('rax'); em.jcc(0x84,'exit')
-# V8.4.23 architecture preview: dedicated custom scrollbar surface.
-# It lives permanently in the fixed gutter and paints itself via scrollproc/WM_PAINT.
-# This removes the brittle owner-drawn STATIC -> parent WM_DRAWITEM dependency that
-# caused the V8.4.20 white/black full-height gutter and invisible thumb.
-em.xor32('rcx'); em.lea_rip('rdx',rsyms['class_scroll_surface']); em.lea_rip('r8',rsyms['empty']); em.mov_r32_imm('r9',0x44000000)  # WS_CHILD|CLIPSIBLINGS; shown only on hover/drag
-em.mov_mrsp_imm32(0x20,210); em.mov_mrsp_imm32(0x28,0); em.mov_mrsp_imm32(0x30,18); em.mov_mrsp_imm32(0x38,590)
-em.mov_mrsp_reg64(0x40,'rbx'); em.mov_mrsp_imm32(0x48,8,qword=True); em.mov_mrsp_reg64(0x50,'r15'); em.mov_mrsp_imm32(0x58,0,qword=True)
-em.call_iat('CreateWindowExW'); em.mov_ripmem_r64(bsyms['hwnd_outline_scroll'],'rax'); em.test64('rax'); em.jcc(0x84,'exit')
 # One-pixel visual divider; resize hit testing is logical and lives on the document side.
 em.xor32('rcx'); em.lea_rip('rdx',rsyms['class_static']); em.lea_rip('r8',rsyms['empty']); em.mov_r32_imm('r9',0x5400000D)
 em.mov_mrsp_imm32(0x20,228); em.mov_mrsp_imm32(0x28,0); em.mov_mrsp_imm32(0x30,1); em.mov_mrsp_imm32(0x38,590)
@@ -1113,17 +1099,12 @@ em.mov_mrsp_reg64(0x40,'rbx'); em.mov_mrsp_imm32(0x48,6,qword=True); em.mov_mrsp
 em.call_iat('CreateWindowExW'); em.mov_ripmem_r64(bsyms['hwnd_splitter'],'rax'); em.test64('rax'); em.jcc(0x84,'exit')
 # 文件面板列表（ID 14）。V8.6.1：和左栏大纲一样不自带滚动条，改为右边的
 # 自绘细滚动面（ID 19）——两个面板因此共用同一套外观与命中逻辑，风格一致。
-em.xor32('rcx'); em.lea_rip('rdx',rsyms['class_listbox']); em.lea_rip('r8',rsyms['empty']); em.mov_r32_imm('r9',0x54010151)
+em.xor32('rcx'); em.lea_rip('rdx',rsyms['class_listbox']); em.lea_rip('r8',rsyms['empty']); em.mov_r32_imm('r9',0x54211151)  # WS_VSCROLL|LBS_DISABLENOSCROLL
 em.mov_mrsp_imm32(0x20,0); em.mov_mrsp_imm32(0x28,0); em.mov_mrsp_imm32(0x30,210); em.mov_mrsp_imm32(0x38,250)
 em.mov_mrsp_reg64(0x40,'rbx'); em.mov_mrsp_imm32(0x48,14,qword=True); em.mov_mrsp_reg64(0x50,'r15'); em.mov_mrsp_imm32(0x58,0,qword=True)
 em.call_iat('CreateWindowExW'); em.mov_ripmem_r64(bsyms['hwnd_files'],'rax'); em.test64('rax'); em.jcc(0x84,'exit')
 em.mov_r64_r64('rcx','rax'); em.mov_r32_imm('rdx',0x01A0); em.xor32('r8'); em.mov_r32_imm('r9',30); em.call_iat('SendMessageW')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.mov_r32_imm('rdx',0x0030); em.mov_r64_ripmem('r8',bsyms['hfont_outline']); em.mov_r32_imm('r9',1); em.call_iat('SendMessageW')
-# 文件面板的自绘滚动面（ID 19），与大纲同一窗口类、同一绘制与命中路径。
-em.xor32('rcx'); em.lea_rip('rdx',rsyms['class_scroll_surface']); em.lea_rip('r8',rsyms['empty']); em.mov_r32_imm('r9',0x44000000)
-em.mov_mrsp_imm32(0x20,0); em.mov_mrsp_imm32(0x28,28); em.mov_mrsp_imm32(0x30,18); em.mov_mrsp_imm32(0x38,250)
-em.mov_mrsp_reg64(0x40,'rbx'); em.mov_mrsp_imm32(0x48,19,qword=True); em.mov_mrsp_reg64(0x50,'r15'); em.mov_mrsp_imm32(0x58,0,qword=True)
-em.call_iat('CreateWindowExW'); em.mov_ripmem_r64(bsyms['hwnd_files_scroll'],'rax'); em.test64('rax'); em.jcc(0x84,'exit')
 # 文件标题栏（ID 16）、大纲标题栏（ID 17）、分界线（ID 18）。
 em.xor32('rcx'); em.lea_rip('rdx',rsyms['class_static']); em.lea_rip('r8',rsyms['empty']); em.mov_r32_imm('r9',0x5400000D)
 em.mov_mrsp_imm32(0x20,0); em.mov_mrsp_imm32(0x28,0); em.mov_mrsp_imm32(0x30,228); em.mov_mrsp_imm32(0x38,28)
@@ -1170,6 +1151,7 @@ em.label('mousemove_event')
 em.mov_r32_ripmem('rax',bsyms['divider_drag']); em.test32('rax'); em.jcc(0x84,'mousemove_not_divider_drag')
 em.call_label('divider_drag_move'); em.jmp('msg_loop')
 em.label('mousemove_not_divider_drag')
+em.jmp('mousemove_hover_only')
 em.mov_r32_ripmem('rax',bsyms['files_scroll_drag']); em.test32('rax'); em.jcc(0x84,'mousemove_not_files_scroll')
 em.call_label('files_scroll_drag_move'); em.jmp('msg_loop')
 em.label('mousemove_not_files_scroll')
@@ -1250,6 +1232,8 @@ em.mov_r64_ripmem('rcx',bsyms['hwnd_main']); em.mov_r32_imm('rdx',0x4E); em.mov_
 em.label('lbd_frame_apply')
 em.call_label('resize_children'); em.jmp('msg_loop')
 em.label('lbd_after_frame')
+# V8.6.1：两个列表改用自带原生滚动条，槽位上的点击/拖动交给系统处理。
+em.jmp('lbd_test_splitter')
 # V8.6.1：文件面板的细滚动条命中（右侧槽位 x、文件列表 y 段）。命中后要么拖
 # thumb，要么按轨道翻页，和大纲滚动条走同一套状态与手感。
 em.mov_r32_ripmem('r10',bsyms['cursor_pt']); em.mov_r32_ripmem('r11',bsyms['outline_width']); em.mov_r32_ripmem('rax',bsyms['scrollbar_w']); em.mov_r32_r32('r8','r11'); em.sub_r32_r32('r8','rax')
@@ -1304,6 +1288,7 @@ em.label('lbuttonup_event')
 em.mov_r32_ripmem('rax',bsyms['outline_scroll_drag']); em.test32('rax'); em.jcc(0x84,'lbu_not_scroll')
 em.mov_ripmem_imm32(bsyms['outline_scroll_drag'],0); em.call_iat('ReleaseCapture'); em.call_label('sync_outline_scrollbar'); em.call_label('update_outline_hover'); em.jmp('msg_loop')
 em.label('lbu_not_scroll')
+em.jmp('lbu_not_files_scroll')
 em.mov_r32_ripmem('rax',bsyms['files_scroll_drag']); em.test32('rax'); em.jcc(0x84,'lbu_not_files_scroll')
 em.mov_ripmem_imm32(bsyms['files_scroll_drag'],0); em.call_iat('ReleaseCapture'); em.mov_r64_ripmem('rcx',bsyms['hwnd_files_scroll']); em.xor32('rdx'); em.mov_r32_imm('r8',1); em.call_iat('InvalidateRect'); em.jmp('msg_loop')
 em.label('lbu_not_files_scroll')
@@ -2480,7 +2465,7 @@ em.mov_r32_ripmem('r11',bsyms['divider_y']); em.add_r32_imm8('r11',32); em.mov_r
 em.mov_r64_ripmem('rcx',bsyms['hwnd_files_header']); em.xor32('rdx'); em.xor32('r8'); em.mov_r32_ripmem('r9',bsyms['outline_width']); em.mov_mrsp_imm32(0x20,28); em.mov_mrsp_imm32(0x28,1,qword=True); em.call_iat('MoveWindow')
 # 文件列表：右侧留出与大纲完全相同的滚动条槽位，槽里放自绘细滚动面。
 em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.xor32('rdx'); em.mov_r32_imm('r8',28)
-em.mov_r32_ripmem('r9',bsyms['outline_width']); em.mov_r32_ripmem('r10',bsyms['scrollbar_w']); em.sub_r32_r32('r9','r10')
+em.mov_r32_ripmem('r9',bsyms['outline_width'])
 em.mov_r32_ripmem('r11',bsyms['files_list_h']); em.mov_mrsp_reg32(0x20,'r11'); em.mov_mrsp_imm32(0x28,1,qword=True); em.call_iat('MoveWindow')
 # 文件面板滚动面（ID 19）：与大纲滚动面同矩形规则
 em.mov_r64_ripmem('rcx',bsyms['hwnd_files_scroll']); em.mov_r32_ripmem('r10',bsyms['scrollbar_w'])
@@ -2492,7 +2477,7 @@ em.mov_r64_ripmem('rcx',bsyms['hwnd_panel_divider']); em.xor32('rdx'); em.mov_r3
 em.mov_r64_ripmem('rcx',bsyms['hwnd_outline_header']); em.xor32('rdx'); em.mov_r32_ripmem('r8',bsyms['divider_y']); em.add_r32_imm8('r8',4); em.mov_r32_ripmem('r9',bsyms['outline_width']); em.mov_mrsp_imm32(0x20,28); em.mov_mrsp_imm32(0x28,1,qword=True); em.call_iat('MoveWindow')
 # 大纲列表
 em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.xor32('rdx'); em.mov_r32_ripmem('r8',bsyms['outline_list_y'])
-em.mov_r32_ripmem('r9',bsyms['outline_width']); em.mov_r32_ripmem('r10',bsyms['scrollbar_w']); em.sub_r32_r32('r9','r10')
+em.mov_r32_ripmem('r9',bsyms['outline_width'])
 em.mov_r32_ripmem('r11',bsyms['outline_list_h']); em.mov_mrsp_reg32(0x20,'r11'); em.mov_mrsp_imm32(0x28,1,qword=True); em.call_iat('MoveWindow')
 # 大纲 gutter
 em.mov_r64_ripmem('rcx',bsyms['hwnd_outline_gutter']); em.mov_r32_ripmem('r10',bsyms['scrollbar_w'])
@@ -3912,6 +3897,7 @@ em.mov_r64_ripmem('rax',bsyms['fn_allowdark']); em.test64('rax'); em.jcc(0x84,'t
 em.mov_r64_r64('rcx','rbx'); em.mov_r32_ripmem('rdx',bsyms['theme_dark']); em.call_r64('rax')
 em.mov_r64_ripmem('rax',bsyms['fn_allowdark']); em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.mov_r32_ripmem('rdx',bsyms['theme_dark']); em.call_r64('rax')
 em.mov_r64_ripmem('rax',bsyms['fn_allowdark']); em.mov_r64_ripmem('rcx',bsyms['hwnd_preview']); em.mov_r32_ripmem('rdx',bsyms['theme_dark']); em.call_r64('rax')
+em.mov_r64_ripmem('rax',bsyms['fn_allowdark']); em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.mov_r32_ripmem('rdx',bsyms['theme_dark']); em.call_r64('rax')
 em.mov_r64_ripmem('rax',bsyms['fn_allowdark']); em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.mov_r32_ripmem('rdx',bsyms['theme_dark']); em.call_r64('rax')
 em.mov_r64_ripmem('rax',bsyms['fn_allowdark']); em.mov_r64_ripmem('rcx',bsyms['hwnd_status']); em.mov_r32_ripmem('rdx',bsyms['theme_dark']); em.call_r64('rax')
 em.label('theme_child_themes')
@@ -5634,57 +5620,31 @@ for _cmd_label in sorted({_lbl for _cid, _lbl in _command_routes}):
                 'multiple of 16 or API calls run on a misaligned stack' % _cmd_label)
             break
 
-# (Z) V8.6.1 双面板滚动条统一。要拦截的错误模式：文件面板又长回原生滚动条
-#     （和主窗口宽度/配色不一致）、两个面板各画一套 thumb（宽度/颜色漂移）、
-#     可见性退回"悬停才显示"，以及几何不再由 layout 例程单点产出。
-assert "em.mov_r32_imm('r9',0x54211151)" not in _production_source, \
-    'the file list must not own a native WS_VSCROLL anymore'
-assert "em.lea_rip('rdx',rsyms['class_scroll_surface']); em.lea_rip('r8',rsyms['empty']); em.mov_r32_imm('r9',0x44000000)" in _production_source, \
-    'the file panel needs its own surface of the shared scrollbar class'
-_scroll_paint_src = _production_source[
-    _production_source.index("em.label('scrollproc')"):
-    _production_source.index("em.label('wndproc')")]
-def _routine_src(_label, _lines=60):
-    _src_lines = _production_source.split("\n")
-    _idx = next(_i for _i, _ln in enumerate(_src_lines)
-                if "em.label('%s')" % _label in _ln)
-    return "\n".join(_src_lines[_idx:_idx + _lines])
-for _tag, _rect_sym in (("outline", "outline_thumb_rect"),
-                        ("files", "files_thumb_rect")):
-    assert ("emit_thumb_paint('%s'" % _tag) in _scroll_paint_src and \
-           ("'%s')" % _rect_sym) in _scroll_paint_src, \
-        'both panels must paint the thumb rect their layout published: %s' % _rect_sym
-assert "call_iat('MulDiv')" not in _scroll_paint_src, \
-    'the paint path must not recompute thumb geometry'
-assert "call_iat('RoundRect')" in _scroll_paint_src and \
-       "em.mov_r32_imm('rcx',8); em.call_iat('GetStockObject')" in _scroll_paint_src, \
-    'the thumb must be a filled capsule (RoundRect with NULL_PEN), like the document bar'
-for _layout in ("scroll_layout", "files_scroll_layout"):
-    _layout_src = _routine_src(_layout)
-    assert "em.mov_r32_imm('r10',6)" in _layout_src and \
-           "em.mov_r32_imm('r10',11)" in _layout_src and \
-           "em.sub_r32_r32('r11','r10'); em.shr_r32_imm8('r11',1)" in _layout_src, \
-        ('%s must publish the shared centred thumb (6px calm / 11px hot)' % _layout)
-    assert "em.test32('rax'); em.jcc(0x84,'" in _layout_src, \
-        '%s must publish scrollbar visibility from the geometry' % _layout
-for _visibility in ("scroll_visible_store", "fsl_visible_store"):
-    assert _visibility in em.labels, 'missing always-visible rule: %s' % _visibility
-# 滚动面负责刷槽位底色，因此只要侧栏可见就必须常驻显示；"不可滚动就整窗隐藏"
-# 会让文档文字留在槽位上（反复开关侧栏后的残留），也会让启动时出现一条与列表
-# 底色不同的灰条。
-for _hidden_label in ("resize_scroll_hidden", "resize_files_scroll_hidden",
-                      "sync_os_hide", "sync_fs_hide"):
-    assert _hidden_label not in em.labels, \
-        'the scroll strips must stay visible while the sidebar is: %s' % _hidden_label
-_resize_src = _routine_src('resize_children', 120)
-for _surface in ("hwnd_outline_scroll", "hwnd_files_scroll"):
-    assert ("bsyms['%s']); em.mov_r32_imm('rdx',5); em.call_iat('ShowWindow')" % _surface) in _resize_src, \
-        'resize_children must show %s unconditionally' % _surface
+# (Z) V8.6.1 侧栏滚动条：两个列表都用 ListBox 自带的原生滚动条——和主编辑区的
+#     EDIT 滚动条同源、同主题，拖动/翻页/滚轮全部由系统处理。要拦截的错误模式：
+#     退回 0x54010151（无 WS_VSCROLL，会出现"没有滚动条也拖不动"的面板）、
+#     丢掉 LBS_DISABLENOSCROLL（行数不足时滚动条消失导致列表宽度跳动）、
+#     忘记给文件列表套深色主题（滚动条会是系统浅色，和主编辑区不一致）、
+#     以及让退役的自绘覆盖层继续拦截槽位上的鼠标输入。
+assert _production_source.count("em.mov_r32_imm('r9',0x54211151)") == 2 and \
+       _production_source.count("# WS_VSCROLL|LBS_DISABLENOSCROLL") == 2, \
+    'both list boxes must own a native WS_VSCROLL|LBS_DISABLENOSCROLL scrollbar'
+assert _production_source.count("em.mov_r32_imm('r9',0x54010151)") == 0, \
+    'a list box must not fall back to the scrollbar-less style'
+assert _production_source.count("rsyms['class_scroll_surface']") == 1, \
+    'no window of the retired overlay class may be created'
+for _list_sym in ("hwnd_files", "hwnd_outline"):
+    assert "fn_allowdark']); em.mov_r64_ripmem('rcx',bsyms['%s']" % _list_sym in _production_source and \
+           "em.mov_r64_ripmem('rcx',bsyms['%s']); em.mov_r64_ripmem('rdx',bsyms['theme_name_ptr'])" % _list_sym in _production_source, \
+        'each list must be opted into dark mode and themed: %s' % _list_sym
+for _guard in ("em.jmp('lbd_test_splitter')",
+               "em.label('lbu_not_scroll')\nem.jmp('lbu_not_files_scroll')",
+               "em.label('mousemove_not_divider_drag')\nem.jmp('mousemove_hover_only')"):
+    assert _guard in _production_source, \
+        'the retired overlay must not intercept input: %s' % _guard.replace('\n', ' / ')
 # 拖动分隔条/开关侧栏都会改变文档面的位置与宽度：必须显式重绘，否则会花屏。
-_resize_ret_src = _routine_src('resize_ret', 6)
-assert "call_label('sync_files_scrollbar')" in _resize_ret_src and \
-       "mov_r32_imm('r9',0x0085)" in _production_source, \
-    'resize must resync the file scrollbar and force the document surfaces to repaint'
+assert "mov_r32_imm('r9',0x0085)" in _production_source, \
+    'resize must force the document surfaces to repaint after a geometry change'
 
 # (W) 快捷键方案：与 Rabbit 对齐的键位必须唯一且指向正确命令，菜单里的提示必须与
 #     加速键表一致，为后续功能预留的键位不得被占用。

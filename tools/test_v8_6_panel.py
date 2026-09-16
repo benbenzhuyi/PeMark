@@ -290,10 +290,10 @@ def main():
         _, top_dv, _, height_dv = lb_rect(divider)
         assert (height_fh, height_oh, height_dv) == (28, 28, 4), \
             (height_fh, height_oh, height_dv)
-        assert width_fh == width_f + app.read32("scrollbar_w"), \
+        assert width_fh == width_f, \
             ("the header spans the whole sidebar width", width_fh, width_f)
-        # V8.6.1: both panels keep the same reserved gutter for their own thin
-        # overlay scrollbar, so the two lists have identical geometry.
+        # V8.6.1: both lists span the sidebar and draw their own native scrollbar,
+        # so the two panels have identical geometry.
         assert left_f == left_o and width_f == width_o, (lb_rect(files),
                                                         lb_rect(outline))
         assert top_f == top_fh + 28, "the file list starts under its header"
@@ -463,20 +463,13 @@ def main():
         finally:
             u32.SetCursorPos(saved_cursor.x, saved_cursor.y)
 
-        # --- File panel: its own thin overlay scrollbar plus wheel routing ----
-        style = u32.GetWindowLongW(files, GWL_STYLE)
-        assert not style & WS_VSCROLL, \
-            ("the file list must not draw a native scrollbar", hex(style))
-        files_scroll = app.read64("hwnd_files_scroll")
-        assert files_scroll and files_scroll != app.read64("hwnd_outline_scroll"), \
-            "each panel owns its own scrollbar surface"
-        class_buffer = c.create_unicode_buffer(256)
-        u32.GetClassNameW(files_scroll, class_buffer, 256)
-        outline_class = c.create_unicode_buffer(256)
-        u32.GetClassNameW(app.read64("hwnd_outline_scroll"), outline_class, 256)
-        assert class_buffer.value == outline_class.value, \
-            ("both scrollbars must share one painting class",
-             class_buffer.value, outline_class.value)
+        # --- Both panels own a native scrollbar, and the wheel is routed -------
+        for name, listbox in (("files", files), ("outline", outline)):
+            style = u32.GetWindowLongW(listbox, GWL_STYLE)
+            assert style & WS_VSCROLL, \
+                ("%s list must own a native scrollbar" % name, hex(style))
+            assert style & LBS_DISABLENOSCROLL, \
+                ("%s scrollbar must stay in place when disabled" % name, hex(style))
 
         with tempfile.TemporaryDirectory() as directory:
             many = Path(directory) / "many"
@@ -501,7 +494,16 @@ def main():
                 key_delta = (delta & 0xFFFF) << 16
                 for _ in range(notches):
                     assert u32.PostMessageW(app.main, WM_MOUSEWHEEL, key_delta, point)
-                time.sleep(.25)
+                    # Windows coalesces wheel messages that are still queued, so send
+                    # one notch at a time and let the list catch up.
+                    time.sleep(.15)
+                previous = None
+                for _ in range(20):
+                    current = top_index()
+                    if current == previous:
+                        break
+                    previous = current
+                    time.sleep(.05)
                 return top_index()
 
             assert top_index() == 0, top_index()
@@ -513,55 +515,10 @@ def main():
             rows = max(1, app.read32("files_list_h") // ROW_HEIGHT)
             assert wheel(-120, 40) == 40 - rows, \
                 ("scrolling down must stop at max_top", top_index(), rows)
-            assert app.read32("files_scroll_visible_rows") == rows, \
-                app.read32("files_scroll_visible_rows")
-            # The file panel's overlay mirrors the outline one: same track height,
-            # same 6px centred thumb, always visible while the list overflows.
-            assert app.read32("files_scroll_visible") == 1, \
-                "a scrollable file list must show its scrollbar"
-            assert app.read32("files_scroll_track_h") == \
-                app.read32("files_list_h") - 8, app.read32("files_scroll_track_h")
-            track, thumb = app.read32("files_scroll_track_h"), \
-                app.read32("files_scroll_thumb_h")
-            assert 0 < thumb <= track, (thumb, track)
-            thumb_rect = c.c_uint32 * 4
-            values = thumb_rect()
-            assert k32.ReadProcessMemory(
-                app.handle, c.c_void_p(app.base + app.bsyms["files_thumb_rect"]),
-                c.byref(values), 16, None)
-            bar_w = app.read32("scrollbar_w")
-            # Calm thumbs are 6px wide, hot ones 11px, both centred in the strip -
-            # the same "thin bar widens as the pointer arrives" behaviour as the
-            # document's native scrollbar.
-            width = 11 if app.read32("files_scroll_hot") else 6
-            assert (values[0], values[2]) == ((bar_w - width) // 2,
-                                              (bar_w - width) // 2 + width), \
-                (tuple(values), bar_w, width)
-            outline_rect = thumb_rect()
-            assert k32.ReadProcessMemory(
-                app.handle, c.c_void_p(app.base + app.bsyms["outline_thumb_rect"]),
-                c.byref(outline_rect), 16, None)
-            assert (outline_rect[2] - outline_rect[0]) == (values[2] - values[0]), \
-                ("both panels must draw the same thumb width",
-                 tuple(outline_rect), tuple(values))
-
-            # Hovering the strip widens the thumb; leaving it goes back to thin.
-            left, top, width, height = lb_rect(files)
-            strip_x = left + width + app.read32("scrollbar_w") // 2
-            move_cursor(strip_x, top + height // 2)
-            wait_for(lambda: app.read32("files_scroll_hot") == 1, 2,
-                     "hovering the scrollbar strip must mark it hot")
-            assert k32.ReadProcessMemory(
-                app.handle, c.c_void_p(app.base + app.bsyms["files_thumb_rect"]),
-                c.byref(values), 16, None)
-            assert values[2] - values[0] == 11, tuple(values)
-            move_cursor(left + width // 2, top + height // 2)
-            wait_for(lambda: app.read32("files_scroll_hot") == 0, 2,
-                     "leaving the strip must cool the thumb down")
-            assert k32.ReadProcessMemory(
-                app.handle, c.c_void_p(app.base + app.bsyms["files_thumb_rect"]),
-                c.byref(values), 16, None)
-            assert values[2] - values[0] == 6, tuple(values)
+            # The list is scrolled to the bottom, so its own native scrollbar must
+            # agree: the last page is visible.
+            bottom_row = top_index() + rows
+            assert bottom_row == 40, (top_index(), rows)
 
         app.post_close()
         assert app.proc.wait(timeout=10) == 0
