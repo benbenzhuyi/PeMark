@@ -3,6 +3,32 @@
 V8.5.4 shipped as the first stable release; its full record is
 `docs/CHANGELOG_V8_5_4.md`.
 
+## V8.6.1 — Custom title row and six tool icons
+
+The main window now uses a merged 32px title row instead of the native
+caption + menu bar pair. The row is owned by a `DirectPE_Caption` child so its
+paint, hit-test and hover state stay in one place:
+
+```
+[left switch] [PeMark·码记] [File Edit Markdown View Help] ... [save]
+[find] [render/source] [dark/light] [gear] [right sidebar] [min] [max] [close]
+```
+
+The six tool icons follow the Markra/Codex line style, share one 24px slot and
+one theme palette, and invalidate only the caption surface on hover. Save,
+find, render/source and dark/light post the existing command IDs, so the
+replacement row does not create a second state owner. The left switch posts
+the existing `View → Left Sidebar` command (`1307`). The gear and right-sidebar
+buttons are deliberate placeholders: they paint and hover today, but a click
+has no action. `CAPTION_MODE=system` rebuilds the original native
+caption + menu bar path for comparison and fallback.
+
+Evidence: `tools/test_v8_6_caption.py` checks the no-caption/resizable style,
+the 32px full-width row, the shared rect table, hover on the right-sidebar
+placeholder, inert placeholder clicks, and the live left switch;
+`smoke_test_v8_5_1.py` is 17/17; the panel, theme, navigation, keymap and
+workspace suites remain green. The candidate now reports V8.6.1.
+
 Scope revision (2026-09-16): the file panel is being redesigned to follow the
 Rabbit editor's explorer — an expandable directory tree with new/rename/delete/
 refresh/collapse — replacing the earlier "single flat list, read-only" decision.

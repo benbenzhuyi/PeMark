@@ -57,6 +57,16 @@ INJECTED_BUILD = (WRITE_INJECTION_MODE != 'release' or OPEN_TEST_BUILD or
 WRITE_CALL_INJECTED = WRITE_INJECTION_MODE in {
     'short_then_complete', 'zero_success', 'fail_first', 'late_failure'}
 
+# V8.6.1 第 2 步：自定义标题行。默认关闭系统标题栏与原生菜单栏，由
+# DirectPE_Caption 子窗口统一绘制标题、菜单入口和工具图标。CAPTION_MODE=system
+# 是构建期回退开关，保留原来的系统标题栏 + 菜单栏路径。
+CAPTION_MODE = os.environ.get('CAPTION_MODE', 'custom').lower()
+if CAPTION_MODE not in {'custom', 'system'}:
+    raise ValueError('unknown CAPTION_MODE: %r' % CAPTION_MODE)
+CUSTOM_CAPTION = CAPTION_MODE == 'custom'
+TITLEBAR_H = 32
+CAPTION_H = TITLEBAR_H if CUSTOM_CAPTION else 0
+
 IMAGE_BASE = 0x140000000
 # V8.6：NX_COMPAT 保证数据页不可执行，DYNAMIC_BASE 允许加载器选择随机基址。
 DLL_CHARACTERISTICS = 0x0100 | 0x0040
@@ -99,10 +109,11 @@ def astr(name,s): return add_bytes(name, s.encode('ascii')+b'\0', 1)
 wstr('class_static','STATIC')
 wstr('class_edit','EDIT')
 wstr('class_main','DirectPE_Notepad_Main')
+wstr('class_caption','DirectPE_Caption')
 # 发布通道：src/current 产出正式二进制与正式标题，src/candidate 保留 Candidate 标记。
 _BUILD_CHANNEL = os.path.basename(os.path.dirname(os.path.abspath(__file__)))
 _RELEASE_CHANNEL = _BUILD_CHANNEL == 'current'
-_VERSION_LABEL = 'V8.6' if _RELEASE_CHANNEL else 'V8.6 Candidate'
+_VERSION_LABEL = 'V8.6.1' if _RELEASE_CHANNEL else 'V8.6.1 Candidate'
 if ARENA_ALLOC_INJECTION_MODE != 'release':
     _window_title = ('PeMark x64 V8.6 ARENA-ALLOC TEST [%s]' %
                      ARENA_ALLOC_INJECTION_MODE)
@@ -121,6 +132,15 @@ wstr('menu_edit','&Edit')
 wstr('menu_markdown','&Markdown')
 wstr('menu_view','&View')
 wstr('menu_help','&Help')
+wstr('caption_file','File')
+wstr('caption_edit','Edit')
+wstr('caption_markdown','Markdown')
+wstr('caption_view','View')
+wstr('caption_help','Help')
+wstr('caption_title','PeMark·码记')
+wstr('caption_min','−')
+wstr('caption_max','□')
+wstr('caption_close','×')
 wstr('m_new','&New\tCtrl+N')
 wstr('m_open','&Open...\tCtrl+O')
 wstr('m_save','&Save\tCtrl+S')
@@ -301,7 +321,7 @@ bss_alloc('hwnd_outline', 8, 8)
 bss_alloc('hwnd_splitter', 8, 8)
 bss_alloc('hwnd_outline_scroll', 8, 8)
 bss_alloc('hwnd_outline_gutter', 8, 8)
-# V8.6.1 双面板：文件面板拥有自己的列表与 gutter（标题栏与分界线在后续步骤加入）。
+# V8.6.1 双面板：文件面板拥有自己的列表与 gutter；标题栏与分界线已落地。
 bss_alloc('hwnd_files', 8, 8)
 bss_alloc('hwnd_files_scroll', 8, 8)
 # V8.6.1：每个面板 28px 标题栏 + 4px 分界线（标题栏可点击切换三态）。
@@ -317,10 +337,34 @@ bss_alloc('hfont_status', 8, 8)
 # 这样标题与菜单栏的字体字号完全一致，不再是自绘控件默认的老 UI 字体。
 bss_alloc('hfont_panel', 8, 8)
 bss_alloc('ncm_panel', 512, 8)
+bss_alloc('hwnd_caption', 8, 8)
+bss_alloc('hfont_caption', 8, 8)
+bss_alloc('hpen_caption', 8, 8)
+bss_alloc('hpen_caption_hot', 8, 8)
+bss_alloc('hbrush_caption', 8, 8)
+bss_alloc('hbrush_caption_hot', 8, 8)
+bss_alloc('hbrush_caption_close_hot', 8, 8)
+bss_alloc('hbrush_caption_icon', 8, 8)
+bss_alloc('caption_rects', 16 * 16, 4)
+bss_alloc('caption_hot', 4, 4)
+bss_alloc('caption_hit', 4, 4)
+bss_alloc('caption_press', 4, 4)
+bss_alloc('caption_menu', 4, 4)
+bss_alloc('caption_pt', 8, 4)
+bss_alloc('caption_paint_hwnd', 8, 8)
+bss_alloc('caption_tme', 24, 8)
+bss_alloc('caption_old', 8, 8)
+bss_alloc('caption_w', 4, 4)
+bss_alloc('cap_ps', 72, 8)
+bss_alloc('cap_client_rect', 16, 4)
 bss_alloc('old_hfont', 8, 8)
 bss_alloc('hmenu_main', 8, 8)
 bss_alloc('hmenu_view', 8, 8)
 bss_alloc('hmenu_zoom', 8, 8)
+bss_alloc('hmenu_file', 8, 8)
+bss_alloc('hmenu_edit', 8, 8)
+bss_alloc('hmenu_markdown', 8, 8)
+bss_alloc('hmenu_help', 8, 8)
 bss_alloc('hwnd_main', 8, 8)
 bss_alloc('haccel', 8, 8)
 bss_alloc('hbrush_edit', 8, 8)
@@ -353,6 +397,7 @@ bss_alloc('status_h', 4, 4)
 bss_alloc('content_x', 4, 4)
 bss_alloc('content_w', 4, 4)
 bss_alloc('content_h', 4, 4)
+bss_alloc('content_y', 4, 4)
 bss_alloc('sel_start', 4, 4)
 bss_alloc('sel_end', 4, 4)
 bss_alloc('line_zero', 4, 4)
@@ -631,6 +676,7 @@ imports = {
         'DestroyWindow','ShowWindow','CheckMenuItem','GetWindowRect','GetClientRect','wsprintfW','RegisterWindowMessageW','InvalidateRect','UpdateWindow','RedrawWindow',
         'GetCursorPos','ScreenToClient','SetCapture','ReleaseCapture','SetCursor','BeginPaint','EndPaint','SetScrollRange','SetScrollPos','ShowScrollBar','GetKeyState','GetSystemMetrics','SetTimer','KillTimer','GetMessageTime',
         'CreateAcceleratorTableW','TranslateAcceleratorW','DestroyAcceleratorTable','IsDialogMessageW','SetForegroundWindow','DrawMenuBar','DrawTextW','FillRect','GetMenuStringW','SetMenuInfo','GetWindowDC','ReleaseDC','GetMenuItemRect',
+        'TrackPopupMenu','IsZoomed','TrackMouseEvent',
         'SystemParametersInfoW'
     ],
     'COMDLG32.dll': ['GetOpenFileNameW','GetSaveFileNameW','FindTextW','ReplaceTextW'],
@@ -638,7 +684,7 @@ imports = {
     'OLE32.dll': ['CoInitializeEx','CoCreateInstance','CoTaskMemFree'],
     'SHLWAPI.dll': ['StrStrW','StrStrIW'],
     'COMCTL32.dll': ['InitCommonControlsEx'],
-    'GDI32.dll': ['CreateFontW','CreateFontIndirectW','DeleteObject','CreateSolidBrush','SetTextColor','SetBkColor','SetBkMode','GetClipBox','SelectObject','SaveDC','RestoreDC','IntersectClipRect','RoundRect','GetStockObject'],
+    'GDI32.dll': ['CreateFontW','CreateFontIndirectW','DeleteObject','CreateSolidBrush','CreatePen','SetTextColor','SetBkColor','SetBkMode','GetClipBox','SelectObject','SaveDC','RestoreDC','IntersectClipRect','RoundRect','GetStockObject','MoveToEx','LineTo','Ellipse','Rectangle'],
     'UXTHEME.dll': ['SetWindowTheme'],
     'DWMAPI.dll': ['DwmSetWindowAttribute'],
 }
@@ -971,12 +1017,29 @@ em.lea_rip('rax',rsyms['class_scroll_surface']); em.mov_mr12_reg64(64,'rax')
 em.mov_mr12_imm32(72,0)
 em.mov_r64_r64('rcx','r12'); em.call_iat('RegisterClassExW')
 em.test32('rax'); em.jcc(0x84,'exit')
+if CUSTOM_CAPTION:
+    # V8.6.1 第 2 步：标题行是自绘子窗口。CS_DBLCLKS 让空白标题区双击也能
+    # 收到消息，用它实现 Codex 风格的最大化/还原切换。
+    em.lea_rip('r12',bsyms['wc'])
+    em.mov_mr12_imm32(0,80)
+    em.mov_mr12_imm32(4,3 | 8)
+    em.lea_label('rax','captionproc'); em.mov_mr12_reg64(8,'rax')
+    em.mov_mr12_reg64(24,'r15')
+    em.xor32('rcx'); em.mov_r32_imm('rdx',32512); em.call_iat('LoadCursorW')
+    em.mov_mr12_reg64(40,'rax')
+    em.mov_mr12_imm32(48,6)
+    em.mov_mr12_imm32(56,0)
+    em.lea_rip('rax',rsyms['class_caption']); em.mov_mr12_reg64(64,'rax')
+    em.mov_mr12_imm32(72,0)
+    em.mov_r64_r64('rcx','r12'); em.call_iat('RegisterClassExW')
+    em.test32('rax'); em.jcc(0x84,'exit')
 # Register the message used by the modeless common Find/Replace dialogs.
 em.lea_rip('rcx',rsyms['findmsgstring']); em.call_iat('RegisterWindowMessageW'); em.mov_ripmem_r32(bsyms['findmsg_id'],'rax')
 
 # Menu creation helpers inline.
 em.call_iat('CreateMenu'); em.mov_r64_r64('rdi','rax'); em.mov_ripmem_r64(bsyms['hmenu_main'],'rax')
 em.call_iat('CreatePopupMenu'); em.mov_r64_r64('r12','rax')
+em.mov_ripmem_r64(bsyms['hmenu_file'],'r12')
 
 def append_imm(menu, flags, itemid, text_sym):
     em.mov_r64_r64('rcx',menu); em.mov_r32_imm('rdx',flags); em.mov_r32_imm('r8',itemid); em.lea_rip('r9',rsyms[text_sym]); em.call_iat('AppendMenuW')
@@ -990,11 +1053,13 @@ append_imm('r12',0,1003,'m_save'); append_imm('r12',0,1004,'m_saveas'); append_s
 append_popup('rdi','r12','menu_file')
 
 em.call_iat('CreatePopupMenu'); em.mov_r64_r64('r13','rax')
+em.mov_ripmem_r64(bsyms['hmenu_edit'],'r13')
 append_imm('r13',0,1101,'m_undo'); append_sep('r13'); append_imm('r13',0,1102,'m_cut'); append_imm('r13',0,1103,'m_copy'); append_imm('r13',0,1104,'m_paste'); append_sep('r13'); append_imm('r13',0,1106,'m_find'); append_imm('r13',0,1107,'m_findnext'); append_imm('r13',0,1108,'m_replace'); append_sep('r13'); append_imm('r13',0,1105,'m_selectall')
 append_popup('rdi','r13','menu_edit')
 
 # Markdown editing commands
 em.call_iat('CreatePopupMenu'); em.mov_r64_r64('r14','rax')
+em.mov_ripmem_r64(bsyms['hmenu_markdown'],'r14')
 append_imm('r14',0,1401,'m_md_h1'); append_imm('r14',0,1402,'m_md_h2'); append_imm('r14',0,1410,'m_md_h3'); append_imm('r14',0,1411,'m_md_h4'); append_imm('r14',0,1412,'m_md_h5'); append_imm('r14',0,1413,'m_md_h6'); append_sep('r14')
 append_imm('r14',0,1403,'m_md_bold'); append_imm('r14',0,1404,'m_md_italic'); append_imm('r14',0,1405,'m_md_inlinecode'); append_imm('r14',0,1406,'m_md_codeblock'); append_sep('r14')
 append_imm('r14',0,1407,'m_md_quote'); append_imm('r14',0,1408,'m_md_bullet'); append_imm('r14',0,1409,'m_md_link')
@@ -1012,16 +1077,34 @@ append_sep('r14'); append_imm('r14',0x8,1310,'m_light'); append_imm('r14',0,1311
 append_popup('rdi','r14','menu_view')
 
 em.call_iat('CreatePopupMenu'); em.mov_r64_r64('r14','rax')
+em.mov_ripmem_r64(bsyms['hmenu_help'],'r14')
 append_imm('r14',0,1201,'m_about'); append_popup('rdi','r14','menu_help')
 
 # Standard accelerator table: TranslateAcceleratorW turns these into WM_COMMAND.
 em.lea_rip('rcx',rsyms['accels']); em.mov_r32_imm('rdx',ACCEL_COUNT); em.call_iat('CreateAcceleratorTableW'); em.mov_ripmem_r64(bsyms['haccel'],'rax')
 
 # Parent custom top-level window
-em.xor32('rcx'); em.lea_rip('rdx',rsyms['class_main']); em.lea_rip('r8',rsyms['title']); em.mov_r32_imm('r9',0x12CF0000)  # WS_CLIPCHILDREN
+_main_style = 0x920F0000 if CUSTOM_CAPTION else 0x12CF0000
+if CUSTOM_CAPTION:
+    em.mov_r32_imm('rcx', 0x00040000)  # WS_EX_APPWINDOW: keep a popup in the taskbar
+else:
+    em.xor32('rcx')
+em.lea_rip('rdx',rsyms['class_main']); em.lea_rip('r8',rsyms['title']); em.mov_r32_imm('r9',_main_style)  # WS_CLIPCHILDREN
 em.mov_mrsp_imm32(0x20,0x80000000); em.mov_mrsp_imm32(0x28,0x80000000); em.mov_mrsp_imm32(0x30,900); em.mov_mrsp_imm32(0x38,650)
-em.mov_mrsp_imm32(0x40,0,qword=True); em.mov_mrsp_reg64(0x48,'rdi'); em.mov_mrsp_reg64(0x50,'r15'); em.mov_mrsp_imm32(0x58,0,qword=True)
+em.mov_mrsp_imm32(0x40,0,qword=True)
+if CUSTOM_CAPTION:
+    em.mov_mrsp_imm32(0x48,0,qword=True)
+else:
+    em.mov_mrsp_reg64(0x48,'rdi')
+em.mov_mrsp_reg64(0x50,'r15'); em.mov_mrsp_imm32(0x58,0,qword=True)
 em.call_iat('CreateWindowExW'); em.mov_r64_r64('rbx','rax'); em.mov_ripmem_r64(bsyms['hwnd_main'],'rax'); em.test64('rax'); em.jcc(0x84,'exit')
+if CUSTOM_CAPTION:
+    # V8.6.1 第 2 步：32px 自绘标题行。最左侧是左栏开关，随后是
+    # PeMark·码记 与五个菜单入口；右端是六个工具图标和窗口三键。
+    em.xor32('rcx'); em.lea_rip('rdx',rsyms['class_caption']); em.lea_rip('r8',rsyms['empty']); em.mov_r32_imm('r9',0x56000000)
+    em.mov_mrsp_imm32(0x20,0); em.mov_mrsp_imm32(0x28,0); em.mov_mrsp_imm32(0x30,900); em.mov_mrsp_imm32(0x38,TITLEBAR_H)
+    em.mov_mrsp_reg64(0x40,'rbx'); em.mov_mrsp_imm32(0x48,20,qword=True); em.mov_mrsp_reg64(0x50,'r15'); em.mov_mrsp_imm32(0x58,0,qword=True)
+    em.call_iat('CreateWindowExW'); em.mov_ripmem_r64(bsyms['hwnd_caption'],'rax'); em.test64('rax'); em.jcc(0x84,'exit')
 # Child EDIT
 em.xor32('rcx'); em.lea_rip('rdx',rsyms['class_edit']); em.lea_rip('r8',rsyms['empty']); em.mov_r32_imm('r9',0x54211044)  # WS_CLIPSIBLINGS
 em.mov_mrsp_imm32(0x20,0); em.mov_mrsp_imm32(0x28,0); em.mov_mrsp_imm32(0x30,884); em.mov_mrsp_imm32(0x38,590)
@@ -1053,6 +1136,7 @@ em.lea_rip('rcx',bsyms['ncm_panel']+224); em.call_iat('CreateFontIndirectW'); em
 em.test64('rax'); em.jcc(0x85,'panel_font_ready')
 em.label('panel_font_fallback'); em.mov_r64_ripmem('rax',bsyms['hfont_status']); em.mov_ripmem_r64(bsyms['hfont_panel'],'rax')
 em.label('panel_font_ready')
+em.mov_r64_ripmem('rax',bsyms['hfont_panel']); em.mov_ripmem_r64(bsyms['hfont_caption'],'rax')
 em.mov_r64_r64('rcx','rsi'); em.call_iat('SetFocus')
 
 # Native Windows status bar (common-controls class).
@@ -1176,12 +1260,15 @@ em.mov_r32_ripmem('rax',bsyms['outline_flag']); em.test32('rax'); em.jcc(0x84,'d
 em.mov_eax_mr12(36); em.mov_ripmem_r32(bsyms['cursor_pt'],'rax')
 em.mov_eax_mr12(40); em.mov_ripmem_r32(bsyms['cursor_pt']+4,'rax')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_main']); em.lea_rip('rdx',bsyms['cursor_pt']); em.call_iat('ScreenToClient'); em.test32('rax'); em.jcc(0x84,'dispatch')
-# V8.6.1 面板框架命中（自上而下）：文件标题栏 [0,28)、文件列表、分界线
+# V8.6.1 面板框架命中（自上而下）：文件标题栏 [content_y,content_y+28)、
+# 文件列表、分界线
 # [divider_y,divider_y+4)、大纲标题栏 [divider_y+4,divider_y+32)。x 方向越过
 # 侧边栏宽度即不属于面板框架，直接交给文档侧命中测试。
 em.mov_r32_ripmem('r10',bsyms['cursor_pt']); em.mov_r32_ripmem('r11',bsyms['outline_width']); em.cmp_r32_r32('r10','r11'); em.jcc(0x8D,'lbd_after_frame')
 em.mov_r32_ripmem('r11',bsyms['cursor_pt']+4)
-em.cmp_r32_imm('r11',28); em.jcc(0x82,'lbd_frame_files_header')
+em.mov_r32_ripmem('rax',bsyms['content_y']); em.cmp_r32_r32('r11','rax'); em.jcc(0x8C,'lbd_after_frame')
+em.add_r32_imm8('rax',28); em.cmp_r32_r32('r11','rax'); em.jcc(0x8C,'lbd_frame_files_header')
+# y >= content_y+28 falls through to the divider/list hit-test below.
 em.mov_r32_ripmem('rax',bsyms['divider_y']); em.cmp_r32_r32('r11','rax'); em.jcc(0x8C,'lbd_after_frame')
 # 分界线是 4px 窄带 [divider_y, divider_y+4)；再往下就是大纲标题栏。
 em.add_r32_imm8('rax',4); em.cmp_r32_r32('r11','rax'); em.jcc(0x8D,'lbd_frame_outline_header')
@@ -1281,7 +1368,7 @@ em.label('lbd_scroll_apply'); em.mov_ripmem_r32(bsyms['outline_scroll_top'],'r10
 # Splitter logical hit-zone [outline_width, outline_width+8].
 em.label('lbd_test_splitter')
 em.mov_r32_ripmem('r10',bsyms['cursor_pt']); em.mov_r32_ripmem('r11',bsyms['outline_width']); em.cmp_r32_r32('r10','r11'); em.jcc(0x8C,'dispatch'); em.add_r32_imm8('r11',8); em.cmp_r32_r32('r10','r11'); em.jcc(0x8F,'dispatch')
-em.mov_r32_ripmem('r10',bsyms['cursor_pt']+4); em.test32('r10'); em.jcc(0x88,'dispatch'); em.mov_r32_ripmem('r11',bsyms['content_h']); em.cmp_r32_r32('r10','r11'); em.jcc(0x8D,'dispatch')
+em.mov_r32_ripmem('r10',bsyms['cursor_pt']+4); em.test32('r10'); em.jcc(0x88,'dispatch'); em.mov_r32_ripmem('r11',bsyms['content_h']); em.mov_r32_ripmem('r8',bsyms['content_y']); em.add_r32_r32('r11','r8'); em.cmp_r32_r32('r10','r11'); em.jcc(0x8D,'dispatch')
 em.mov_ripmem_imm32(bsyms['splitter_drag'],1); em.mov_r64_ripmem('rcx',bsyms['hwnd_main']); em.call_iat('SetCapture')
 em.mov_ripmem_imm32(bsyms['outline_scroll_visible'],0); em.mov_r64_ripmem('rcx',bsyms['hwnd_outline_scroll']); em.xor32('rdx'); em.xor32('r8'); em.mov_r32_imm('r9',0x105); em.call_iat('RedrawWindow')
 em.call_label('splitter_drag_move'); em.jmp('msg_loop')
@@ -2431,10 +2518,520 @@ em.call_iat('SetWindowPos')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_splitter']); em.xor32('rdx'); em.xor32('r8'); em.mov_r32_imm('r9',0x0105); em.call_iat('RedrawWindow')
 em.label('repaint_splitter_ret'); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
 
+# ======================================================================
+# V8.6.1 第 2/3 步：自定义标题行
+# ----------------------------------------------------------------------
+# 布局、命中测试与绘制使用同一张 cap_rects 表。标题行是普通子窗口，
+# 因此窗口拖动、菜单弹出、hover 高亮都能留在正常的客户区消息路径里；
+# 系统标题栏和原生菜单栏在 CAPTION_MODE=custom 时完全不创建。
+# ======================================================================
+CAP_RECT = {
+    'toggle': 0, 'title': 1, 'file': 2, 'edit': 3, 'markdown': 4,
+    'view': 5, 'help': 6, 'save': 7, 'find': 8, 'viewmode': 9,
+    'theme': 10, 'gear': 11, 'rightbar': 12, 'min': 13, 'max': 14,
+    'close': 15,
+}
+CAP_ID = {
+    'toggle': 1, 'file': 2, 'edit': 3, 'markdown': 4, 'view': 5,
+    'help': 6, 'save': 10, 'find': 11, 'viewmode': 12, 'theme': 13,
+    'gear': 14, 'rightbar': 15, 'min': 16, 'max': 17, 'close': 18,
+}
+
+
+def _cap_store_rect(rect_idx, left, top, right, bottom):
+    """Store one RECT into the shared cap_rects table without API calls."""
+    base = bsyms['caption_rects'] + rect_idx * 16
+    em.lea_rip('r11', base)
+    for off, value in ((0, left), (4, top), (8, right), (12, bottom)):
+        if isinstance(value, int):
+            em.mov_mreg_imm32('r11', off, value)
+        else:
+            em.mov_mreg_reg32('r11', off, value)
+
+
+def _cap_copy_rect_to_draw(rect_idx, dx=0, dy=0, dw=0, dh=0):
+    base = bsyms['caption_rects'] + rect_idx * 16
+    em.lea_rip('rcx', base)
+    em.lea_rip('rdx', bsyms['draw_rect'])
+    for off in (0, 4, 8, 12):
+        em.mov_r32_mreg('rax', 'rcx', off)
+        if off == 0:
+            em.add_r32_imm('rax', dx)
+        elif off == 4:
+            em.add_r32_imm('rax', dy)
+        elif off == 8:
+            em.add_r32_imm('rax', dw)
+        else:
+            em.add_r32_imm('rax', dh)
+        em.mov_mreg_reg32('rdx', off, 'rax')
+
+
+def _cap_hover_bg(tag, hover_id, rect_idx, close=False):
+    em.mov_r32_ripmem('rax', bsyms['caption_hot'])
+    em.cmp_r32_imm('rax', hover_id)
+    em.jcc(0x85, f'cap_hover_skip_{tag}')
+    em.mov_r64_ripmem('rcx', bsyms['paint_hdc'])
+    em.mov_r64_ripmem('rdx', bsyms['hbrush_caption_close_hot'] if close
+                      else bsyms['hbrush_caption_hot'])
+    em.call_iat('SelectObject')
+    em.mov_r32_imm('rcx', 8)
+    em.call_iat('GetStockObject')
+    em.mov_r64_ripmem('rcx', bsyms['paint_hdc'])
+    em.mov_r64_r64('rdx', 'rax')
+    em.call_iat('SelectObject')
+    _cap_copy_rect_to_draw(rect_idx)
+    em.mov_r64_ripmem('rcx', bsyms['paint_hdc'])
+    em.lea_rip('rdx', bsyms['draw_rect'])
+    em.mov_r32_mreg('r8', 'rdx', 0)
+    em.mov_r32_mreg('r9', 'rdx', 4)
+    em.mov_r32_mreg('rax', 'rdx', 8)
+    em.mov_r32_mreg('r10', 'rdx', 12)
+    em.mov_r64_r64('rdx', 'r8')
+    em.mov_r64_r64('r8', 'r9')
+    em.mov_r64_r64('r9', 'rax')
+    em.mov_mrsp_reg32(0x20, 'r10')
+    em.mov_mrsp_imm32(0x28, 6)
+    em.mov_mrsp_imm32(0x30, 6)
+    em.call_iat('RoundRect')
+    em.label(f'cap_hover_skip_{tag}')
+
+
+def _cap_use_pen():
+    em.mov_r64_ripmem('rcx', bsyms['paint_hdc'])
+    em.mov_r64_ripmem('rdx', bsyms['hpen_caption'])
+    em.call_iat('SelectObject')
+    em.mov_r32_imm('rcx', 5)
+    em.call_iat('GetStockObject')
+    em.mov_r64_ripmem('rcx', bsyms['paint_hdc'])
+    em.mov_r64_r64('rdx', 'rax')
+    em.call_iat('SelectObject')
+
+
+def _cap_use_fill():
+    em.mov_r64_ripmem('rcx', bsyms['paint_hdc'])
+    em.mov_r64_ripmem('rdx', bsyms['hbrush_caption_icon'])
+    em.call_iat('SelectObject')
+    em.mov_r32_imm('rcx', 8)
+    em.call_iat('GetStockObject')
+    em.mov_r64_ripmem('rcx', bsyms['paint_hdc'])
+    em.mov_r64_r64('rdx', 'rax')
+    em.call_iat('SelectObject')
+
+
+def _cap_outline_rect(rect_idx, dx=0, dy=0, dw=0, dh=0):
+    _cap_copy_rect_to_draw(rect_idx, dx, dy, dw, dh)
+    em.mov_r64_ripmem('rcx', bsyms['paint_hdc'])
+    em.lea_rip('rdx', bsyms['draw_rect'])
+    em.mov_r32_mreg('r8', 'rdx', 0)
+    em.mov_r32_mreg('r9', 'rdx', 4)
+    em.mov_r32_mreg('rax', 'rdx', 8)
+    em.mov_r32_mreg('r10', 'rdx', 12)
+    em.mov_r64_r64('rdx', 'r8')
+    em.mov_r64_r64('r8', 'r9')
+    em.mov_r64_r64('r9', 'rax')
+    em.mov_mrsp_reg32(0x20, 'r10')
+    em.call_iat('Rectangle')
+
+
+def _cap_outline_ellipse(rect_idx, dx=0, dy=0, dw=0, dh=0):
+    _cap_copy_rect_to_draw(rect_idx, dx, dy, dw, dh)
+    em.mov_r64_ripmem('rcx', bsyms['paint_hdc'])
+    em.lea_rip('rdx', bsyms['draw_rect'])
+    em.mov_r32_mreg('r8', 'rdx', 0)
+    em.mov_r32_mreg('r9', 'rdx', 4)
+    em.mov_r32_mreg('rax', 'rdx', 8)
+    em.mov_r32_mreg('r10', 'rdx', 12)
+    em.mov_r64_r64('rdx', 'r8')
+    em.mov_r64_r64('r8', 'r9')
+    em.mov_r64_r64('r9', 'rax')
+    em.mov_mrsp_reg32(0x20, 'r10')
+    em.call_iat('Ellipse')
+
+
+def _cap_fill_ellipse(rect_idx, dx=0, dy=0, dw=0, dh=0):
+    _cap_copy_rect_to_draw(rect_idx, dx, dy, dw, dh)
+    em.mov_r64_ripmem('rcx', bsyms['paint_hdc'])
+    em.lea_rip('rdx', bsyms['draw_rect'])
+    em.mov_r32_mreg('r8', 'rdx', 0)
+    em.mov_r32_mreg('r9', 'rdx', 4)
+    em.mov_r32_mreg('rax', 'rdx', 8)
+    em.mov_r32_mreg('r10', 'rdx', 12)
+    em.mov_r64_r64('rdx', 'r8')
+    em.mov_r64_r64('r8', 'r9')
+    em.mov_r64_r64('r9', 'rax')
+    em.mov_mrsp_reg32(0x20, 'r10')
+    em.call_iat('Ellipse')
+
+
+def _cap_line(rect_idx, x1o, y1o, x2o, y2o):
+    base = bsyms['caption_rects'] + rect_idx * 16
+    em.lea_rip('rcx', base)
+    em.mov_r32_mreg('r8', 'rcx', 0)
+    em.mov_r32_mreg('r9', 'rcx', 4)
+    em.mov_r32_mreg('r10', 'rcx', 8)
+    em.mov_r32_mreg('r11', 'rcx', 12)
+    em.add_r32_imm8('r8', x1o)
+    em.add_r32_imm8('r9', y1o)
+    em.add_r32_imm8('r10', x2o)
+    em.add_r32_imm8('r11', y2o)
+    em.mov_mrsp_reg32(0x38, 'r10')
+    em.mov_mrsp_reg32(0x3c, 'r11')
+    em.mov_r64_ripmem('rcx', bsyms['paint_hdc'])
+    em.mov_r32_r32('rdx', 'r8')
+    em.mov_r32_r32('r8', 'r9')
+    em.xor32('r9')
+    em.call_iat('MoveToEx')
+    em.mov_r64_ripmem('rcx', bsyms['paint_hdc'])
+    em.mov_r32_mrsp('rdx', 0x38)
+    em.mov_r32_mrsp('r8', 0x3c)
+    em.call_iat('LineTo')
+
+
+def _cap_icon_leftbar(tag, rect_idx, mirrored=False):
+    _cap_hover_bg(tag, CAP_ID[tag], rect_idx)
+    _cap_use_pen()
+    _cap_outline_rect(rect_idx, 3, 6, -3, -6)
+    if mirrored:
+        _cap_line(rect_idx, -7, 6, -7, -6)
+        _cap_line(rect_idx, -10, 12, -13, 16)
+        _cap_line(rect_idx, -10, 20, -13, 16)
+    else:
+        _cap_line(rect_idx, 10, 6, 10, -6)
+        _cap_line(rect_idx, 13, 12, 10, 16)
+        _cap_line(rect_idx, 13, 20, 10, 16)
+
+
+def _cap_icon_save(tag, rect_idx):
+    _cap_hover_bg(tag, CAP_ID[tag], rect_idx)
+    _cap_use_pen()
+    _cap_outline_rect(rect_idx, 4, 5, -4, -5)
+    _cap_outline_rect(rect_idx, 7, 5, -7, 11)
+    _cap_outline_rect(rect_idx, 7, 18, -7, -7)
+
+
+def _cap_icon_find(tag, rect_idx):
+    _cap_hover_bg(tag, CAP_ID[tag], rect_idx)
+    _cap_use_pen()
+    _cap_outline_ellipse(rect_idx, 4, 4, -7, -7)
+    _cap_line(rect_idx, -7, -7, -3, -3)
+
+
+def _cap_icon_viewmode(tag, rect_idx):
+    _cap_hover_bg(tag, CAP_ID[tag], rect_idx)
+    em.mov_r32_ripmem('rax', bsyms['preview_flag'])
+    em.test32('rax')
+    em.jcc(0x84, f'cap_viewmode_source_{tag}')
+    _cap_use_pen()
+    _cap_outline_ellipse(rect_idx, 3, 9, -3, -9)
+    _cap_use_fill()
+    _cap_fill_ellipse(rect_idx, 10, 12, -10, -12)
+    em.jmp(f'cap_viewmode_done_{tag}')
+    em.label(f'cap_viewmode_source_{tag}')
+    _cap_use_pen()
+    _cap_line(rect_idx, 8, 10, 5, 16)
+    _cap_line(rect_idx, 8, 22, 5, 16)
+    _cap_line(rect_idx, -8, 10, -5, 16)
+    _cap_line(rect_idx, -8, 22, -5, 16)
+    em.label(f'cap_viewmode_done_{tag}')
+
+
+def _cap_icon_theme(tag, rect_idx):
+    _cap_hover_bg(tag, CAP_ID[tag], rect_idx)
+    em.mov_r32_ripmem('rax', bsyms['theme_dark'])
+    em.test32('rax')
+    em.jcc(0x84, f'cap_theme_sun_{tag}')
+    _cap_use_fill()
+    _cap_fill_ellipse(rect_idx, 5, 5, -5, -5)
+    _cap_use_pen()
+    _cap_line(rect_idx, 5, 5, -5, -5)
+    em.jmp(f'cap_theme_done_{tag}')
+    em.label(f'cap_theme_sun_{tag}')
+    _cap_use_pen()
+    _cap_outline_ellipse(rect_idx, 7, 7, -7, -7)
+    _cap_line(rect_idx, 12, 3, 12, -3)
+    _cap_line(rect_idx, 3, 12, -3, 12)
+    em.label(f'cap_theme_done_{tag}')
+
+
+def _cap_icon_gear(tag, rect_idx):
+    _cap_hover_bg(tag, CAP_ID[tag], rect_idx)
+    _cap_use_pen()
+    _cap_outline_ellipse(rect_idx, 7, 7, -7, -7)
+    _cap_line(rect_idx, 12, 4, 12, 0)
+    _cap_line(rect_idx, 12, 24, 12, -0)
+    _cap_line(rect_idx, 4, 12, 0, 12)
+    _cap_line(rect_idx, 24, 12, -0, 12)
+
+
+def _cap_draw_icons():
+    _cap_icon_leftbar('toggle', CAP_RECT['toggle'])
+    _cap_icon_save('save', CAP_RECT['save'])
+    _cap_icon_find('find', CAP_RECT['find'])
+    _cap_icon_viewmode('viewmode', CAP_RECT['viewmode'])
+    _cap_icon_theme('theme', CAP_RECT['theme'])
+    _cap_icon_gear('gear', CAP_RECT['gear'])
+    _cap_icon_leftbar('rightbar', CAP_RECT['rightbar'], mirrored=True)
+
+
+em.label('caption_layout')
+em.emit(0x48,0x83,0xEC,0x28)
+em.mov_r32_ripmem('r10', bsyms['caption_w'])
+em.cmp_r32_imm('r10', 760)
+em.jcc(0x8D, 'cap_layout_width_ok')
+em.mov_r32_imm('r10', 760)
+em.label('cap_layout_width_ok')
+_cap_store_rect(CAP_RECT['toggle'], 6, 4, 34, 28)
+_cap_store_rect(CAP_RECT['title'], 38, 0, 150, TITLEBAR_H)
+_cap_store_rect(CAP_RECT['file'], 150, 0, 196, TITLEBAR_H)
+_cap_store_rect(CAP_RECT['edit'], 202, 0, 244, TITLEBAR_H)
+_cap_store_rect(CAP_RECT['markdown'], 250, 0, 336, TITLEBAR_H)
+_cap_store_rect(CAP_RECT['view'], 342, 0, 390, TITLEBAR_H)
+_cap_store_rect(CAP_RECT['help'], 396, 0, 442, TITLEBAR_H)
+# Right-aligned window buttons: close [w-46,w], max [w-92,w-46],
+# min [w-138,w-92]. They stay in the same order as a native caption.
+em.mov_r32_imm('r11', 46); em.mov_r32_r32('rax', 'r10'); em.sub_r32_r32('rax', 'r11')
+_cap_store_rect(CAP_RECT['close'], 'rax', 0, 'r10', TITLEBAR_H)
+em.mov_r32_imm('r11', 92); em.mov_r32_r32('rax', 'r10'); em.sub_r32_r32('rax', 'r11')
+em.mov_r32_r32('rdx', 'r10'); em.sub_r32_imm8('rdx', 46)
+_cap_store_rect(CAP_RECT['max'], 'rax', 0, 'rdx', TITLEBAR_H)
+em.mov_r32_imm('r11', 138); em.mov_r32_r32('rax', 'r10'); em.sub_r32_r32('rax', 'r11')
+em.mov_r32_r32('rdx', 'r10'); em.mov_r32_imm('r11', 92); em.sub_r32_r32('rdx', 'r11')
+_cap_store_rect(CAP_RECT['min'], 'rax', 0, 'rdx', TITLEBAR_H)
+# Six 28px tool slots start at right - 138 - 176. Recompute the base from
+# caption_w for every slot so no volatile register is carried across stores.
+for i, name in enumerate(('save', 'find', 'viewmode', 'theme', 'gear', 'rightbar')):
+    em.mov_r32_ripmem('r9', bsyms['caption_w']); em.mov_r32_imm('r10', 314)
+    em.sub_r32_r32('r9', 'r10'); em.add_r32_imm('r9', i * 28)
+    em.mov_r32_r32('r10', 'r9'); em.add_r32_imm8('r10', 24)
+    _cap_store_rect(CAP_RECT[name], 'r9', 4, 'r10', 28)
+em.add_r64_imm8('rsp', 0x28); em.emit(0xC3)
+
+
+def _cap_hit_entry(name, rect_idx):
+    label = f'cap_hit_next_{name}'
+    em.lea_rip('rcx', bsyms['caption_rects'] + rect_idx * 16)
+    em.mov_r32_mreg('rax', 'rcx', 0); em.cmp_r32_r32('r10', 'rax'); em.jcc(0x8C, label)
+    em.mov_r32_mreg('rax', 'rcx', 8); em.cmp_r32_r32('r10', 'rax'); em.jcc(0x8D, label)
+    em.mov_r32_mreg('rax', 'rcx', 4); em.cmp_r32_r32('r11', 'rax'); em.jcc(0x8C, label)
+    em.mov_r32_mreg('rax', 'rcx', 12); em.cmp_r32_r32('r11', 'rax'); em.jcc(0x8D, label)
+    em.mov_r32_imm('rax', CAP_ID[name]); em.emit(0xC3)
+    em.label(label)
+
+
+em.label('caption_hit_test')
+for _name in ('toggle', 'file', 'edit', 'markdown', 'view', 'help',
+              'save', 'find', 'viewmode', 'theme', 'gear', 'rightbar',
+              'min', 'max', 'close'):
+    _cap_hit_entry(_name, CAP_RECT[_name])
+em.xor32('rax'); em.emit(0xC3)
+
+
+em.label('caption_menu_index')
+# input: eax = caption id. output: rax = popup menu handle or 0.
+em.cmp_r32_imm('rax', CAP_ID['file']); em.jcc(0x85, 'cmi_not_file')
+em.mov_r64_ripmem('rax', bsyms['hmenu_file']); em.emit(0xC3)
+em.label('cmi_not_file')
+em.cmp_r32_imm('rax', CAP_ID['edit']); em.jcc(0x85, 'cmi_not_edit')
+em.mov_r64_ripmem('rax', bsyms['hmenu_edit']); em.emit(0xC3)
+em.label('cmi_not_edit')
+em.cmp_r32_imm('rax', CAP_ID['markdown']); em.jcc(0x85, 'cmi_not_md')
+em.mov_r64_ripmem('rax', bsyms['hmenu_markdown']); em.emit(0xC3)
+em.label('cmi_not_md')
+em.cmp_r32_imm('rax', CAP_ID['view']); em.jcc(0x85, 'cmi_not_view')
+em.mov_r64_ripmem('rax', bsyms['hmenu_view']); em.emit(0xC3)
+em.label('cmi_not_view')
+em.cmp_r32_imm('rax', CAP_ID['help']); em.jcc(0x85, 'cmi_none')
+em.mov_r64_ripmem('rax', bsyms['hmenu_help']); em.emit(0xC3)
+em.label('cmi_none'); em.xor32('rax'); em.emit(0xC3)
+
+
+em.label('caption_show_menu')
+# input: eax = caption id. Show the popup at the current pointer position.
+em.emit(0x48,0x83,0xEC,0x48)
+em.mov_ripmem_r32(bsyms['caption_menu'], 'rax')
+em.call_label('caption_menu_index'); em.test64('rax')
+em.jcc(0x84, 'cap_menu_ret')
+em.mov_ripmem_r64(bsyms['caption_old'], 'rax')
+em.lea_rip('rcx', bsyms['caption_pt']); em.call_iat('GetCursorPos')
+em.mov_r64_ripmem('rcx', bsyms['hwnd_main']); em.call_iat('SetForegroundWindow')
+em.mov_r64_ripmem('rcx', bsyms['caption_old'])
+em.mov_r32_imm('rdx', 0x0000 | 0x0002)   # TPM_LEFTALIGN | TPM_RIGHTBUTTON
+em.mov_r32_ripmem('r8', bsyms['caption_pt'])
+em.mov_r32_ripmem('r9', bsyms['caption_pt'] + 4)
+em.mov_mrsp_imm32(0x20, 0)
+em.mov_r64_ripmem('rax', bsyms['hwnd_main']); em.mov_mrsp_reg64(0x28, 'rax')
+em.mov_mrsp_imm32(0x30, 0, qword=True)
+em.call_iat('TrackPopupMenu')
+em.mov_r64_ripmem('rcx', bsyms['hwnd_main']); em.mov_r32_imm('rdx', 0); em.xor32('r8'); em.xor32('r9'); em.call_iat('PostMessageW')
+em.label('cap_menu_ret'); em.add_r64_imm8('rsp', 0x48); em.emit(0xC3)
+
+
+def _cap_draw_text(sym, rect_idx, flags=0x24):
+    em.mov_r64_ripmem('rcx', bsyms['paint_hdc'])
+    em.lea_rip('rdx', rsyms[sym])
+    em.mov_r32_imm('r8', -1)
+    em.lea_rip('r9', bsyms['caption_rects'] + CAP_RECT[rect_idx] * 16)
+    em.mov_mrsp_imm32(0x20, flags)
+    em.call_iat('DrawTextW')
+
+
+em.label('caption_paint')
+em.mov_mrsp_reg64(0x48, 'rdx')
+em.lea_rip('rdx', bsyms['cap_ps'])
+em.mov_r64_ripmem('rcx', bsyms['hwnd_caption'])
+em.call_iat('BeginPaint')
+em.mov_ripmem_r64(bsyms['paint_hdc'], 'rax')
+em.mov_r64_ripmem('rax', bsyms['hwnd_caption']); em.mov_ripmem_r64(bsyms['caption_paint_hwnd'], 'rax')
+em.mov_r64_ripmem('rcx', bsyms['hwnd_caption'])
+em.lea_rip('rdx', bsyms['cap_client_rect']); em.call_iat('GetClientRect')
+em.mov_r32_ripmem('rax', bsyms['cap_client_rect'] + 8); em.mov_ripmem_r32(bsyms['caption_w'], 'rax')
+em.call_label('caption_layout')
+em.mov_r64_ripmem('rcx', bsyms['paint_hdc'])
+em.mov_r64_ripmem('rdx', bsyms['hbrush_caption']); em.call_iat('SelectObject')
+em.mov_r32_imm('rcx', 5); em.call_iat('GetStockObject')
+em.mov_r64_ripmem('rcx', bsyms['paint_hdc']); em.mov_r64_r64('rdx', 'rax'); em.call_iat('SelectObject')
+em.mov_r64_ripmem('rcx', bsyms['hwnd_caption'])
+em.lea_rip('rdx', bsyms['cap_client_rect']); em.call_iat('GetClientRect')
+em.mov_r64_ripmem('rcx', bsyms['paint_hdc'])
+em.lea_rip('rdx', bsyms['cap_client_rect'])
+em.mov_r64_ripmem('r8', bsyms['hbrush_caption']); em.call_iat('FillRect')
+em.mov_r64_ripmem('rcx', bsyms['paint_hdc']); em.mov_r64_ripmem('rdx', bsyms['hfont_caption']); em.call_iat('SelectObject')
+em.mov_r64_ripmem('rcx', bsyms['paint_hdc']); em.mov_r32_imm('rdx', 1); em.call_iat('SetBkMode')
+em.mov_r64_ripmem('rcx', bsyms['paint_hdc'])
+em.mov_r32_ripmem('rax', bsyms['theme_dark']); em.test32('rax')
+em.jcc(0x84, 'cap_paint_light_text')
+em.mov_r32_imm('rdx', 0x00E6E6E6); em.jmp('cap_paint_text_color')
+em.label('cap_paint_light_text'); em.mov_r32_imm('rdx', 0x00202020)
+em.label('cap_paint_text_color'); em.call_iat('SetTextColor')
+_cap_draw_text('caption_title', 'title')
+_cap_draw_text('caption_file', 'file', 0x25)
+_cap_draw_text('caption_edit', 'edit', 0x25)
+_cap_draw_text('caption_markdown', 'markdown', 0x25)
+_cap_draw_text('caption_view', 'view', 0x25)
+_cap_draw_text('caption_help', 'help', 0x25)
+_cap_draw_icons()
+# Window buttons: hover + glyphs. Close uses the accent red on hover.
+_cap_hover_bg('min', CAP_ID['min'], CAP_RECT['min'])
+_cap_hover_bg('max', CAP_ID['max'], CAP_RECT['max'])
+_cap_hover_bg('close', CAP_ID['close'], CAP_RECT['close'], close=True)
+_cap_draw_text('caption_min', 'min', 0x25)
+_cap_draw_text('caption_max', 'max', 0x25)
+_cap_draw_text('caption_close', 'close', 0x25)
+em.mov_r64_ripmem('rcx', bsyms['hwnd_caption'])
+em.lea_rip('rdx', bsyms['cap_ps']); em.call_iat('EndPaint')
+em.xor32('rax'); em.add_r64_imm8('rsp', 0x58); em.emit(0xC3)
+
+
+em.label('captionproc')
+em.emit(0x48,0x83,0xEC,0x58)
+em.cmp_r32_imm('rdx', 0x000F); em.jcc(0x84, 'caption_paint')
+em.cmp_r32_imm('rdx', 0x0200); em.jcc(0x84, 'caption_mousemove')
+em.cmp_r32_imm('rdx', 0x02A3); em.jcc(0x84, 'caption_mouseleave')
+em.cmp_r32_imm('rdx', 0x0201); em.jcc(0x84, 'caption_lbuttondown')
+em.cmp_r32_imm('rdx', 0x0202); em.jcc(0x84, 'caption_lbuttonup')
+em.cmp_r32_imm('rdx', 0x0203); em.jcc(0x84, 'caption_lbuttondblclk')
+em.jmp('caption_default')
+
+em.label('caption_mousemove')
+em.mov_r32_r32('r10', 'r9'); em.and_r32_imm('r10', 0xFFFF)
+em.mov_r32_r32('r11', 'r9'); em.shr_r32_imm8('r11', 16)
+em.call_label('caption_hit_test')
+em.mov_ripmem_r32(bsyms['caption_hit'], 'rax')
+em.mov_r32_ripmem('r10', bsyms['caption_hot']); em.cmp_r32_r32('r10', 'rax')
+em.jcc(0x84, 'caption_mousemove_track')
+em.mov_ripmem_r32(bsyms['caption_hot'], 'rax')
+em.mov_r64_ripmem('rcx', bsyms['hwnd_caption']); em.xor32('rdx'); em.mov_r32_imm('r8', 1); em.call_iat('InvalidateRect')
+em.label('caption_mousemove_track')
+em.mov_ripmem_imm32(bsyms['caption_tme'], 16)
+em.mov_ripmem_imm32(bsyms['caption_tme'] + 4, 2)
+em.mov_r64_ripmem('rax', bsyms['hwnd_caption']); em.mov_ripmem_r64(bsyms['caption_tme'] + 8, 'rax')
+em.mov_ripmem_imm32(bsyms['caption_tme'] + 16, 0)
+em.lea_rip('rcx', bsyms['caption_tme']); em.call_iat('TrackMouseEvent')
+em.xor32('rax'); em.add_r64_imm8('rsp', 0x58); em.emit(0xC3)
+
+em.label('caption_mouseleave')
+em.mov_ripmem_imm32(bsyms['caption_hot'], 0)
+em.mov_r64_ripmem('rcx', bsyms['hwnd_caption']); em.xor32('rdx'); em.mov_r32_imm('r8', 1); em.call_iat('InvalidateRect')
+em.xor32('rax'); em.add_r64_imm8('rsp', 0x58); em.emit(0xC3)
+
+em.label('caption_lbuttondown')
+em.mov_r32_r32('r10', 'r9'); em.and_r32_imm('r10', 0xFFFF)
+em.mov_r32_r32('r11', 'r9'); em.shr_r32_imm8('r11', 16)
+em.call_label('caption_hit_test')
+em.mov_ripmem_r32(bsyms['caption_press'], 'rax')
+em.test32('rax'); em.jcc(0x85, 'caption_down_return')
+em.mov_r64_ripmem('rcx', bsyms['hwnd_main']); em.call_iat('ReleaseCapture')
+em.mov_r64_ripmem('rcx', bsyms['hwnd_main']); em.mov_r32_imm('rdx', 0x00A1); em.mov_r32_imm('r8', 2); em.xor32('r9'); em.call_iat('SendMessageW')
+em.label('caption_down_return'); em.xor32('rax'); em.add_r64_imm8('rsp', 0x58); em.emit(0xC3)
+
+em.label('caption_lbuttonup')
+em.mov_r32_r32('r10', 'r9'); em.and_r32_imm('r10', 0xFFFF)
+em.mov_r32_r32('r11', 'r9'); em.shr_r32_imm8('r11', 16)
+em.call_label('caption_hit_test')
+em.mov_r32_ripmem('r10', bsyms['caption_press']); em.cmp_r32_r32('r10', 'rax')
+em.jcc(0x85, 'caption_up_clear')
+em.cmp_r32_imm('rax', 0); em.jcc(0x84, 'caption_up_clear')
+em.cmp_r32_imm('rax', CAP_ID['toggle']); em.jcc(0x85, 'cap_up_not_toggle')
+em.mov_r64_ripmem('rcx', bsyms['hwnd_main']); em.mov_r32_imm('rdx', 0x8001); em.mov_r32_imm('r8', 1307); em.xor32('r9'); em.call_iat('PostMessageW'); em.jmp('caption_up_clear')
+em.label('cap_up_not_toggle')
+for _name in ('file', 'edit', 'markdown', 'view', 'help'):
+    em.cmp_r32_imm('rax', CAP_ID[_name]); em.jcc(0x85, f'cap_up_not_{_name}')
+    em.call_label('caption_show_menu'); em.jmp('caption_up_clear')
+    em.label(f'cap_up_not_{_name}')
+em.cmp_r32_imm('rax', CAP_ID['save']); em.jcc(0x85, 'cap_up_not_save')
+em.mov_r64_ripmem('rcx', bsyms['hwnd_main']); em.mov_r32_imm('rdx', 0x8001); em.mov_r32_imm('r8', 1003); em.xor32('r9'); em.call_iat('PostMessageW'); em.jmp('caption_up_clear')
+em.label('cap_up_not_save')
+em.cmp_r32_imm('rax', CAP_ID['find']); em.jcc(0x85, 'cap_up_not_find')
+em.mov_r64_ripmem('rcx', bsyms['hwnd_main']); em.mov_r32_imm('rdx', 0x8001); em.mov_r32_imm('r8', 1106); em.xor32('r9'); em.call_iat('PostMessageW'); em.jmp('caption_up_clear')
+em.label('cap_up_not_find')
+em.cmp_r32_imm('rax', CAP_ID['viewmode']); em.jcc(0x85, 'cap_up_not_viewmode')
+em.mov_r64_ripmem('rcx', bsyms['hwnd_main']); em.mov_r32_imm('rdx', 0x8001); em.mov_r32_imm('r8', 1306); em.xor32('r9'); em.call_iat('PostMessageW'); em.jmp('caption_up_clear')
+em.label('cap_up_not_viewmode')
+em.cmp_r32_imm('rax', CAP_ID['theme']); em.jcc(0x85, 'cap_up_not_theme')
+em.mov_r32_ripmem('r10', bsyms['theme_dark']); em.test32('r10'); em.jcc(0x84, 'cap_up_theme_dark')
+em.mov_r32_imm('r8', 1310); em.jmp('cap_up_theme_post')
+em.label('cap_up_theme_dark'); em.mov_r32_imm('r8', 1311)
+em.label('cap_up_theme_post')
+em.mov_r64_ripmem('rcx', bsyms['hwnd_main']); em.mov_r32_imm('rdx', 0x8001); em.xor32('r9'); em.call_iat('PostMessageW'); em.jmp('caption_up_clear')
+em.label('cap_up_not_theme')
+em.cmp_r32_imm('rax', CAP_ID['gear']); em.jcc(0x84, 'caption_up_clear')
+em.cmp_r32_imm('rax', CAP_ID['rightbar']); em.jcc(0x84, 'caption_up_clear')
+em.cmp_r32_imm('rax', CAP_ID['min']); em.jcc(0x85, 'cap_up_not_min')
+em.mov_r64_ripmem('rcx', bsyms['hwnd_main']); em.mov_r32_imm('rdx', 6); em.call_iat('ShowWindow'); em.jmp('caption_up_clear')
+em.label('cap_up_not_min')
+em.cmp_r32_imm('rax', CAP_ID['max']); em.jcc(0x85, 'cap_up_not_max')
+em.mov_r64_ripmem('rcx', bsyms['hwnd_main']); em.call_iat('IsZoomed'); em.test32('rax'); em.jcc(0x84, 'cap_up_maximize')
+em.mov_r64_ripmem('rcx', bsyms['hwnd_main']); em.mov_r32_imm('rdx', 9); em.jmp('cap_up_max_call')
+em.label('cap_up_maximize'); em.mov_r64_ripmem('rcx', bsyms['hwnd_main']); em.mov_r32_imm('rdx', 3)
+em.label('cap_up_max_call'); em.call_iat('ShowWindow'); em.jmp('caption_up_clear')
+em.label('cap_up_not_max')
+em.cmp_r32_imm('rax', CAP_ID['close']); em.jcc(0x85, 'caption_up_clear')
+em.mov_r64_ripmem('rcx', bsyms['hwnd_main']); em.mov_r32_imm('rdx', 0x0010); em.xor32('r8'); em.xor32('r9'); em.call_iat('PostMessageW')
+em.label('caption_up_clear'); em.mov_ripmem_imm32(bsyms['caption_press'], 0)
+em.xor32('rax'); em.add_r64_imm8('rsp', 0x58); em.emit(0xC3)
+
+em.label('caption_lbuttondblclk')
+em.mov_r32_r32('r10', 'r9'); em.and_r32_imm('r10', 0xFFFF)
+em.mov_r32_r32('r11', 'r9'); em.shr_r32_imm8('r11', 16)
+em.call_label('caption_hit_test'); em.test32('rax')
+em.jcc(0x85, 'caption_dbl_return')
+em.mov_r64_ripmem('rcx', bsyms['hwnd_main']); em.call_iat('IsZoomed'); em.test32('rax')
+em.jcc(0x84, 'caption_dbl_max'); em.mov_r64_ripmem('rcx', bsyms['hwnd_main']); em.mov_r32_imm('rdx', 9); em.jmp('caption_dbl_call')
+em.label('caption_dbl_max'); em.mov_r64_ripmem('rcx', bsyms['hwnd_main']); em.mov_r32_imm('rdx', 3)
+em.label('caption_dbl_call'); em.call_iat('ShowWindow')
+em.label('caption_dbl_return'); em.xor32('rax'); em.add_r64_imm8('rsp', 0x58); em.emit(0xC3)
+
+em.label('caption_default')
+em.call_iat('DefWindowProcW'); em.add_r64_imm8('rsp', 0x58); em.emit(0xC3)
+
 # Helper: resize Outline content + permanent scrollbar gutter + independent
 # scrollbar + 1px divider + active document surface from one geometry source.
 em.label('resize_children')
 em.emit(0x48,0x83,0xEC,0x38)
+if CUSTOM_CAPTION:
+    em.mov_r64_ripmem('rcx',bsyms['hwnd_caption']); em.test64('rcx'); em.jcc(0x84,'resize_caption_done')
+    em.xor32('rdx'); em.xor32('r8'); em.mov_r32_ripmem('r9',bsyms['client_w']); em.mov_mrsp_imm32(0x20,TITLEBAR_H); em.mov_mrsp_imm32(0x28,1,qword=True); em.call_iat('MoveWindow')
+    em.label('resize_caption_done')
 em.xor32('rax'); em.mov_ripmem_r32(bsyms['status_h'],'rax')
 em.mov_r32_ripmem('rax',bsyms['status_flag']); em.test32('rax'); em.jcc(0x84,'resize_content')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_status']); em.test64('rcx'); em.jcc(0x84,'resize_content')
@@ -2446,7 +3043,11 @@ em.xor32('rdx'); em.mov_r32_ripmem('r8',bsyms['client_w']); em.sub_r32_imm8('r8'
 em.mov_r32_ripmem('r9',bsyms['client_h']); em.mov_r32_ripmem('rax',bsyms['status_h']); em.sub_r32_r32('r9','rax')
 em.mov_mrsp_imm32(0x20,56); em.mov_r32_ripmem('r11',bsyms['status_h']); em.mov_mrsp_reg32(0x28,'r11'); em.mov_mrsp_imm32(0x30,0x0040); em.call_iat('SetWindowPos')
 em.label('resize_content')
-em.mov_r32_ripmem('r11',bsyms['client_h']); em.mov_r32_ripmem('rax',bsyms['status_h']); em.sub_r32_r32('r11','rax'); em.mov_ripmem_r32(bsyms['content_h'],'r11')
+em.mov_r32_ripmem('r11',bsyms['client_h']); em.mov_r32_ripmem('rax',bsyms['status_h']); em.sub_r32_r32('r11','rax')
+if CUSTOM_CAPTION:
+    em.sub_r32_imm8('r11',CAPTION_H)
+em.mov_ripmem_r32(bsyms['content_h'],'r11')
+em.mov_ripmem_imm32(bsyms['content_y'],CAPTION_H)
 em.mov_ripmem_imm32(bsyms['content_x'],0); em.mov_r32_ripmem('r10',bsyms['client_w']); em.mov_ripmem_r32(bsyms['content_w'],'r10')
 em.mov_r32_ripmem('rax',bsyms['outline_flag']); em.test32('rax'); em.jcc(0x84,'resize_sidebar_hidden')
 # Total sidebar width remains outline_width. Reserve scrollbar_w pixels inside it.
@@ -2476,18 +3077,18 @@ em.label('rc_split_done')
 em.mov_r32_ripmem('r11',bsyms['content_h']); em.sub_r32_imm8('r11',60)
 em.mov_r32_ripmem('rax',bsyms['files_list_h']); em.sub_r32_r32('r11','rax')
 em.mov_ripmem_r32(bsyms['outline_list_h'],'r11')
-em.mov_ripmem_imm32(bsyms['files_list_y'],28)
-em.add_r32_imm8('rax',28); em.mov_ripmem_r32(bsyms['divider_y'],'rax')
+em.mov_r32_ripmem('r10',bsyms['content_y']); em.add_r32_imm8('r10',28); em.mov_ripmem_r32(bsyms['files_list_y'],'r10')
+em.mov_r32_ripmem('rax',bsyms['files_list_h']); em.add_r32_r32('rax','r10'); em.mov_ripmem_r32(bsyms['divider_y'],'rax')
 em.mov_r32_ripmem('r11',bsyms['divider_y']); em.add_r32_imm8('r11',32); em.mov_ripmem_r32(bsyms['outline_list_y'],'r11')
 # 文件标题栏
-em.mov_r64_ripmem('rcx',bsyms['hwnd_files_header']); em.xor32('rdx'); em.xor32('r8'); em.mov_r32_ripmem('r9',bsyms['outline_width']); em.mov_mrsp_imm32(0x20,28); em.mov_mrsp_imm32(0x28,1,qword=True); em.call_iat('MoveWindow')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_files_header']); em.xor32('rdx'); em.mov_r32_ripmem('r8',bsyms['content_y']); em.mov_r32_ripmem('r9',bsyms['outline_width']); em.mov_mrsp_imm32(0x20,28); em.mov_mrsp_imm32(0x28,1,qword=True); em.call_iat('MoveWindow')
 # 文件列表：右侧留出与大纲完全相同的滚动条槽位，槽里放自绘细滚动面。
-em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.xor32('rdx'); em.mov_r32_imm('r8',28)
+em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.xor32('rdx'); em.mov_r32_ripmem('r8',bsyms['files_list_y'])
 em.mov_r32_ripmem('r9',bsyms['outline_width'])
 em.mov_r32_ripmem('r11',bsyms['files_list_h']); em.mov_mrsp_reg32(0x20,'r11'); em.mov_mrsp_imm32(0x28,1,qword=True); em.call_iat('MoveWindow')
 # 文件面板滚动面（ID 19）：与大纲滚动面同矩形规则
 em.mov_r64_ripmem('rcx',bsyms['hwnd_files_scroll']); em.mov_r32_ripmem('r10',bsyms['scrollbar_w'])
-em.mov_r32_ripmem('rdx',bsyms['outline_width']); em.sub_r32_r32('rdx','r10'); em.mov_r32_imm('r8',28); em.mov_r32_r32('r9','r10')
+em.mov_r32_ripmem('rdx',bsyms['outline_width']); em.sub_r32_r32('rdx','r10'); em.mov_r32_ripmem('r8',bsyms['files_list_y']); em.mov_r32_r32('r9','r10')
 em.mov_r32_ripmem('r11',bsyms['files_list_h']); em.mov_mrsp_reg32(0x20,'r11'); em.mov_mrsp_imm32(0x28,1,qword=True); em.call_iat('MoveWindow')
 # 分界线
 em.mov_r64_ripmem('rcx',bsyms['hwnd_panel_divider']); em.xor32('rdx'); em.mov_r32_ripmem('r8',bsyms['divider_y']); em.mov_r32_ripmem('r9',bsyms['outline_width']); em.mov_mrsp_imm32(0x20,4); em.mov_mrsp_imm32(0x28,1,qword=True); em.call_iat('MoveWindow')
@@ -2508,7 +3109,7 @@ em.mov_r32_ripmem('r11',bsyms['outline_list_h']); em.mov_mrsp_reg32(0x20,'r11');
 # Keep the custom surface above the fallback gutter STATIC without changing geometry.
 em.mov_r64_ripmem('rcx',bsyms['hwnd_outline_scroll']); em.xor32('rdx'); em.xor32('r8'); em.xor32('r9'); em.mov_mrsp_imm32(0x20,0); em.mov_mrsp_imm32(0x28,0); em.mov_mrsp_imm32(0x30,0x0013); em.call_iat('SetWindowPos')
 # One-pixel visual divider after the gutter.
-em.mov_r64_ripmem('rcx',bsyms['hwnd_splitter']); em.mov_r32_ripmem('rdx',bsyms['outline_width']); em.xor32('r8'); em.mov_r32_imm('r9',1); em.mov_r32_ripmem('r11',bsyms['content_h']); em.mov_mrsp_reg32(0x20,'r11'); em.mov_mrsp_imm32(0x28,1,qword=True); em.call_iat('MoveWindow')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_splitter']); em.mov_r32_ripmem('rdx',bsyms['outline_width']); em.mov_r32_ripmem('r8',bsyms['content_y']); em.mov_r32_imm('r9',1); em.mov_r32_ripmem('r11',bsyms['content_h']); em.mov_mrsp_reg32(0x20,'r11'); em.mov_mrsp_imm32(0x28,1,qword=True); em.call_iat('MoveWindow')
 # Ensure stable visibility without changing any geometry.
 em.mov_r64_ripmem('rcx',bsyms['hwnd_files_header']); em.mov_r32_imm('rdx',5); em.call_iat('ShowWindow')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_panel_divider']); em.mov_r32_imm('rdx',5); em.call_iat('ShowWindow')
@@ -2546,9 +3147,9 @@ em.mov_ripmem_imm32(bsyms['outline_scroll_track_h'],100)
 em.mov_ripmem_imm32(bsyms['outline_visible_rows'],1)
 em.mov_ripmem_imm32(bsyms['outline_max_top'],0)
 em.label('resize_doc')
-em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.test64('rcx'); em.jcc(0x84,'resize_preview_surface'); em.mov_r32_ripmem('rdx',bsyms['content_x']); em.xor32('r8'); em.mov_r32_ripmem('r9',bsyms['content_w']); em.mov_r32_ripmem('r11',bsyms['content_h']); em.mov_mrsp_reg32(0x20,'r11'); em.mov_mrsp_imm32(0x28,1,qword=True); em.call_iat('MoveWindow')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.test64('rcx'); em.jcc(0x84,'resize_preview_surface'); em.mov_r32_ripmem('rdx',bsyms['content_x']); em.mov_r32_ripmem('r8',bsyms['content_y']); em.mov_r32_ripmem('r9',bsyms['content_w']); em.mov_r32_ripmem('r11',bsyms['content_h']); em.mov_mrsp_reg32(0x20,'r11'); em.mov_mrsp_imm32(0x28,1,qword=True); em.call_iat('MoveWindow')
 em.label('resize_preview_surface')
-em.mov_r64_ripmem('rcx',bsyms['hwnd_preview']); em.test64('rcx'); em.jcc(0x84,'resize_ret'); em.mov_r32_ripmem('rdx',bsyms['content_x']); em.xor32('r8'); em.mov_r32_ripmem('r9',bsyms['content_w']); em.mov_r32_ripmem('r11',bsyms['content_h']); em.mov_mrsp_reg32(0x20,'r11'); em.mov_mrsp_imm32(0x28,1,qword=True); em.call_iat('MoveWindow')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_preview']); em.test64('rcx'); em.jcc(0x84,'resize_ret'); em.mov_r32_ripmem('rdx',bsyms['content_x']); em.mov_r32_ripmem('r8',bsyms['content_y']); em.mov_r32_ripmem('r9',bsyms['content_w']); em.mov_r32_ripmem('r11',bsyms['content_h']); em.mov_mrsp_reg32(0x20,'r11'); em.mov_mrsp_imm32(0x28,1,qword=True); em.call_iat('MoveWindow')
 # V8.6.1：拖动分隔条时文档面同时改变位置与宽度，必须显式重绘——否则 RichEdit
 # 会留下旧像素（拖动时花屏），要等下一次偶然重绘才恢复。RDW_INVALIDATE|RDW_ERASE|
 # RDW_ALLCHILDREN（不加 UPDATENOW，让连续拖动自然合并到下一帧）。
@@ -3865,6 +4466,8 @@ em.label('navigate_ret'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
 # 2px separator in the window DC; menu items themselves remain system/UAH drawn.
 em.label('paint_menu_gaps')
 em.emit(0x48,0x83,0xEC,0x28)
+if CUSTOM_CAPTION:
+    em.jmp('paint_menu_gap_ret')
 em.mov_r32_ripmem('rax',bsyms['theme_dark']); em.test32('rax'); em.jcc(0x84,'paint_menu_gap_ret')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_main']); em.test64('rcx'); em.jcc(0x84,'paint_menu_gap_ret')
 em.mov_r64_ripmem('rdx',bsyms['hmenu_main']); em.mov_r32_imm('r8',4); em.lea_rip('r9',bsyms['nc_itemrect']); em.call_iat('GetMenuItemRect'); em.test32('rax'); em.jcc(0x84,'paint_menu_gap_ret')
@@ -3896,10 +4499,28 @@ em.label('theme_del_splitter'); em.mov_r64_ripmem('rcx',bsyms['hbrush_splitter']
 em.label('theme_del_status'); em.mov_r64_ripmem('rcx',bsyms['hbrush_status']); em.test64('rcx'); em.jcc(0x84,'theme_del_menu'); em.call_iat('DeleteObject')
 em.label('theme_del_menu'); em.mov_r64_ripmem('rcx',bsyms['hbrush_menu']); em.test64('rcx'); em.jcc(0x84,'theme_del_scroll_thumb'); em.call_iat('DeleteObject')
 em.label('theme_del_scroll_thumb'); em.mov_r64_ripmem('rcx',bsyms['hbrush_scroll_thumb']); em.test64('rcx'); em.jcc(0x84,'theme_del_scroll_hot'); em.call_iat('DeleteObject')
-em.label('theme_del_scroll_hot'); em.mov_r64_ripmem('rcx',bsyms['hbrush_scroll_hot']); em.test64('rcx'); em.jcc(0x84,'theme_make'); em.call_iat('DeleteObject')
+em.label('theme_del_scroll_hot'); em.mov_r64_ripmem('rcx',bsyms['hbrush_scroll_hot']); em.test64('rcx'); em.jcc(0x84,'theme_del_caption_pen'); em.call_iat('DeleteObject')
+em.label('theme_del_caption_pen'); em.mov_r64_ripmem('rcx',bsyms['hpen_caption']); em.test64('rcx'); em.jcc(0x84,'theme_del_caption_hotpen'); em.call_iat('DeleteObject')
+em.label('theme_del_caption_hotpen'); em.mov_r64_ripmem('rcx',bsyms['hpen_caption_hot']); em.test64('rcx'); em.jcc(0x84,'theme_del_caption_bg'); em.call_iat('DeleteObject')
+em.label('theme_del_caption_bg'); em.mov_r64_ripmem('rcx',bsyms['hbrush_caption']); em.test64('rcx'); em.jcc(0x84,'theme_del_caption_hotbg'); em.call_iat('DeleteObject')
+em.label('theme_del_caption_hotbg'); em.mov_r64_ripmem('rcx',bsyms['hbrush_caption_hot']); em.test64('rcx'); em.jcc(0x84,'theme_del_caption_closebg'); em.call_iat('DeleteObject')
+em.label('theme_del_caption_closebg'); em.mov_r64_ripmem('rcx',bsyms['hbrush_caption_close_hot']); em.test64('rcx'); em.jcc(0x84,'theme_del_caption_icon'); em.call_iat('DeleteObject')
+em.label('theme_del_caption_icon'); em.mov_r64_ripmem('rcx',bsyms['hbrush_caption_icon']); em.test64('rcx'); em.jcc(0x84,'theme_make'); em.call_iat('DeleteObject')
 em.label('theme_make'); em.mov_r32_ripmem('rax',bsyms['theme_dark']); em.test32('rax'); em.jcc(0x84,'theme_make_light')
-em.mov_r32_imm('rcx',0x001A1A1A); em.call_iat('CreateSolidBrush'); em.mov_ripmem_r64(bsyms['hbrush_edit'],'rax'); em.mov_r32_imm('rcx',0x001F1F1F); em.call_iat('CreateSolidBrush'); em.mov_ripmem_r64(bsyms['hbrush_outline'],'rax'); em.mov_r32_imm('rcx',0x001D1D1D); em.call_iat('CreateSolidBrush'); em.mov_ripmem_r64(bsyms['hbrush_splitter'],'rax'); em.mov_r32_imm('rcx',0x00202020); em.call_iat('CreateSolidBrush'); em.mov_ripmem_r64(bsyms['hbrush_status'],'rax'); em.mov_r32_imm('rcx',0x00202020); em.call_iat('CreateSolidBrush'); em.mov_ripmem_r64(bsyms['hbrush_menu'],'rax'); em.mov_r32_imm('rcx',0x004A4A4A); em.call_iat('CreateSolidBrush'); em.mov_ripmem_r64(bsyms['hbrush_scroll_thumb'],'rax'); em.mov_r32_imm('rcx',0x006E6E6E); em.call_iat('CreateSolidBrush'); em.mov_ripmem_r64(bsyms['hbrush_scroll_hot'],'rax'); em.jmp('theme_controls')
+em.mov_r32_imm('rcx',0x001A1A1A); em.call_iat('CreateSolidBrush'); em.mov_ripmem_r64(bsyms['hbrush_edit'],'rax'); em.mov_r32_imm('rcx',0x001F1F1F); em.call_iat('CreateSolidBrush'); em.mov_ripmem_r64(bsyms['hbrush_outline'],'rax'); em.mov_r32_imm('rcx',0x001D1D1D); em.call_iat('CreateSolidBrush'); em.mov_ripmem_r64(bsyms['hbrush_splitter'],'rax'); em.mov_r32_imm('rcx',0x00202020); em.call_iat('CreateSolidBrush'); em.mov_ripmem_r64(bsyms['hbrush_status'],'rax'); em.mov_r32_imm('rcx',0x00202020); em.call_iat('CreateSolidBrush'); em.mov_ripmem_r64(bsyms['hbrush_menu'],'rax'); em.mov_r32_imm('rcx',0x004A4A4A); em.call_iat('CreateSolidBrush'); em.mov_ripmem_r64(bsyms['hbrush_scroll_thumb'],'rax'); em.mov_r32_imm('rcx',0x006E6E6E); em.call_iat('CreateSolidBrush'); em.mov_ripmem_r64(bsyms['hbrush_scroll_hot'],'rax')
+em.mov_r32_imm('rcx',0x00202020); em.call_iat('CreateSolidBrush'); em.mov_ripmem_r64(bsyms['hbrush_caption'],'rax')
+em.mov_r32_imm('rcx',0x003A3A3A); em.call_iat('CreateSolidBrush'); em.mov_ripmem_r64(bsyms['hbrush_caption_hot'],'rax')
+em.mov_r32_imm('rcx',0x00C42B1C); em.call_iat('CreateSolidBrush'); em.mov_ripmem_r64(bsyms['hbrush_caption_close_hot'],'rax')
+em.mov_r32_imm('rcx',0x00E6E6E6); em.call_iat('CreateSolidBrush'); em.mov_ripmem_r64(bsyms['hbrush_caption_icon'],'rax')
+em.mov_r32_imm('rcx',0); em.mov_r32_imm('rdx',1); em.mov_r32_imm('r8',0x00E6E6E6); em.call_iat('CreatePen'); em.mov_ripmem_r64(bsyms['hpen_caption'],'rax')
+em.mov_r32_imm('rcx',0); em.mov_r32_imm('rdx',1); em.mov_r32_imm('r8',0x00FFFFFF); em.call_iat('CreatePen'); em.mov_ripmem_r64(bsyms['hpen_caption_hot'],'rax'); em.jmp('theme_controls')
 em.label('theme_make_light'); em.mov_r32_imm('rcx',0x00FFFFFF); em.call_iat('CreateSolidBrush'); em.mov_ripmem_r64(bsyms['hbrush_edit'],'rax'); em.mov_r32_imm('rcx',0x00F3F3F3); em.call_iat('CreateSolidBrush'); em.mov_ripmem_r64(bsyms['hbrush_outline'],'rax'); em.mov_r32_imm('rcx',0x00E8EAED); em.call_iat('CreateSolidBrush'); em.mov_ripmem_r64(bsyms['hbrush_splitter'],'rax'); em.mov_r32_imm('rcx',0x00F5F5F5); em.call_iat('CreateSolidBrush'); em.mov_ripmem_r64(bsyms['hbrush_status'],'rax'); em.mov_r32_imm('rcx',0x00F5F5F5); em.call_iat('CreateSolidBrush'); em.mov_ripmem_r64(bsyms['hbrush_menu'],'rax'); em.mov_r32_imm('rcx',0x00C8C8C8); em.call_iat('CreateSolidBrush'); em.mov_ripmem_r64(bsyms['hbrush_scroll_thumb'],'rax'); em.mov_r32_imm('rcx',0x00A6A6A6); em.call_iat('CreateSolidBrush'); em.mov_ripmem_r64(bsyms['hbrush_scroll_hot'],'rax')
+em.mov_r32_imm('rcx',0x00F5F5F5); em.call_iat('CreateSolidBrush'); em.mov_ripmem_r64(bsyms['hbrush_caption'],'rax')
+em.mov_r32_imm('rcx',0x00E5E5E5); em.call_iat('CreateSolidBrush'); em.mov_ripmem_r64(bsyms['hbrush_caption_hot'],'rax')
+em.mov_r32_imm('rcx',0x00C42B1C); em.call_iat('CreateSolidBrush'); em.mov_ripmem_r64(bsyms['hbrush_caption_close_hot'],'rax')
+em.mov_r32_imm('rcx',0x00202020); em.call_iat('CreateSolidBrush'); em.mov_ripmem_r64(bsyms['hbrush_caption_icon'],'rax')
+em.mov_r32_imm('rcx',0); em.mov_r32_imm('rdx',1); em.mov_r32_imm('r8',0x00202020); em.call_iat('CreatePen'); em.mov_ripmem_r64(bsyms['hpen_caption'],'rax')
+em.mov_r32_imm('rcx',0); em.mov_r32_imm('rdx',1); em.mov_r32_imm('r8',0x00000000); em.call_iat('CreatePen'); em.mov_ripmem_r64(bsyms['hpen_caption_hot'],'rax')
 em.label('theme_controls')
 # Documented MENUINFO background fills the *entire* menu bar, including the empty
 # area to the right of Help, and applies the brush recursively to submenus.
@@ -3960,6 +4581,7 @@ em.label('theme_dark_check'); em.call_iat('CheckMenuItem')
 em.call_label('apply_preview_theme_color')
 # Repaint child surfaces so WM_CTLCOLOR* immediately uses the new brushes/colors.
 em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.xor32('rdx'); em.mov_r32_imm('r8',1); em.call_iat('InvalidateRect'); em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.xor32('rdx'); em.mov_r32_imm('r8',1); em.call_iat('InvalidateRect'); em.mov_r64_ripmem('rcx',bsyms['hwnd_splitter']); em.xor32('rdx'); em.mov_r32_imm('r8',1); em.call_iat('InvalidateRect'); em.mov_r64_ripmem('rcx',bsyms['hwnd_outline_scroll']); em.xor32('rdx'); em.xor32('r8'); em.mov_r32_imm('r9',0x105); em.call_iat('RedrawWindow'); em.mov_r64_ripmem('rcx',bsyms['hwnd_files_scroll']); em.xor32('rdx'); em.xor32('r8'); em.mov_r32_imm('r9',0x105); em.call_iat('RedrawWindow'); em.mov_r64_ripmem('rcx',bsyms['hwnd_preview']); em.xor32('rdx'); em.mov_r32_imm('r8',1); em.call_iat('InvalidateRect'); em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.xor32('rdx'); em.mov_r32_imm('r8',1); em.call_iat('InvalidateRect'); em.mov_r64_ripmem('rcx',bsyms['hwnd_status']); em.xor32('rdx'); em.mov_r32_imm('r8',1); em.call_iat('InvalidateRect'); em.mov_r64_ripmem('rcx',bsyms['hwnd_corner']); em.xor32('rdx'); em.mov_r32_imm('r8',1); em.call_iat('InvalidateRect')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_caption']); em.test64('rcx'); em.jcc(0x84,'theme_skip_caption'); em.xor32('rdx'); em.mov_r32_imm('r8',1); em.call_iat('InvalidateRect'); em.mov_r64_ripmem('rcx',bsyms['hwnd_caption']); em.call_iat('UpdateWindow'); em.label('theme_skip_caption')
 # V8.6.1：面板框架是自绘子窗口，光换刷子不会自己重画——不显式重绘就会出现
 # “切主题后标题栏/分界线/gutter 还是上一个主题的颜色，收起再展开左栏才正常”。
 for _theme_child in ('hwnd_files_header', 'hwnd_outline_header',
@@ -4673,7 +5295,7 @@ _geo_owners = set()
 _geo_targets = ('hwnd_edit', 'hwnd_preview', 'hwnd_outline', 'hwnd_splitter',
                 'hwnd_outline_gutter', 'hwnd_outline_scroll', 'hwnd_status', 'hwnd_corner',
                 'hwnd_files', 'hwnd_files_header',
-                'hwnd_outline_header', 'hwnd_panel_divider')
+                'hwnd_outline_header', 'hwnd_panel_divider', 'hwnd_caption')
 for _i, _ln in enumerate(_scan_lines):
     if ("call_iat('MoveWindow')" in _ln or "call_iat('SetWindowPos')" in _ln):
         _ctx = '\n'.join(_scan_lines[max(0, _i - 3):_i + 1])
@@ -4682,7 +5304,8 @@ for _i, _ln in enumerate(_scan_lines):
 _layout_family = {'resize_children', 'resize_content', 'resize_doc',
                   'resize_preview_surface', 'repaint_splitter_surface',
                   'rc_usable_ok', 'rc_files_min', 'rc_files_max',
-                  'rc_outline_min', 'rc_outline_max', 'rc_split_done'}
+                  'rc_outline_min', 'rc_outline_max', 'rc_split_done',
+                  'resize_caption_done'}
 assert _geo_owners <= _layout_family, \
     f'架构违规：布局几何出现在 LayoutManager 外的例程 {_geo_owners - _layout_family}'
 
