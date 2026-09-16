@@ -14,9 +14,11 @@ paint, hit-test and hover state stay in one place:
 [find] [render/source] [dark/light] [gear] [right sidebar] [min] [max] [close]
 ```
 
-The six tool icons follow the Markra/Codex line style, share one 24px slot and
-one theme palette, and invalidate only the caption surface on hover. Save,
-find, render/source and dark/light post the existing command IDs, so the
+The six tool icons use Windows 10/11's system Fluent/MDL2 icon font
+(`Segoe MDL2 Assets`) instead of hand-drawn strokes, so they inherit the OS
+glyph shapes and DPI scaling and only need one text-color swap per theme.
+Each icon keeps a 24px slot and invalidates only the caption surface on hover.
+Save, find, render/source and dark/light post the existing command IDs, so the
 replacement row does not create a second state owner. The left switch posts
 the existing `View → Left Sidebar` command (`1307`). The gear and right-sidebar
 buttons are deliberate placeholders: they paint and hover today, but a click

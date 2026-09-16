@@ -202,6 +202,19 @@ wstr('defext','md')
 wstr('class_status','msctls_statusbar32')
 wstr('font_face','Microsoft YaHei UI')
 wstr('font_code','Consolas')
+wstr('font_icons','Segoe MDL2 Assets')
+wstr('icon_left','\ue8a7')
+wstr('icon_right','\ue8a8')
+wstr('icon_save','\ue74e')
+wstr('icon_find','\ue721')
+wstr('icon_eye','\ue890')
+wstr('icon_code','\ue943')
+wstr('icon_sun','\ue706')
+wstr('icon_moon','\ue708')
+wstr('icon_gear','\ue713')
+wstr('icon_min','\ue921')
+wstr('icon_max','\ue922')
+wstr('icon_close','\ue8bb')
 wstr('class_richedit','RICHEDIT50W')
 wstr('class_listbox','LISTBOX')
 wstr('class_scrollbar','SCROLLBAR')
@@ -339,6 +352,7 @@ bss_alloc('hfont_panel', 8, 8)
 bss_alloc('ncm_panel', 512, 8)
 bss_alloc('hwnd_caption', 8, 8)
 bss_alloc('hfont_caption', 8, 8)
+bss_alloc('hfont_icons', 8, 8)
 bss_alloc('hpen_caption', 8, 8)
 bss_alloc('hpen_caption_hot', 8, 8)
 bss_alloc('hbrush_caption', 8, 8)
@@ -1137,6 +1151,13 @@ em.test64('rax'); em.jcc(0x85,'panel_font_ready')
 em.label('panel_font_fallback'); em.mov_r64_ripmem('rax',bsyms['hfont_status']); em.mov_ripmem_r64(bsyms['hfont_panel'],'rax')
 em.label('panel_font_ready')
 em.mov_r64_ripmem('rax',bsyms['hfont_panel']); em.mov_ripmem_r64(bsyms['hfont_caption'],'rax')
+# V8.6.1 图标：不再手绘线框，直接用 Windows 10/11 自带的 Fluent 图标字体。
+# 这是系统免费资源，和标题行一样随主题换色；缺字体时退回菜单栏字体。
+em.mov_r32_imm('rcx',0xFFFFFFEE); em.xor32('rdx'); em.xor32('r8'); em.xor32('r9')
+em.mov_mrsp_imm32(0x20,400); em.mov_mrsp_imm32(0x28,0); em.mov_mrsp_imm32(0x30,0); em.mov_mrsp_imm32(0x38,0); em.mov_mrsp_imm32(0x40,1); em.mov_mrsp_imm32(0x48,0); em.mov_mrsp_imm32(0x50,0); em.mov_mrsp_imm32(0x58,5); em.mov_mrsp_imm32(0x60,0)
+em.lea_rip('rax',rsyms['font_icons']); em.mov_mrsp_reg64(0x68,'rax'); em.call_iat('CreateFontW'); em.mov_ripmem_r64(bsyms['hfont_icons'],'rax')
+em.test64('rax'); em.jcc(0x85,'icons_font_ready'); em.mov_r64_ripmem('rax',bsyms['hfont_panel']); em.mov_ripmem_r64(bsyms['hfont_icons'],'rax')
+em.label('icons_font_ready')
 em.mov_r64_r64('rcx','rsi'); em.call_iat('SetFocus')
 
 # Native Windows status bar (common-controls class).
@@ -2663,17 +2684,90 @@ def _cap_fill_ellipse(rect_idx, dx=0, dy=0, dw=0, dh=0):
     em.call_iat('Ellipse')
 
 
-def _cap_line(rect_idx, x1o, y1o, x2o, y2o):
+def _cap_set_draw_rel(rect_idx, x1, y1, x2, y2):
+    """Build draw_rect from slot-local coordinates, never from right/bottom."""
     base = bsyms['caption_rects'] + rect_idx * 16
     em.lea_rip('rcx', base)
-    em.mov_r32_mreg('r8', 'rcx', 0)
-    em.mov_r32_mreg('r9', 'rcx', 4)
-    em.mov_r32_mreg('r10', 'rcx', 8)
-    em.mov_r32_mreg('r11', 'rcx', 12)
-    em.add_r32_imm8('r8', x1o)
-    em.add_r32_imm8('r9', y1o)
-    em.add_r32_imm8('r10', x2o)
-    em.add_r32_imm8('r11', y2o)
+    em.lea_rip('rdx', bsyms['draw_rect'])
+    em.mov_r32_mreg('rax', 'rcx', 0); em.add_r32_imm('rax', x1)
+    em.mov_mreg_reg32('rdx', 0, 'rax')
+    em.mov_r32_mreg('rax', 'rcx', 4); em.add_r32_imm('rax', y1)
+    em.mov_mreg_reg32('rdx', 4, 'rax')
+    em.mov_r32_mreg('rax', 'rcx', 0); em.add_r32_imm('rax', x2)
+    em.mov_mreg_reg32('rdx', 8, 'rax')
+    em.mov_r32_mreg('rax', 'rcx', 4); em.add_r32_imm('rax', y2)
+    em.mov_mreg_reg32('rdx', 12, 'rax')
+
+
+def _cap_fill_rect_rel(rect_idx, x1, y1, x2, y2, brush_sym='hbrush_caption_icon'):
+    _cap_set_draw_rel(rect_idx, x1, y1, x2, y2)
+    em.mov_r64_ripmem('rcx', bsyms['paint_hdc'])
+    em.lea_rip('rdx', bsyms['draw_rect'])
+    em.mov_r64_ripmem('r8', bsyms[brush_sym])
+    em.call_iat('FillRect')
+
+
+def _cap_outline_rect_rel(rect_idx, x1, y1, x2, y2):
+    _cap_set_draw_rel(rect_idx, x1, y1, x2, y2)
+    em.mov_r64_ripmem('rcx', bsyms['paint_hdc'])
+    em.lea_rip('rdx', bsyms['draw_rect'])
+    em.mov_r32_mreg('r8', 'rdx', 0)
+    em.mov_r32_mreg('r9', 'rdx', 4)
+    em.mov_r32_mreg('rax', 'rdx', 8)
+    em.mov_r32_mreg('r10', 'rdx', 12)
+    em.mov_r64_r64('rdx', 'r8')
+    em.mov_r64_r64('r8', 'r9')
+    em.mov_r64_r64('r9', 'rax')
+    em.mov_mrsp_reg32(0x20, 'r10')
+    em.call_iat('Rectangle')
+
+
+def _cap_outline_ellipse_rel(rect_idx, x1, y1, x2, y2):
+    _cap_set_draw_rel(rect_idx, x1, y1, x2, y2)
+    em.mov_r64_ripmem('rcx', bsyms['paint_hdc'])
+    em.lea_rip('rdx', bsyms['draw_rect'])
+    em.mov_r32_mreg('r8', 'rdx', 0)
+    em.mov_r32_mreg('r9', 'rdx', 4)
+    em.mov_r32_mreg('rax', 'rdx', 8)
+    em.mov_r32_mreg('r10', 'rdx', 12)
+    em.mov_r64_r64('rdx', 'r8')
+    em.mov_r64_r64('r8', 'r9')
+    em.mov_r64_r64('r9', 'rax')
+    em.mov_mrsp_reg32(0x20, 'r10')
+    em.call_iat('Ellipse')
+
+
+def _cap_fill_ellipse_rel(rect_idx, x1, y1, x2, y2,
+                          brush_sym='hbrush_caption_icon'):
+    _cap_set_draw_rel(rect_idx, x1, y1, x2, y2)
+    em.mov_r64_ripmem('rcx', bsyms['paint_hdc'])
+    em.mov_r64_ripmem('rdx', bsyms[brush_sym])
+    em.call_iat('SelectObject')
+    em.mov_r32_imm('rcx', 8)
+    em.call_iat('GetStockObject')
+    em.mov_r64_ripmem('rcx', bsyms['paint_hdc'])
+    em.mov_r64_r64('rdx', 'rax')
+    em.call_iat('SelectObject')
+    em.mov_r64_ripmem('rcx', bsyms['paint_hdc'])
+    em.lea_rip('rdx', bsyms['draw_rect'])
+    em.mov_r32_mreg('r8', 'rdx', 0)
+    em.mov_r32_mreg('r9', 'rdx', 4)
+    em.mov_r32_mreg('rax', 'rdx', 8)
+    em.mov_r32_mreg('r10', 'rdx', 12)
+    em.mov_r64_r64('rdx', 'r8')
+    em.mov_r64_r64('r8', 'r9')
+    em.mov_r64_r64('r9', 'rax')
+    em.mov_mrsp_reg32(0x20, 'r10')
+    em.call_iat('Ellipse')
+
+
+def _cap_line_rel(rect_idx, x1, y1, x2, y2):
+    base = bsyms['caption_rects'] + rect_idx * 16
+    em.lea_rip('rcx', base)
+    em.mov_r32_mreg('r8', 'rcx', 0); em.add_r32_imm('r8', x1)
+    em.mov_r32_mreg('r9', 'rcx', 4); em.add_r32_imm('r9', y1)
+    em.mov_r32_mreg('r10', 'rcx', 0); em.add_r32_imm('r10', x2)
+    em.mov_r32_mreg('r11', 'rcx', 4); em.add_r32_imm('r11', y2)
     em.mov_mrsp_reg32(0x38, 'r10')
     em.mov_mrsp_reg32(0x3c, 'r11')
     em.mov_r64_ripmem('rcx', bsyms['paint_hdc'])
@@ -2690,30 +2784,30 @@ def _cap_line(rect_idx, x1o, y1o, x2o, y2o):
 def _cap_icon_leftbar(tag, rect_idx, mirrored=False):
     _cap_hover_bg(tag, CAP_ID[tag], rect_idx)
     _cap_use_pen()
-    _cap_outline_rect(rect_idx, 3, 6, -3, -6)
+    _cap_outline_rect_rel(rect_idx, 4, 4, 20, 20)
     if mirrored:
-        _cap_line(rect_idx, -7, 6, -7, -6)
-        _cap_line(rect_idx, -10, 12, -13, 16)
-        _cap_line(rect_idx, -10, 20, -13, 16)
+        _cap_line_rel(rect_idx, 14, 5, 14, 19)
+        _cap_line_rel(rect_idx, 11, 10, 14, 14)
+        _cap_line_rel(rect_idx, 11, 18, 14, 14)
     else:
-        _cap_line(rect_idx, 10, 6, 10, -6)
-        _cap_line(rect_idx, 13, 12, 10, 16)
-        _cap_line(rect_idx, 13, 20, 10, 16)
+        _cap_line_rel(rect_idx, 10, 5, 10, 19)
+        _cap_line_rel(rect_idx, 13, 10, 10, 14)
+        _cap_line_rel(rect_idx, 13, 18, 10, 14)
 
 
 def _cap_icon_save(tag, rect_idx):
     _cap_hover_bg(tag, CAP_ID[tag], rect_idx)
     _cap_use_pen()
-    _cap_outline_rect(rect_idx, 4, 5, -4, -5)
-    _cap_outline_rect(rect_idx, 7, 5, -7, 11)
-    _cap_outline_rect(rect_idx, 7, 18, -7, -7)
+    _cap_outline_rect_rel(rect_idx, 5, 4, 19, 20)
+    _cap_outline_rect_rel(rect_idx, 8, 4, 16, 10)
+    _cap_outline_rect_rel(rect_idx, 8, 15, 16, 19)
 
 
 def _cap_icon_find(tag, rect_idx):
     _cap_hover_bg(tag, CAP_ID[tag], rect_idx)
     _cap_use_pen()
-    _cap_outline_ellipse(rect_idx, 4, 4, -7, -7)
-    _cap_line(rect_idx, -7, -7, -3, -3)
+    _cap_outline_ellipse_rel(rect_idx, 4, 4, 16, 16)
+    _cap_line_rel(rect_idx, 15, 15, 20, 20)
 
 
 def _cap_icon_viewmode(tag, rect_idx):
@@ -2722,16 +2816,15 @@ def _cap_icon_viewmode(tag, rect_idx):
     em.test32('rax')
     em.jcc(0x84, f'cap_viewmode_source_{tag}')
     _cap_use_pen()
-    _cap_outline_ellipse(rect_idx, 3, 9, -3, -9)
-    _cap_use_fill()
-    _cap_fill_ellipse(rect_idx, 10, 12, -10, -12)
+    _cap_outline_ellipse_rel(rect_idx, 3, 8, 21, 16)
+    _cap_fill_ellipse_rel(rect_idx, 9, 10, 15, 15)
     em.jmp(f'cap_viewmode_done_{tag}')
     em.label(f'cap_viewmode_source_{tag}')
     _cap_use_pen()
-    _cap_line(rect_idx, 8, 10, 5, 16)
-    _cap_line(rect_idx, 8, 22, 5, 16)
-    _cap_line(rect_idx, -8, 10, -5, 16)
-    _cap_line(rect_idx, -8, 22, -5, 16)
+    _cap_line_rel(rect_idx, 10, 5, 5, 12)
+    _cap_line_rel(rect_idx, 5, 12, 10, 19)
+    _cap_line_rel(rect_idx, 14, 5, 19, 12)
+    _cap_line_rel(rect_idx, 19, 12, 14, 19)
     em.label(f'cap_viewmode_done_{tag}')
 
 
@@ -2740,27 +2833,28 @@ def _cap_icon_theme(tag, rect_idx):
     em.mov_r32_ripmem('rax', bsyms['theme_dark'])
     em.test32('rax')
     em.jcc(0x84, f'cap_theme_sun_{tag}')
-    _cap_use_fill()
-    _cap_fill_ellipse(rect_idx, 5, 5, -5, -5)
-    _cap_use_pen()
-    _cap_line(rect_idx, 5, 5, -5, -5)
+    _cap_fill_ellipse_rel(rect_idx, 5, 5, 19, 19)
+    _cap_fill_ellipse_rel(rect_idx, 11, 3, 22, 14,
+                          brush_sym='hbrush_caption')
     em.jmp(f'cap_theme_done_{tag}')
     em.label(f'cap_theme_sun_{tag}')
     _cap_use_pen()
-    _cap_outline_ellipse(rect_idx, 7, 7, -7, -7)
-    _cap_line(rect_idx, 12, 3, 12, -3)
-    _cap_line(rect_idx, 3, 12, -3, 12)
+    _cap_outline_ellipse_rel(rect_idx, 7, 7, 17, 17)
+    _cap_line_rel(rect_idx, 12, 3, 12, 5)
+    _cap_line_rel(rect_idx, 12, 19, 12, 21)
+    _cap_line_rel(rect_idx, 3, 12, 5, 12)
+    _cap_line_rel(rect_idx, 19, 12, 21, 12)
     em.label(f'cap_theme_done_{tag}')
 
 
 def _cap_icon_gear(tag, rect_idx):
     _cap_hover_bg(tag, CAP_ID[tag], rect_idx)
     _cap_use_pen()
-    _cap_outline_ellipse(rect_idx, 7, 7, -7, -7)
-    _cap_line(rect_idx, 12, 4, 12, 0)
-    _cap_line(rect_idx, 12, 24, 12, -0)
-    _cap_line(rect_idx, 4, 12, 0, 12)
-    _cap_line(rect_idx, 24, 12, -0, 12)
+    _cap_outline_ellipse_rel(rect_idx, 6, 6, 18, 18)
+    for _x1, _y1, _x2, _y2 in (
+            (10, 3, 14, 6), (10, 18, 14, 21),
+            (3, 10, 6, 14), (18, 10, 21, 14)):
+        _cap_fill_rect_rel(rect_idx, _x1, _y1, _x2, _y2)
 
 
 def _cap_draw_icons():
@@ -2867,12 +2961,19 @@ em.label('cap_menu_ret'); em.add_r64_imm8('rsp', 0x48); em.emit(0xC3)
 
 
 def _cap_draw_text(sym, rect_idx, flags=0x24):
+    if isinstance(rect_idx, str):
+        rect_idx = CAP_RECT[rect_idx]
     em.mov_r64_ripmem('rcx', bsyms['paint_hdc'])
     em.lea_rip('rdx', rsyms[sym])
     em.mov_r32_imm('r8', -1)
-    em.lea_rip('r9', bsyms['caption_rects'] + CAP_RECT[rect_idx] * 16)
+    em.lea_rip('r9', bsyms['caption_rects'] + rect_idx * 16)
     em.mov_mrsp_imm32(0x20, flags)
     em.call_iat('DrawTextW')
+
+
+def _cap_draw_glyph(tag, sym, rect_idx, close=False):
+    _cap_hover_bg(tag, CAP_ID[tag], rect_idx, close=close)
+    _cap_draw_text(sym, rect_idx, 0x25)
 
 
 em.label('caption_paint')
@@ -2909,14 +3010,31 @@ _cap_draw_text('caption_edit', 'edit', 0x25)
 _cap_draw_text('caption_markdown', 'markdown', 0x25)
 _cap_draw_text('caption_view', 'view', 0x25)
 _cap_draw_text('caption_help', 'help', 0x25)
-_cap_draw_icons()
-# Window buttons: hover + glyphs. Close uses the accent red on hover.
-_cap_hover_bg('min', CAP_ID['min'], CAP_RECT['min'])
-_cap_hover_bg('max', CAP_ID['max'], CAP_RECT['max'])
-_cap_hover_bg('close', CAP_ID['close'], CAP_RECT['close'], close=True)
-_cap_draw_text('caption_min', 'min', 0x25)
-_cap_draw_text('caption_max', 'max', 0x25)
-_cap_draw_text('caption_close', 'close', 0x25)
+# V8.6.1 图标：Fluent/MDL2 字体字形。它们和菜单文字使用同一支 DC 字体选择路径，
+# 只换字形，不再逐条画线，所以 DPI、主题、hover 都不会互相污染。
+em.mov_r64_ripmem('rcx', bsyms['paint_hdc'])
+em.mov_r64_ripmem('rdx', bsyms['hfont_icons'])
+em.call_iat('SelectObject')
+_cap_draw_glyph('toggle', 'icon_left', CAP_RECT['toggle'])
+_cap_draw_glyph('save', 'icon_save', CAP_RECT['save'])
+_cap_draw_glyph('find', 'icon_find', CAP_RECT['find'])
+_cap_hover_bg('viewmode', CAP_ID['viewmode'], CAP_RECT['viewmode'])
+em.mov_r32_ripmem('rax', bsyms['preview_flag']); em.test32('rax')
+em.jcc(0x84, 'cap_glyph_code')
+_cap_draw_text('icon_eye', 'viewmode', 0x25); em.jmp('cap_glyph_viewmode_done')
+em.label('cap_glyph_code'); _cap_draw_text('icon_code', 'viewmode', 0x25)
+em.label('cap_glyph_viewmode_done')
+_cap_hover_bg('theme', CAP_ID['theme'], CAP_RECT['theme'])
+em.mov_r32_ripmem('rax', bsyms['theme_dark']); em.test32('rax')
+em.jcc(0x84, 'cap_glyph_sun')
+_cap_draw_text('icon_moon', 'theme', 0x25); em.jmp('cap_glyph_theme_done')
+em.label('cap_glyph_sun'); _cap_draw_text('icon_sun', 'theme', 0x25)
+em.label('cap_glyph_theme_done')
+_cap_draw_glyph('gear', 'icon_gear', CAP_RECT['gear'])
+_cap_draw_glyph('rightbar', 'icon_right', CAP_RECT['rightbar'])
+_cap_draw_glyph('min', 'icon_min', CAP_RECT['min'])
+_cap_draw_glyph('max', 'icon_max', CAP_RECT['max'])
+_cap_draw_glyph('close', 'icon_close', CAP_RECT['close'], close=True)
 em.mov_r64_ripmem('rcx', bsyms['hwnd_caption'])
 em.lea_rip('rdx', bsyms['cap_ps']); em.call_iat('EndPaint')
 em.xor32('rax'); em.add_r64_imm8('rsp', 0x58); em.emit(0xC3)
@@ -6346,6 +6464,9 @@ _output_name = (('pemark_x64_v8_6_outline_alloc_%s.exe' % ARENA_ALLOC_INJECTION_
                       if INJECTED_BUILD else
                       'pemark_x64_v8_6.exe' if _RELEASE_CHANNEL else
                       'pemark_x64_v8_6_candidate.exe'))
+_output_override = os.environ.get('PEMARK_OUTPUT_NAME')
+if _output_override:
+    _output_name = _output_override
 out = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'bin',
                                    _output_channel, _output_name))
 os.makedirs(os.path.dirname(out), exist_ok=True)

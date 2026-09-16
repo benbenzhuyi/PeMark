@@ -111,6 +111,8 @@ def main():
         caption = app.read64("hwnd_caption")
         assert caption and u32.IsWindowVisible(caption), \
             "the custom caption child must exist and be visible"
+        assert app.read64("hfont_icons"), \
+            "the Fluent/MDL2 icon font must be created (or fall back to the panel font)"
 
         style = u32.GetWindowLongW(main_hwnd, GWL_STYLE)
         assert not (style & WS_CAPTION), \
