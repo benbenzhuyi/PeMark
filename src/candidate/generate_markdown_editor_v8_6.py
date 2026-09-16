@@ -1597,9 +1597,16 @@ em.label('keydown_not_enter'); em.cmp_r32_imm('rax',0x1B); em.jcc(0x85,'dispatch
 em.call_label('rename_cancel'); em.jmp('msg_loop')
 em.label('keydown_not_rename')
 em.mov_r32_ripmem('rax',bsyms['panel_mode']); em.test32('rax'); em.jcc(0x84,'dispatch')
-em.mov_rax_mr12(16); em.cmp_r32_imm('rax',0x08); em.jcc(0x85,'dispatch')
+# V8.6 切片 5：文件列表获得焦点时，Enter 激活当前行（目录展开/折叠、文件打开），
+# Backspace 返回上级。两个键共用同一条"焦点必须在文件列表"的门。
+em.mov_rax_mr12(16); em.mov_r32_r32('r10','rax')
+em.cmp_r32_imm('r10',0x0D); em.jcc(0x84,'keydown_files_enter')
+em.cmp_r32_imm('r10',0x08); em.jcc(0x85,'dispatch')
 em.call_iat('GetFocus'); em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.cmp_r64_r64('rax','rcx'); em.jcc(0x85,'dispatch')
 em.call_label('ws_go_up'); em.jmp('msg_loop')
+em.label('keydown_files_enter')
+em.call_iat('GetFocus'); em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.cmp_r64_r64('rax','rcx'); em.jcc(0x85,'dispatch')
+em.call_label('ws_open_or_enter'); em.jmp('msg_loop')
 
 em.label('mousewheel_event')
 # wParam: LOWORD = MK_* key flags; HIWORD = signed wheel delta.
@@ -4484,7 +4491,9 @@ em.label('ttp_remove')
 em.mov_r32_r32('r13','rax'); em.mov_r32_ripmem('r14',bsyms['tree_expanded_count']); em.mov_r32_r32('rax','r13'); em.add_r32_imm8('rax',1); em.cmp_r32_r32('rax','r14'); em.jcc(0x8D,'ttp_remove_last')
 em.mov_r32_r32('rax','r14'); em.sub_r32_imm8('rax',1); em.shl_r32_imm8('rax',10); em.lea_rip('rdx',bsyms['tree_expanded']); em.add_r64_r64('rdx','rax'); em.mov_r32_r32('rax','r13'); em.shl_r32_imm8('rax',10); em.lea_rip('rcx',bsyms['tree_expanded']); em.add_r64_r64('rcx','rax'); em.call_label('tree_copy_path_entry')
 em.label('ttp_remove_last'); em.mov_r32_ripmem('rax',bsyms['tree_expanded_count']); em.sub_r32_imm8('rax',1); em.mov_ripmem_r32(bsyms['tree_expanded_count'],'rax')
-em.label('ttp_apply'); em.call_label('rebuild_file_list'); em.call_label('update_status')
+# 展开/折叠会重建整个投影：用与刷新同一条"记住选中行路径再找回"的路径，
+# 选中项因此跨展开折叠保持（不会被 LB_RESETCONTENT 清成无选中）。
+em.label('ttp_apply'); em.call_label('file_panel_refresh_keep_selection')
 em.add_r64_imm8('rsp',0x28); em.emit(0x5F); em.emit(0x5E); em.emit(0x41,0x5F); em.emit(0x41,0x5E); em.emit(0x41,0x5D); em.emit(0x41,0x5C); em.emit(0xC3)
 
 # Floating inline rename editor: place the hidden EDIT over the selected row.
@@ -7435,8 +7444,9 @@ assert "em.label('wp_draw_files_header'); emit_files_header()" in _production_so
 # 命中、hover 与绘制共用同一份缓存矩形：按钮不允许出现第二套几何。
 assert _production_source.count("_em_hit_files_btn(") == 3, \
     'the two header buttons must be hit-tested through the shared geometry helper'
-assert _production_source.count("call_label('file_panel_refresh_keep_selection')") == 2, \
-    'refresh and collapse-all must share one selection-preserving rebuild'
+# 刷新、全部折叠与树展开/折叠都走同一条"记住选中行路径再找回"的重建路径。
+assert _production_source.count("call_label('file_panel_refresh_keep_selection')") == 3, \
+    'refresh, collapse-all and the tree toggle must share one selection-preserving rebuild'
 assert "call_iat('SHGetFolderPathW')" in _production_source and \
        "em.call_label('load_default_workspace')" in _production_source, \
     'the default workspace must come from the system Documents folder'
@@ -7454,6 +7464,26 @@ _ufh_src = _production_source[
     _production_source.index("em.label('update_divider_hover')")]
 assert "r12" not in _ufh_src, \
     'the header hover must not clobber the pump MSG pointer in r12'
+
+# (AB) V8.6 切片 5：键盘导航的所有权断言。Enter 与 Backspace 必须共用同一条
+#      "焦点在文件列表"的门；激活路径的两条出口都必须把焦点留在面板里。
+_keydown_src = _production_source[
+    _production_source.index("em.label('keydown_event')"):
+    _production_source.index("em.label('mousewheel_event')")]
+assert "em.cmp_r32_imm('r10',0x0D)" in _keydown_src and \
+       "em.cmp_r32_imm('r10',0x08)" in _keydown_src, \
+    'the file panel must answer both Enter and Backspace'
+assert _keydown_src.count("call_iat('GetFocus')") == 2, \
+    'both keys must be gated on the file list owning the keyboard focus'
+assert "call_label('ws_open_or_enter')" in _keydown_src and \
+       "call_label('ws_go_up')" in _keydown_src, \
+    'Enter must activate the row and Backspace must walk up'
+_activate_src = _production_source[
+    _production_source.index("em.label('ws_open_or_enter')"):
+    _production_source.index("em.label('woe_ret')")]
+assert _activate_src.count("call_iat('SetFocus')") == 2 and \
+       "bsyms['hwnd_files']" in _activate_src, \
+    'toggling a directory or opening a file must leave the focus in the panel'
 
 _output_channel = 'test' if INJECTED_BUILD else _BUILD_CHANNEL
 _output_name = (('pemark_x64_v8_6_outline_alloc_%s.exe' % ARENA_ALLOC_INJECTION_MODE)
