@@ -43,3 +43,33 @@ Two real defects were found and fixed while implementing the slice:
   record grew to 544 bytes, which surfaced as empty names past the first block.
   Both call sites now use `index*512 + index*32`, and a build-time assertion
   ties `WS_STRIDE == 512 + 32` to the emitted code.
+
+## Slice 2 — Sidebar panel modes over one list control
+
+Complete. `panel_mode` selects what the existing sidebar ListBox shows: the
+document outline (default) or the workspace entries. Both modes reuse the same
+control, the same layout geometry, the same permanently reserved scrollbar
+gutter and the same `sync_outline_scrollbar` state, so no second list, no second
+scrollbar and no second theme path were introduced. `set_panel_mode` owns the
+switch and `refresh_panel_list` owns "rebuild whichever list is current", which
+also lets a new workspace root refresh an active file list.
+
+Row drawing distinguishes the two kinds without new resources: directory rows
+append a backslash and take the accent colour, file rows keep the body colour.
+The file branch reads the kind straight out of the workspace arena and never
+touches `outline_level`, which indexes a different table. While the file panel
+is active the outline scan neither clears the shared ListBox nor appends rows to
+it, and selecting a file row does not navigate the document.
+
+Evidence: `tools/test_v8_6_panel.py` PASS — identical ListBox geometry across a
+mode switch, pixel snapshots showing different row colours for directories and
+files in both themes, the heading palette unchanged when the outline returns,
+selectable but inert file rows, wheel scrolling of the shared scrollbar with
+clamping to `count - visible_rows`, and an outline correctly rebuilt from edits
+made while the file panel was showing. Full V8.5.4 suite, slice-1 suite and
+`smoke_test_v8_5_1.py` 17/17 PASS; two builds byte-identical; released V8.5.4
+binary unchanged.
+
+One defect was found while implementing the slice: the outline scan cleared the
+shared ListBox unconditionally, so editing the document while the file panel was
+active emptied the file list.

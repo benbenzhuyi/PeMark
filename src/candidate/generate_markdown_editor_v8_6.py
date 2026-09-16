@@ -474,6 +474,9 @@ bss_alloc('ws_entry_count', 4, 4)
 bss_alloc('ws_error', 4, 4)
 bss_alloc('ws_entries', 8, 8)            # arena pointer
 bss_alloc('ws_capacity', 4, 4)           # entries currently owned
+# V8.6 切片 2：侧边栏面板模式。0 = 大纲，1 = 文件。两个模式共用同一个
+# ListBox 控件与同一套滚动条几何，只改变列表内容、行文本与行颜色。
+bss_alloc('panel_mode', 4, 4)
 bss_alloc('widebuf', 8, 8)            # pointer into the decode/serialize arena
 bss_alloc('wide_capacity', 4, 4)      # committed units
 bss_alloc('bytebuf', 8, 8)            # pointer into the file-byte arena
@@ -519,6 +522,11 @@ if OPEN_TEST_BUILD:
     bss_alloc('open_decode_error_count', 4, 4)
     bss_alloc('open_read_error_count', 4, 4)
     bss_alloc('inject_read_call_count', 4, 4)
+    # 切片 2：把 ListBox 行文本导出到一块 owner-draw 不会触碰的缓冲。
+    # 进程外直接 LB_GETTEXT 既有跨进程指针封送限制，也会与绘制共用缓冲。
+    bss_alloc('list_probe_index', 4, 4)
+    bss_alloc('list_probe_result', 4, 4)
+    bss_alloc('list_probe_text', 512*2, 16)
 BSS_VSIZE = align(bss_off, 0x1000)
 
 # ---------------- IDATA ----------------
@@ -1155,6 +1163,9 @@ _command_routes = [(1001,'cmd_new'),(1002,'cmd_open'),(1003,'cmd_save'),(1004,'c
 if OPEN_TEST_BUILD:
     _command_routes.append((1901, 'cmd_open_selected'))
     _command_routes.append((1902, 'cmd_workspace_probe'))
+    _command_routes.append((1903, 'cmd_show_files'))
+    _command_routes.append((1904, 'cmd_show_outline'))
+    _command_routes.append((1905, 'cmd_dump_row'))
 for cid,label in _command_routes:
     em.cmp_r32_imm('rax',cid); em.jcc(0x84,label)
 em.jmp('dispatch')
@@ -2674,18 +2685,84 @@ em.add_r64_imm8('rsp',0x28); em.emit(0x41,0x5F); em.emit(0x41,0x5E); em.emit(0x4
 # rcx = directory path: remember it as the root and the current directory, then
 # enumerate it. No UI involvement yet - slice 1 is model only.
 em.label('workspace_set_root')
-em.emit(0x41,0x54); em.emit(0x48,0x83,0xEC,0x28)
+em.emit(0x41,0x54); em.emit(0x48,0x83,0xEC,0x30)
 em.mov_r64_r64('r12','rcx')
 em.lea_rip('rcx',bsyms['ws_root_path']); em.mov_r64_r64('rdx','r12'); em.call_iat('lstrcpyW')
 em.lea_rip('rcx',bsyms['ws_current_path']); em.mov_r64_r64('rdx','r12'); em.call_iat('lstrcpyW')
 em.call_label('workspace_refresh')
-em.add_r64_imm8('rsp',0x28); em.emit(0x41,0x5C); em.emit(0xC3)
+# 新的根目录已经枚举完成：如果面板正显示文件，立即让列表与模型一致。
+em.mov_r32_ripmem('rax',bsyms['panel_mode']); em.test32('rax'); em.jcc(0x84,'wsr_ret')
+em.call_label('rebuild_file_list')
+em.label('wsr_ret'); em.add_r64_imm8('rsp',0x30); em.emit(0x41,0x5C); em.emit(0xC3)
+
+# V8.6 切片 2：用 workspace 条目重建 ListBox（文件模式）。复用同一个控件、
+# 同一套滚动条几何、同一套主题刷子：布局、命中测试、滚轮、hover 与
+# sync_outline_scrollbar 都不需要第二套实现。目录行追加反斜杠，配合
+# owner-draw 的颜色分支提供不依赖新资源的行类型区分。
+em.label('rebuild_file_list')
+em.emit(0x41,0x54); em.emit(0x41,0x55); em.emit(0x41,0x56); em.emit(0x41,0x57); em.emit(0x48,0x83,0xEC,0x28)
+em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.test64('rcx'); em.jcc(0x84,'rfl_ret')
+em.mov_r32_imm('rdx',0x000B); em.xor32('r8'); em.xor32('r9'); em.call_iat('SendMessageW')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.mov_r32_imm('rdx',0x0184); em.xor32('r8'); em.xor32('r9'); em.call_iat('SendMessageW')
+# 列表内容不再是大纲：清零大纲计数，使 navigate_outline 的边界检查也不会
+# 拿残留的大纲索引去解释目录条目的选中项。
+em.mov_ripmem_imm32(bsyms['outline_count'],0)
+em.mov_r32_ripmem('r13',bsyms['ws_entry_count'])
+em.mov_r64_ripmem('r14',bsyms['ws_entries'])
+em.xor32('r12')
+em.label('rfl_loop')
+em.cmp_r32_r32('r12','r13'); em.jcc(0x83,'rfl_done')
+em.test64('r14'); em.jcc(0x84,'rfl_done')
+em.mov_r32_r32('rax','r12'); em.mov_r32_r32('rcx','r12')
+em.shl_r32_imm8('rcx',9); em.shl_r32_imm8('rax',5); em.add_r32_r32('rax','rcx')
+em.mov_r64_r64('r15','r14'); em.add_r64_r64('r15','rax')
+em.lea_rip('rcx',bsyms['outline_titlebuf']); em.mov_r64_r64('rdx','r15'); em.call_iat('lstrcpyW')
+em.mov_r32_mreg('r10','r15',WS_OFF_KIND); em.test32('r10'); em.jcc(0x84,'rfl_add')
+em.lea_rip('rcx',bsyms['outline_titlebuf']); em.call_iat('lstrlenW')
+em.lea_rip('rcx',bsyms['outline_titlebuf'])
+em.mov_word_index2_imm16('rcx','rax',0x5C); em.add_r32_imm8('rax',1); em.mov_word_index2_zero('rcx','rax')
+em.label('rfl_add')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.mov_r32_imm('rdx',0x0180); em.xor32('r8'); em.lea_rip('r9',bsyms['outline_titlebuf']); em.call_iat('SendMessageW')
+em.add_r32_imm8('r12',1); em.jmp('rfl_loop')
+em.label('rfl_done')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.mov_r32_imm('rdx',0x000B); em.mov_r32_imm('r8',1); em.xor32('r9'); em.call_iat('SendMessageW')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.xor32('rdx'); em.mov_r32_imm('r8',1); em.call_iat('InvalidateRect')
+em.call_label('sync_outline_scrollbar')
+em.label('rfl_ret')
+em.add_r64_imm8('rsp',0x28); em.emit(0x41,0x5F); em.emit(0x41,0x5E); em.emit(0x41,0x5D); em.emit(0x41,0x5C); em.emit(0xC3)
+
+# rcx = 0（大纲）/ 1（文件）。切换只改变列表内容；控件、几何、滚动条与
+# 主题路径都不变。切回大纲时重跑 update_preview，让列表与三张表重新一致。
+em.label('set_panel_mode')
+em.emit(0x48,0x83,0xEC,0x28)
+em.mov_r32_ripmem('rax',bsyms['panel_mode']); em.cmp_r32_r32('rax','rcx'); em.jcc(0x84,'spm_ret')
+em.mov_ripmem_r32(bsyms['panel_mode'],'rcx')
+em.add_r64_imm8('rsp',0x28); em.jmp('refresh_panel_list')
+em.label('spm_ret'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
+
+# 按当前 panel_mode 重建列表内容。与 set_panel_mode 分开，是因为"工作区换了
+# 但模式没变"同样需要刷新（进入目录、重新选择根目录）。
+em.label('refresh_panel_list')
+em.emit(0x48,0x83,0xEC,0x28)
+em.mov_r32_ripmem('rax',bsyms['panel_mode']); em.test32('rax'); em.jcc(0x84,'rpl_outline')
+em.call_label('rebuild_file_list'); em.jmp('rpl_ret')
+em.label('rpl_outline'); em.call_label('update_preview')
+em.label('rpl_ret'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
 
 # Build-time-only probe (command 1902): enumerate whatever temp_path points at
 # and leave the entries in BSS for the Windows harness to read back.
 if OPEN_TEST_BUILD:
     em.label('cmd_workspace_probe')
     em.lea_rip('rcx',bsyms['temp_path']); em.call_label('workspace_set_root'); em.jmp('msg_loop')
+    # 切片 2：非交互面板切换，供 Windows 测试脚本驱动模式、绘制与滚动。
+    em.label('cmd_show_files'); em.mov_r32_imm('rcx',1); em.call_label('set_panel_mode'); em.jmp('msg_loop')
+    em.label('cmd_show_outline'); em.xor32('rcx'); em.call_label('set_panel_mode'); em.jmp('msg_loop')
+    # 切片 2：把 list_probe_index 指向的行文本导出到 list_probe_text。
+    em.label('cmd_dump_row')
+    em.mov_r32_imm('rax',0xFFFFFFFF)
+    em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.test64('rcx'); em.jcc(0x84,'cdr_store')
+    em.mov_r32_imm('rdx',0x0189); em.mov_r32_ripmem('r8',bsyms['list_probe_index']); em.lea_rip('r9',bsyms['list_probe_text']); em.call_iat('SendMessageW')
+    em.label('cdr_store'); em.mov_ripmem_r32(bsyms['list_probe_result'],'rax'); em.jmp('msg_loop')
 
 
 # ---------------- V8.4.25 统一扫描：大纲条目推送例程 ----------------
@@ -2703,6 +2780,9 @@ if OPEN_TEST_BUILD:
 em.label('outline_push')
 em.emit(0x48,0x83,0xEC,0x48)  # sub rsp,0x48：栈对齐 + 32 字节影子空间 + 三个参数槽
 em.mov_mrsp_reg32(0x30,'r8'); em.mov_mrsp_reg32(0x38,'r9'); em.mov_mrsp_reg32(0x40,'r10')
+# V8.6 切片 2：文件模式下列表显示目录条目，大纲不再写进同一个 ListBox。
+# 三张表也因此不更新：切回大纲由 set_panel_mode 重跑 update_preview 重建。
+em.mov_r32_ripmem('rax',bsyms['panel_mode']); em.test32('rax'); em.jcc(0x85,'outline_push_ret')
 # 大纲窗口不存在或动态 arena 已满：跳过登记。
 em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.test64('rcx'); em.jcc(0x84,'outline_push_ret')
 em.mov_r32_ripmem('r11',bsyms['outline_count']); em.mov_r32_ripmem('rax',bsyms['outline_capacity']); em.cmp_r32_r32('r11','rax'); em.jcc(0x83,'outline_push_ret')
@@ -2890,6 +2970,9 @@ em.label('pv_timer_reset_done'); em.mov_ripmem_imm32(bsyms['preview_theme_dirty'
 #
 # 大纲准备（吸收自旧 rebuild_outline）：计数清零、冻结重绘、清空列表。
 em.mov_ripmem_imm32(bsyms['outline_count'],0)
+# V8.6 切片 2：文件模式下的 ListBox 属于 workspace，扫描既不能清空它，
+# 也不能把大纲行追加进去（outline_push 同样在入口处返回）。
+em.mov_r32_ripmem('rax',bsyms['panel_mode']); em.test32('rax'); em.jcc(0x85,'pv_scan_prep_done')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.test64('rcx'); em.jcc(0x84,'pv_scan_prep_done')
 em.mov_r32_imm('rdx',0x000B); em.xor32('r8'); em.xor32('r9'); em.call_iat('SendMessageW')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.mov_r32_imm('rdx',0x0184); em.xor32('r8'); em.xor32('r9'); em.call_iat('SendMessageW')
@@ -3070,6 +3153,8 @@ em.label('pv_render_ret'); em.add_r64_imm8('rsp',0x28); em.emit(0x41,0x5F); em.e
 # 再发 LB_GETCURSEL 并立即消费 RAX，中间没有任何 API 调用。
 em.label('navigate_outline')
 em.emit(0x48,0x83,0xEC,0x28)
+# V8.6 切片 2：列表正显示目录条目时，选中项与大纲三表无关，禁止跳转。
+em.mov_r32_ripmem('rax',bsyms['panel_mode']); em.test32('rax'); em.jcc(0x85,'navigate_ret')
 # 1）V8.5.0：选定导航目标表面。preview_flag 由 set_view_mode 家族唯一
 #    写入并保证与实际可见性一致，不再需要 IsWindowVisible 二次确认——
 #    旧版正是让 volatile 数组偏移跨越该调用才引发 P0-001。
@@ -3530,7 +3615,23 @@ em.label('wp_outline_fill_normal'); em.mov_r64_mreg('rcx','r9',32); em.mov_r64_r
 em.label('wp_outline_text')
 # Fetch item text from LISTBOX.
 em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r32_mreg('r10','r9',8); em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.mov_r32_imm('rdx',0x0189); em.mov_r32_r32('r8','r10'); em.lea_rip('r9',bsyms['outline_titlebuf']); em.call_iat('SendMessageW')
+# V8.6 切片 2：文件模式的行走 workspace 条目表着色，并且绝不读
+# outline_level——那是一套不同的索引空间。目录用强调色，文件用正文色。
+em.mov_r32_ripmem('rax',bsyms['panel_mode']); em.test32('rax'); em.jcc(0x84,'wp_outline_level_row')
+em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r32_mreg('rax','r9',8)
+em.mov_r32_r32('rcx','rax'); em.shl_r32_imm8('rcx',9); em.shl_r32_imm8('rax',5); em.add_r32_r32('rax','rcx')
+em.mov_r64_ripmem('rcx',bsyms['ws_entries']); em.test64('rcx'); em.jcc(0x84,'wp_draw_outline_done')
+em.add_r64_r64('rax','rcx'); em.mov_r32_mreg('r10','rax',WS_OFF_KIND)
+em.mov_r32_ripmem('rax',bsyms['theme_dark']); em.test32('rax'); em.jcc(0x84,'wp_outline_file_light')
+em.test32('r10'); em.jcc(0x84,'wp_outline_dark_file')
+em.mov_r32_imm('rdx',0x00F4C843); em.jmp('wp_outline_color_send')
+em.label('wp_outline_dark_file'); em.mov_r32_imm('rdx',0x00D4D4D4); em.jmp('wp_outline_color_send')
+em.label('wp_outline_file_light')
+em.test32('r10'); em.jcc(0x84,'wp_outline_light_file')
+em.mov_r32_imm('rdx',0x00D78F0B); em.jmp('wp_outline_color_send')
+em.label('wp_outline_light_file'); em.mov_r32_imm('rdx',0x00202020); em.jmp('wp_outline_color_send')
 # level = outline_level[itemID]
+em.label('wp_outline_level_row')
 em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r32_mreg('rax','r9',8); em.add_r32_r32('rax','rax'); em.add_r32_r32('rax','rax'); em.mov_r64_ripmem('rcx',bsyms['outline_level']); em.add_r64_r64('rcx','rax'); em.mov_r32_ptr('r10','rcx')
 # Select color by depth and theme.
 em.mov_r32_ripmem('rax',bsyms['theme_dark']); em.test32('rax'); em.jcc(0x84,'wp_outline_color_light')
@@ -4557,6 +4658,72 @@ for _ws_field in ("mov_mreg_reg32('r14',WS_OFF_ATTRIBUTES,'r8')",
                   "mov_mreg_reg64('r14',WS_OFF_WRITE_TIME,'r11')"):
     assert _ws_field in _ws_insert_src, \
         'workspace entries must own attributes, kind, size and write time: %s' % _ws_field
+
+# (T) V8.6 切片 2：侧边栏面板模式的所有权断言。要拦截的错误模式：
+#     目录条目被当成大纲行走 outline_level、切回大纲时不重建列表、
+#     文件模式下选中项触发文档跳转、测试切换命令进入正式构建。
+assert bss_sizes['panel_mode'] == 4, 'panel_mode must be a 4-byte state field'
+assert WS_OFF_KIND == WS_NAME_UNITS * 2 + 4, \
+    'the owner-draw file row reads the kind field through WS_OFF_KIND'
+for _panel_routine in ('rebuild_file_list', 'set_panel_mode', 'refresh_panel_list',
+                       'outline_push', 'navigate_outline', 'wp_outline_level_row'):
+    assert _panel_routine in em.labels, '%s must be emitted' % _panel_routine
+_panel_push_src = _production_source[
+    _production_source.index("em.label('outline_push')"):
+    _production_source.index("em.label('outline_push_indent')")]
+assert "bsyms['panel_mode']" in _panel_push_src, \
+    'outline_push must not fill the shared ListBox while the files panel is active'
+_prep_end = _production_source.index("em.label('pv_scan_prep_done')")
+_prep_src = _production_source[max(0, _prep_end - 900):_prep_end]
+assert "bsyms['panel_mode']" in _prep_src and "0x0184" in _prep_src, \
+    'update_preview must not clear the shared ListBox while the files panel is active'
+_panel_nav_src = _production_source[
+    _production_source.index("em.label('navigate_outline')"):
+    _production_source.index("em.label('navigate_pick_source')")]
+assert "bsyms['panel_mode']" in _panel_nav_src, \
+    'outline navigation must be disabled while the files panel is active'
+_panel_draw_src = _production_source[
+    _production_source.index("em.label('wp_outline_text')"):
+    _production_source.index("em.label('wp_outline_level_row')")]
+assert "WS_OFF_KIND" in _panel_draw_src and "bsyms['outline_level']" not in _panel_draw_src, \
+    'the file row branch must colour from the workspace table, never outline_level'
+_panel_list_src = _production_source[
+    _production_source.index("em.label('rebuild_file_list')"):
+    _production_source.index("em.label('set_panel_mode')")]
+assert "call_iat('lstrcpyW')" in _panel_list_src and \
+       "mov_ripmem_imm32(bsyms['outline_count'],0)" in _panel_list_src and \
+       "call_label('sync_outline_scrollbar')" in _panel_list_src, \
+    'rebuild_file_list must own the row text, clear the outline count and resync the scrollbar'
+_panel_switch_src = _production_source[
+    _production_source.index("em.label('set_panel_mode')"):
+    _production_source.index("em.label('refresh_panel_list')")]
+assert "em.jmp('refresh_panel_list')" in _panel_switch_src, \
+    'a mode change must rebuild the list through the shared refresh path'
+_panel_refresh_src = _production_source[
+    _production_source.index("em.label('refresh_panel_list')"):
+    _production_source.index("em.label('cmd_workspace_probe')")] if OPEN_TEST_BUILD else \
+    _production_source[_production_source.index("em.label('refresh_panel_list')"):]
+assert "call_label('rebuild_file_list')" in _panel_refresh_src and \
+       "call_label('update_preview')" in _panel_refresh_src, \
+    'set_panel_mode must own both panel contents, rebuilding the outline on the way back'
+_panel_root_src = _production_source[
+    _production_source.index("em.label('workspace_set_root')"):
+    _production_source.index("em.label('rebuild_file_list')")]
+assert "call_label('workspace_refresh')" in _panel_root_src and \
+       "call_label('rebuild_file_list')" in _panel_root_src, \
+    'a new workspace root must refresh an active file list'
+for _panel_symbol in ('cmd_show_files', 'cmd_show_outline'):
+    assert (_panel_symbol in em.labels) == OPEN_TEST_BUILD, \
+        'the panel switch probe must exist only in the explicit test build'
+assert ((1903, 'cmd_show_files') in _command_routes) == OPEN_TEST_BUILD and \
+       ((1904, 'cmd_show_outline') in _command_routes) == OPEN_TEST_BUILD
+assert ('cmd_dump_row' in em.labels) == OPEN_TEST_BUILD and \
+       ((1905, 'cmd_dump_row') in _command_routes) == OPEN_TEST_BUILD, \
+    'the row-export probe must exist only in the explicit test build'
+if OPEN_TEST_BUILD:
+    assert bss_sizes['list_probe_text'] == 1024 and \
+           bss_sizes['list_probe_result'] == 4, \
+        'the row-export probe owns its own buffer, away from owner-draw scratch'
 
 _output_channel = 'test' if INJECTED_BUILD else _BUILD_CHANNEL
 _output_name = (('pemark_x64_v8_6_outline_alloc_%s.exe' % ARENA_ALLOC_INJECTION_MODE)
