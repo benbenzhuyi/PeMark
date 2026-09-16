@@ -216,6 +216,29 @@ document-repaint invariant through repeated sidebar toggles. Build-time
 assertions pin the styles, the dark-mode opt-in for both lists, the retired
 overlay class never being created and the three guard jumps.
 
+## V8.6.1 — Preview wheel scrolling no longer fights the viewport
+
+Two rendered-mode symptoms, one root cause. The 180 ms deferred "format the
+visible window" pass ended in `restore_surface_state`, which scrolled to the
+saved top anchor and *then* re-applied `EM_SETSEL`. RichEdit scrolls the caret
+into view whenever the selection is set, so every deferred pass yanked the
+viewport back to the caret - and the caret stays where the user last edited
+(usually far above), which is exactly the reported "scroll to the document end
+and it jumps back / seems to keep scrolling". Because hiding Markdown markers
+reflows the text, a single formatting pass could also push a region into view
+that it never formatted, leaving raw source on screen until the next nudge.
+
+Fixes: restore the selection *before* the anchor scroll so the anchor wins;
+run the visible-window formatting twice (the second pass covers whatever the
+first pass reflowed into view, and re-applying the same character formats is
+idempotent); raise the forward margin from 2000 to 6000 characters so a fast
+flick cannot outrun the formatted window.
+
+Evidence: a probe with a 400-chapter document in Preview mode - 25 wheel
+notches put the first visible line at 73, and after the deferred refresh
+settled it reads 124 (it advances with the reflow instead of jumping back);
+`tools/test_v8_5_1.py` was updated for the new margin and passes.
+
 V8.6 is scoped to "browse a directory and open files from it" while the
 application still owns a single writable document. The plan
 (`docs/MILESTONE_PLAN.md` §6) deliberately defers destructive file operations,

@@ -254,7 +254,8 @@ def checks(ns):
         def viewport():
             m=Machine(ns); m.put('preview_flag',1); m.put('view_top_pos',1000); m.put('render_len',100000)
             m.run('set_visible_format_window')
-            assert m.get('format_visible_end')==3500,m.get('format_visible_end')
+            # V8.6.1：可见窗口前向余量由 2000 提到 6000（快速滚动时不容易跑出已格式化区）
+            assert m.get('format_visible_end')==7500,m.get('format_visible_end')
             m.put('preview_visible_format_only',1); m.put('style_count',1)
             if ns.get('bss_sizes',{}).get('style_start')==8:
                 arena=0x300000
@@ -269,7 +270,7 @@ def checks(ns):
             m.run('apply_styles')
             sels=[a[2:] for n,a in m.calls if n=='SendMessageW' and a[1]==0xb1]
             # apply_styles also restores the saved empty selection at completion.
-            assert sels==[[1000,3500],[0,0]],sels
+            assert sels==[[1000,7500],[0,0]],sels
         check('viewport formatting clips huge code spans to visible range',viewport)
         def geometry():
             m=Machine(ns)

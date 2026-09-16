@@ -2377,7 +2377,7 @@ em.mov_r64_ripmem('rcx',bsyms['hwnd_preview']); em.mov_r32_imm('rdx',0x00D7); em
 em.cmp_r32_imm('rax',0xFFFFFFFF); em.jcc(0x84,'visible_window_fallback')
 em.mov_r32_ripmem('r10',bsyms['view_top_pos']); em.cmp_r32_r32('rax','r10'); em.jcc(0x83,'visible_window_margin')
 em.label('visible_window_fallback'); em.mov_r32_ripmem('rax',bsyms['view_top_pos'])
-em.label('visible_window_margin'); em.mov_r32_imm('r11',2000); em.add_r32_r32('rax','r11')
+em.label('visible_window_margin'); em.mov_r32_imm('r11',6000); em.add_r32_r32('rax','r11')
 em.mov_r32_ripmem('r9',bsyms['render_len']); em.cmp_r32_r32('rax','r9'); em.jcc(0x86,'visible_window_ok'); em.mov_r32_r32('rax','r9')
 em.label('visible_window_ok'); em.mov_ripmem_r32(bsyms['format_visible_end'],'rax'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
 
@@ -2390,6 +2390,9 @@ em.mov_r32_ripmem('rax',bsyms['preview_theme_dirty']); em.test32('rax'); em.jcc(
 em.mov_r64_ripmem('rcx',bsyms['hwnd_preview']); em.call_label('capture_surface_state')
 # Suppress all intermediate paints while selection/ranges are temporarily changed.
 em.mov_r64_ripmem('rcx',bsyms['hwnd_preview']); em.mov_r32_imm('rdx',0x000B); em.xor32('r8'); em.xor32('r9'); em.call_iat('SendMessageW')
+em.call_label('set_visible_format_window'); em.mov_ripmem_imm32(bsyms['preview_visible_format_only'],1); em.call_label('apply_styles'); em.mov_ripmem_imm32(bsyms['preview_visible_format_only'],0)
+# 第二遍：第一遍隐藏标记后行高/换行会重排，把因此新露出来的区域再格式化一次
+# （重复套用同样的字符格式是幂等的）。否则快速滚动停下时会看到未渲染的源码。
 em.call_label('set_visible_format_window'); em.mov_ripmem_imm32(bsyms['preview_visible_format_only'],1); em.call_label('apply_styles'); em.mov_ripmem_imm32(bsyms['preview_visible_format_only'],0)
 em.mov_r64_ripmem('rcx',bsyms['hwnd_preview']); em.call_label('restore_surface_state')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_preview']); em.mov_r32_imm('rdx',0x000B); em.mov_r32_imm('r8',1); em.xor32('r9'); em.call_iat('SendMessageW')
@@ -2605,13 +2608,15 @@ em.mov_r64_ripmem('rax',bsyms['hwnd_preview']); em.mov_r64_ripmem('r10',bsyms['v
 em.mov_r64_r64('rcx','r10'); em.mov_r32_imm('rdx',0x00C9); em.mov_r32_ripmem('r8',bsyms['view_top_pos']); em.xor32('r9'); em.call_iat('SendMessageW'); em.jmp('surface_restore_line_ready')
 em.label('surface_restore_preview_line'); em.mov_r64_r64('rcx','r10'); em.mov_r32_imm('rdx',0x0436); em.xor32('r8'); em.mov_r32_ripmem('r9',bsyms['view_top_pos']); em.call_iat('SendMessageW')
 em.label('surface_restore_line_ready'); em.mov_ripmem_r32(bsyms['view_line'],'rax')
-# current first visible line
+# V8.6.1：EM_SETSEL 会把插入符滚进可视区（RichEdit 的既有行为），所以必须
+# "先恢复选区、再按锚点滚动"——否则每次延迟格式化都会把视图拽回插入符，
+# 表现为"滚到文档末尾又跳回前面的内容"。
+em.mov_r64_ripmem('rcx',bsyms['view_hwnd']); em.mov_r32_imm('rdx',0x00B1); em.mov_r32_ripmem('r8',bsyms['view_sel_start']); em.mov_r32_ripmem('r9',bsyms['view_sel_end']); em.call_iat('SendMessageW')
+# current first visible line, recomputed after the selection so the delta is exact
 em.mov_r64_ripmem('rcx',bsyms['view_hwnd']); em.mov_r32_imm('rdx',0x00CE); em.xor32('r8'); em.xor32('r9'); em.call_iat('SendMessageW')
 # delta = target-current, passed as signed LPARAM to EM_LINESCROLL
 em.mov_r32_ripmem('r9',bsyms['view_line']); em.sub_r32_r32('r9','rax'); em.movsxd_r64_r32('r9','r9')
 em.mov_r64_ripmem('rcx',bsyms['view_hwnd']); em.mov_r32_imm('rdx',0x00B6); em.xor32('r8'); em.call_iat('SendMessageW')
-# restore exact selection/caret after viewport scroll
-em.mov_r64_ripmem('rcx',bsyms['view_hwnd']); em.mov_r32_imm('rdx',0x00B1); em.mov_r32_ripmem('r8',bsyms['view_sel_start']); em.mov_r32_ripmem('r9',bsyms['view_sel_end']); em.call_iat('SendMessageW')
 em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
 
 # Capture logical line/column in a source or preview control passed in RCX.
