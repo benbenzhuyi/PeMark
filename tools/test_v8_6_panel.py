@@ -530,7 +530,13 @@ def main():
                 app.handle, c.c_void_p(app.base + app.bsyms["files_thumb_rect"]),
                 c.byref(values), 16, None)
             bar_w = app.read32("scrollbar_w")
-            assert (values[0], values[2]) == (3, bar_w - 3), tuple(values)
+            # Calm thumbs are 6px wide, hot ones 11px, both centred in the strip -
+            # the same "thin bar widens as the pointer arrives" behaviour as the
+            # document's native scrollbar.
+            width = 11 if app.read32("files_scroll_hot") else 6
+            assert (values[0], values[2]) == ((bar_w - width) // 2,
+                                              (bar_w - width) // 2 + width), \
+                (tuple(values), bar_w, width)
             outline_rect = thumb_rect()
             assert k32.ReadProcessMemory(
                 app.handle, c.c_void_p(app.base + app.bsyms["outline_thumb_rect"]),
@@ -538,6 +544,24 @@ def main():
             assert (outline_rect[2] - outline_rect[0]) == (values[2] - values[0]), \
                 ("both panels must draw the same thumb width",
                  tuple(outline_rect), tuple(values))
+
+            # Hovering the strip widens the thumb; leaving it goes back to thin.
+            left, top, width, height = lb_rect(files)
+            strip_x = left + width + app.read32("scrollbar_w") // 2
+            move_cursor(strip_x, top + height // 2)
+            wait_for(lambda: app.read32("files_scroll_hot") == 1, 2,
+                     "hovering the scrollbar strip must mark it hot")
+            assert k32.ReadProcessMemory(
+                app.handle, c.c_void_p(app.base + app.bsyms["files_thumb_rect"]),
+                c.byref(values), 16, None)
+            assert values[2] - values[0] == 11, tuple(values)
+            move_cursor(left + width // 2, top + height // 2)
+            wait_for(lambda: app.read32("files_scroll_hot") == 0, 2,
+                     "leaving the strip must cool the thumb down")
+            assert k32.ReadProcessMemory(
+                app.handle, c.c_void_p(app.base + app.bsyms["files_thumb_rect"]),
+                c.byref(values), 16, None)
+            assert values[2] - values[0] == 6, tuple(values)
 
         app.post_close()
         assert app.proc.wait(timeout=10) == 0

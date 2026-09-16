@@ -124,6 +124,13 @@ closed:
    the hit test, so the two bars cannot drift apart. Both are shown whenever the
    list overflows (Rabbit-like) instead of appearing only on hover, and both
    support thumb drag and track paging.
+
+   Follow-up: the first cut drew a flat 11px rectangle, which still read as
+   "thick and ugly" next to the document's native bar. The thumb is now a
+   rounded capsule drawn with `RoundRect` under `NULL_PEN`, and it mirrors the
+   native behaviour exactly - **6px while the pointer is away, 11px plus the hot
+   colour as soon as it reaches the strip** (`*_scroll_hot`, recomputed by the
+   hover handler). Both panels share that geometry rule, so they stay identical.
 2. **Panel titles use the menu bar font.** `Files` / `Outline` were drawn with
    the default owner-draw font. The app now reads
    `SystemParametersInfoW(SPI_GETNONCLIENTMETRICS)` and builds the header font

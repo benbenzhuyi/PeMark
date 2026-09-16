@@ -397,6 +397,7 @@ bss_alloc('files_scroll_thumb_h', 4, 4)
 bss_alloc('files_scroll_track_h', 4, 4)
 bss_alloc('files_scroll_travel', 4, 4)
 bss_alloc('files_scroll_visible', 4, 4)
+bss_alloc('files_scroll_hot', 4, 4)
 bss_alloc('files_scroll_drag', 4, 4)
 bss_alloc('files_scroll_drag_offset', 4, 4)
 bss_alloc('files_thumb_rect', 16, 4)
@@ -411,6 +412,7 @@ _scroll_fields = [('outline_scroll_top',4), ('outline_scroll_count',4),
     ('outline_scroll_drag',4), ('outline_scroll_drag_offset',4),
     ('outline_scroll_thumb_top',4), ('outline_scroll_thumb_h',4),
     ('outline_scroll_track_h',4), ('outline_scroll_travel',4),
+    ('outline_scroll_hot',4),
     ('outline_track_rect',16), ('outline_thumb_rect',16)]
 _scroll_base = bss_alloc('outline_scroll_state', sum(n for _,n in _scroll_fields), 8)
 _scroll_offset = 0
@@ -636,7 +638,7 @@ imports = {
     'OLE32.dll': ['CoInitializeEx','CoCreateInstance','CoTaskMemFree'],
     'SHLWAPI.dll': ['StrStrW','StrStrIW'],
     'COMCTL32.dll': ['InitCommonControlsEx'],
-    'GDI32.dll': ['CreateFontW','CreateFontIndirectW','DeleteObject','CreateSolidBrush','SetTextColor','SetBkColor','SetBkMode','GetClipBox','SelectObject','SaveDC','RestoreDC','IntersectClipRect'],
+    'GDI32.dll': ['CreateFontW','CreateFontIndirectW','DeleteObject','CreateSolidBrush','SetTextColor','SetBkColor','SetBkMode','GetClipBox','SelectObject','SaveDC','RestoreDC','IntersectClipRect','RoundRect','GetStockObject'],
     'UXTHEME.dll': ['SetWindowTheme'],
     'DWMAPI.dll': ['DwmSetWindowAttribute'],
 }
@@ -1176,7 +1178,7 @@ em.call_label('outline_scroll_drag_move'); em.jmp('msg_loop')
 em.label('mousemove_not_scroll_drag')
 em.mov_r32_ripmem('rax',bsyms['splitter_drag']); em.test32('rax'); em.jcc(0x84,'mousemove_hover_only')
 em.call_label('splitter_drag_move'); em.jmp('msg_loop')
-em.label('mousemove_hover_only'); em.call_label('update_divider_hover'); em.call_label('update_outline_hover'); em.jmp('dispatch')
+em.label('mousemove_hover_only'); em.call_label('update_divider_hover'); em.call_label('update_files_hover'); em.call_label('update_outline_hover'); em.jmp('dispatch')
 
 em.label('lbuttondown_event')
 # Convert current pointer to main-client coordinates once.  The permanent scrollbar
@@ -2156,8 +2158,12 @@ em.label('fsl_visible_store')
 em.lea_rip('rcx',bsyms['files_track_rect']); em.mov_mreg_imm32('rcx',0,0); em.mov_mreg_imm32('rcx',4,4)
 em.mov_r32_ripmem('rax',bsyms['scrollbar_w']); em.mov_mreg_reg32('rcx',8,'rax')
 em.mov_r32_ripmem('rax',bsyms['files_scroll_track_h']); em.add_r32_imm8('rax',4); em.mov_mreg_reg32('rcx',12,'rax')
-em.lea_rip('rcx',bsyms['files_thumb_rect']); em.mov_mreg_imm32('rcx',0,3)
-em.mov_r32_ripmem('rax',bsyms['scrollbar_w']); em.sub_r32_imm8('rax',3); em.mov_mreg_reg32('rcx',8,'rax')
+# thumb 常态 6px、指针靠近（hot）11px，都居中于槽位；用移位代替除法。
+em.mov_r32_imm('r10',6)
+em.mov_r32_ripmem('rax',bsyms['files_scroll_hot']); em.test32('rax'); em.jcc(0x84,'fsl_thumb_width'); em.mov_r32_imm('r10',11)
+em.label('fsl_thumb_width')
+em.lea_rip('rcx',bsyms['files_thumb_rect']); em.mov_r32_ripmem('r11',bsyms['scrollbar_w']); em.sub_r32_r32('r11','r10'); em.shr_r32_imm8('r11',1)
+em.mov_mreg_reg32('rcx',0,'r11'); em.add_r32_r32('r11','r10'); em.mov_mreg_reg32('rcx',8,'r11')
 em.mov_r32_ripmem('rax',bsyms['files_scroll_thumb_top']); em.mov_mreg_reg32('rcx',4,'rax')
 em.mov_r32_ripmem('r11',bsyms['files_scroll_thumb_h']); em.add_r32_r32('rax','r11'); em.mov_mreg_reg32('rcx',12,'rax')
 em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
@@ -2231,9 +2237,13 @@ em.lea_rip('rcx',bsyms['outline_track_rect']); em.mov_mreg_imm32('rcx',0,0); em.
 em.mov_r32_ripmem('rax',bsyms['scrollbar_w']); em.mov_mreg_reg32('rcx',8,'rax')
 em.mov_r32_ripmem('rax',bsyms['outline_scroll_track_h']); em.add_r32_imm8('rax',4); em.mov_mreg_reg32('rcx',12,'rax')
 em.mov_r32_ripmem('r10',bsyms['outline_scroll_track_h']); em.mov_r32_ripmem('rax',bsyms['outline_scroll_thumb_h']); em.sub_r32_r32('r10','rax'); em.mov_ripmem_r32(bsyms['outline_scroll_travel'],'r10')
-# V8.6.1：thumb 视觉宽度固定 6px、居中于槽位，与文件面板完全一致（同一 FillRect 代码）。
-em.lea_rip('rcx',bsyms['outline_thumb_rect']); em.mov_mreg_imm32('rcx',0,3)
-em.mov_r32_ripmem('rax',bsyms['scrollbar_w']); em.sub_r32_imm8('rax',3); em.mov_mreg_reg32('rcx',8,'rax')
+# V8.6.1：thumb 常态 6px、指针靠近（hot）11px，居中于槽位；与文件面板同一套规则，
+# 绘制也都是同一段 RoundRect 胶囊代码。
+em.mov_r32_imm('r10',6)
+em.mov_r32_ripmem('rax',bsyms['outline_scroll_hot']); em.test32('rax'); em.jcc(0x84,'sync_thumb_width'); em.mov_r32_imm('r10',11)
+em.label('sync_thumb_width')
+em.lea_rip('rcx',bsyms['outline_thumb_rect']); em.mov_r32_ripmem('r11',bsyms['scrollbar_w']); em.sub_r32_r32('r11','r10'); em.shr_r32_imm8('r11',1)
+em.mov_mreg_reg32('rcx',0,'r11'); em.add_r32_r32('r11','r10'); em.mov_mreg_reg32('rcx',8,'r11')
 em.mov_r32_ripmem('rax',bsyms['outline_scroll_thumb_top']); em.mov_mreg_reg32('rcx',4,'rax'); em.mov_r32_ripmem('r10',bsyms['outline_scroll_thumb_h']); em.add_r32_r32('rax','r10'); em.mov_mreg_reg32('rcx',12,'rax')
 # 常显规则：有内容可滚就显示（与文件面板一致，Rabbit 风格），否则隐藏。
 em.mov_ripmem_imm32(bsyms['outline_scroll_visible'],0)
@@ -2275,10 +2285,40 @@ em.emit(0x48,0x83,0xEC,0x38)
 em.mov_r32_ripmem('rax',bsyms['outline_flag']); em.test32('rax'); em.jcc(0x84,'hover_done_custom')
 em.lea_rip('rcx',bsyms['cursor_pt']); em.call_iat('GetCursorPos'); em.test32('rax'); em.jcc(0x84,'hover_done_custom')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_main']); em.lea_rip('rdx',bsyms['cursor_pt']); em.call_iat('ScreenToClient'); em.test32('rax'); em.jcc(0x84,'hover_done_custom')
+# 指针对准本面板滚动槽位时把 thumb 变粗（与主编辑区原生滚动条一致的手感）。
+em.xor32('r9')
+em.mov_r32_ripmem('r10',bsyms['cursor_pt']); em.mov_r32_ripmem('r11',bsyms['outline_width']); em.mov_r32_ripmem('rax',bsyms['scrollbar_w']); em.mov_r32_r32('r8','r11'); em.sub_r32_r32('r8','rax')
+em.cmp_r32_r32('r10','r8'); em.jcc(0x8C,'hover_outline_hot_done'); em.cmp_r32_r32('r10','r11'); em.jcc(0x8D,'hover_outline_hot_done')
+em.mov_r32_ripmem('r10',bsyms['cursor_pt']+4); em.mov_r32_ripmem('r11',bsyms['outline_list_y']); em.cmp_r32_r32('r10','r11'); em.jcc(0x8C,'hover_outline_hot_done')
+em.mov_r32_ripmem('rax',bsyms['outline_list_h']); em.add_r32_r32('r11','rax'); em.cmp_r32_r32('r10','r11'); em.jcc(0x8D,'hover_outline_hot_done')
+em.mov_r32_imm('r9',1)
+em.label('hover_outline_hot_done')
+em.mov_r32_ripmem('rax',bsyms['outline_scroll_hot']); em.cmp_r32_r32('rax','r9'); em.jcc(0x84,'hover_outline_cursor')
+em.mov_ripmem_r32(bsyms['outline_scroll_hot'],'r9'); em.call_label('sync_outline_scrollbar')
+em.label('hover_outline_cursor')
 # Resize cursor only on document-side hit zone.
 em.mov_r32_ripmem('r10',bsyms['cursor_pt']); em.mov_r32_ripmem('r11',bsyms['outline_width']); em.cmp_r32_r32('r10','r11'); em.jcc(0x8C,'hover_done_custom'); em.add_r32_imm8('r11',8); em.cmp_r32_r32('r10','r11'); em.jcc(0x8F,'hover_done_custom')
 em.xor32('rcx'); em.mov_r32_imm('rdx',32644); em.call_iat('LoadCursorW'); em.mov_r64_r64('rcx','rax'); em.call_iat('SetCursor')
 em.label('hover_done_custom'); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
+
+# V8.6.1：文件面板滚动槽位的悬停判定——只负责把 thumb 变粗（常态 6px / hot 11px），
+# 可见性仍由几何决定。与大纲同一套规则。
+em.label('update_files_hover')
+em.emit(0x48,0x83,0xEC,0x38)
+em.mov_r64_ripmem('rcx',bsyms['hwnd_files_scroll']); em.test64('rcx'); em.jcc(0x84,'hover_fs_ret')
+em.mov_r32_ripmem('rax',bsyms['outline_flag']); em.test32('rax'); em.jcc(0x84,'hover_fs_off')
+em.lea_rip('rcx',bsyms['cursor_pt']); em.call_iat('GetCursorPos'); em.test32('rax'); em.jcc(0x84,'hover_fs_off')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_main']); em.lea_rip('rdx',bsyms['cursor_pt']); em.call_iat('ScreenToClient'); em.test32('rax'); em.jcc(0x84,'hover_fs_off')
+em.mov_r32_ripmem('r10',bsyms['cursor_pt']); em.mov_r32_ripmem('r11',bsyms['outline_width']); em.mov_r32_ripmem('rax',bsyms['scrollbar_w']); em.mov_r32_r32('r8','r11'); em.sub_r32_r32('r8','rax')
+em.cmp_r32_r32('r10','r8'); em.jcc(0x8C,'hover_fs_off'); em.cmp_r32_r32('r10','r11'); em.jcc(0x8D,'hover_fs_off')
+em.mov_r32_ripmem('r10',bsyms['cursor_pt']+4); em.mov_r32_ripmem('r11',bsyms['files_list_y']); em.cmp_r32_r32('r10','r11'); em.jcc(0x8C,'hover_fs_off')
+em.mov_r32_ripmem('rax',bsyms['files_list_h']); em.add_r32_r32('r11','rax'); em.cmp_r32_r32('r10','r11'); em.jcc(0x8D,'hover_fs_off')
+em.mov_r32_imm('r9',1); em.jmp('hover_fs_apply')
+em.label('hover_fs_off'); em.xor32('r9')
+em.label('hover_fs_apply')
+em.mov_r32_ripmem('rax',bsyms['files_scroll_hot']); em.cmp_r32_r32('rax','r9'); em.jcc(0x84,'hover_fs_ret')
+em.mov_ripmem_r32(bsyms['files_scroll_hot'],'r9'); em.call_label('sync_files_scrollbar')
+em.label('hover_fs_ret'); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
 
 # MSG.pt preserves the pointer position that generated the queued event.
 em.label('capture_message_point')
@@ -4048,19 +4088,32 @@ em.mov_ripmem_r64(bsyms['paint_hdc'],'rax')
 # light/dark stripe survives a theme transition.
 em.mov_r64_ripmem('rcx',bsyms['scroll_paint_hwnd']); em.lea_rip('rdx',bsyms['draw_rect']); em.call_iat('GetClientRect')
 em.mov_r64_ripmem('rcx',bsyms['paint_hdc']); em.lea_rip('rdx',bsyms['draw_rect']); em.mov_r64_ripmem('r8',bsyms['hbrush_outline']); em.call_iat('FillRect')
-# V8.6.1：两块滚动面共用同一套绘制——只是各自读自己的状态。thumb 矩形由
-# *_scroll_layout 预先算好（6px 细条，居中于 17px 槽位），绘制阶段只做 FillRect，
-# 这样两个面板的滚动条必然同宽同色，命中测试也用的是同一个矩形。
+# V8.6.1：两块滚动面共用同一套绘制。thumb 矩形由 *_scroll_layout 预先算好
+# （常态 6px、指针靠近后 11px，都居中于 17px 槽位），绘制阶段只按矩形画一个
+# 圆角"胶囊"，和主编辑区右侧的原生滚动条同一种观感：细条 + 悬停变粗。
+def emit_thumb_paint(tag, visible_sym, drag_sym, hot_sym, rect_sym):
+    em.mov_r32_ripmem('rax',bsyms[visible_sym]); em.test32('rax'); em.jcc(0x84,'sp_endpaint')
+    em.mov_r32_ripmem('rax',bsyms[drag_sym]); em.test32('rax'); em.jcc(0x85,'sp_' + tag + '_hot')
+    em.mov_r32_ripmem('rax',bsyms[hot_sym]); em.test32('rax'); em.jcc(0x85,'sp_' + tag + '_hot')
+    em.mov_r64_ripmem('r8',bsyms['hbrush_scroll_thumb']); em.jmp('sp_' + tag + '_brush')
+    em.label('sp_' + tag + '_hot'); em.mov_r64_ripmem('r8',bsyms['hbrush_scroll_hot'])
+    em.label('sp_' + tag + '_brush')
+    # 刷子进 DC，再用 NULL_PEN(8) 让 RoundRect 只填充不描边。
+    em.mov_r64_ripmem('rcx',bsyms['paint_hdc']); em.mov_r64_r64('rdx','r8'); em.call_iat('SelectObject')
+    em.mov_r32_imm('rcx',8); em.call_iat('GetStockObject')
+    em.mov_r64_ripmem('rcx',bsyms['paint_hdc']); em.mov_r64_r64('rdx','rax'); em.call_iat('SelectObject')
+    # RoundRect(hdc, left, top, right, bottom, ellipseW, ellipseH)
+    em.lea_rip('rcx',bsyms[rect_sym])
+    em.mov_r32_mreg('rdx','rcx',0); em.mov_r32_mreg('r8','rcx',4); em.mov_r32_mreg('r9','rcx',8); em.mov_r32_mreg('rax','rcx',12)
+    em.mov_mrsp_reg32(0x20,'rax')
+    em.mov_r32_r32('rax','r9'); em.sub_r32_r32('rax','rdx'); em.mov_mrsp_reg32(0x28,'rax'); em.mov_mrsp_reg32(0x30,'rax')
+    em.mov_r64_ripmem('rcx',bsyms['paint_hdc']); em.call_iat('RoundRect')
+
 em.mov_r64_ripmem('rax',bsyms['scroll_paint_hwnd']); em.mov_r64_ripmem('r11',bsyms['hwnd_files_scroll']); em.cmp_r64_r64('rax','r11'); em.jcc(0x84,'sp_state_files')
-em.mov_r32_ripmem('rax',bsyms['outline_scroll_visible']); em.test32('rax'); em.jcc(0x84,'sp_endpaint')
-em.mov_r32_ripmem('rax',bsyms['outline_scroll_drag']); em.test32('rax'); em.jcc(0x84,'sp_outline_calm'); em.mov_r64_ripmem('r8',bsyms['hbrush_scroll_hot']); em.jmp('sp_outline_fill')
-em.label('sp_outline_calm'); em.mov_r64_ripmem('r8',bsyms['hbrush_scroll_thumb'])
-em.label('sp_outline_fill'); em.mov_r64_ripmem('rcx',bsyms['paint_hdc']); em.lea_rip('rdx',bsyms['outline_thumb_rect']); em.call_iat('FillRect'); em.jmp('sp_endpaint')
+emit_thumb_paint('outline', 'outline_scroll_visible', 'outline_scroll_drag', 'outline_scroll_hot', 'outline_thumb_rect')
+em.jmp('sp_endpaint')
 em.label('sp_state_files')
-em.mov_r32_ripmem('rax',bsyms['files_scroll_visible']); em.test32('rax'); em.jcc(0x84,'sp_endpaint')
-em.mov_r32_ripmem('rax',bsyms['files_scroll_drag']); em.test32('rax'); em.jcc(0x84,'sp_files_calm'); em.mov_r64_ripmem('r8',bsyms['hbrush_scroll_hot']); em.jmp('sp_files_fill')
-em.label('sp_files_calm'); em.mov_r64_ripmem('r8',bsyms['hbrush_scroll_thumb'])
-em.label('sp_files_fill'); em.mov_r64_ripmem('rcx',bsyms['paint_hdc']); em.lea_rip('rdx',bsyms['files_thumb_rect']); em.call_iat('FillRect')
+emit_thumb_paint('files', 'files_scroll_visible', 'files_scroll_drag', 'files_scroll_hot', 'files_thumb_rect')
 em.label('sp_endpaint'); em.mov_r64_ripmem('rcx',bsyms['scroll_paint_hwnd']); em.lea_rip('rdx',bsyms['ps_scroll']); em.call_iat('EndPaint')
 em.label('sp_paint_end'); em.xor32('rax'); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
 
@@ -5596,16 +5649,22 @@ def _routine_src(_label, _lines=60):
     _idx = next(_i for _i, _ln in enumerate(_src_lines)
                 if "em.label('%s')" % _label in _ln)
     return "\n".join(_src_lines[_idx:_idx + _lines])
-for _rect_sym in ("outline_thumb_rect", "files_thumb_rect"):
-    assert "em.lea_rip('rdx',bsyms['%s'])" % _rect_sym in _scroll_paint_src, \
+for _tag, _rect_sym in (("outline", "outline_thumb_rect"),
+                        ("files", "files_thumb_rect")):
+    assert ("emit_thumb_paint('%s'" % _tag) in _scroll_paint_src and \
+           ("'%s')" % _rect_sym) in _scroll_paint_src, \
         'both panels must paint the thumb rect their layout published: %s' % _rect_sym
 assert "call_iat('MulDiv')" not in _scroll_paint_src, \
     'the paint path must not recompute thumb geometry'
+assert "call_iat('RoundRect')" in _scroll_paint_src and \
+       "em.mov_r32_imm('rcx',8); em.call_iat('GetStockObject')" in _scroll_paint_src, \
+    'the thumb must be a filled capsule (RoundRect with NULL_PEN), like the document bar'
 for _layout in ("scroll_layout", "files_scroll_layout"):
     _layout_src = _routine_src(_layout)
-    assert "em.mov_mreg_imm32('rcx',0,3)" in _layout_src and \
-           "em.sub_r32_imm8('rax',3); em.mov_mreg_reg32('rcx',8,'rax')" in _layout_src, \
-        '%s must publish the shared 6px centred thumb' % _layout
+    assert "em.mov_r32_imm('r10',6)" in _layout_src and \
+           "em.mov_r32_imm('r10',11)" in _layout_src and \
+           "em.sub_r32_r32('r11','r10'); em.shr_r32_imm8('r11',1)" in _layout_src, \
+        ('%s must publish the shared centred thumb (6px calm / 11px hot)' % _layout)
     assert "em.test32('rax'); em.jcc(0x84,'" in _layout_src, \
         '%s must publish scrollbar visibility from the geometry' % _layout
 for _visibility in ("scroll_visible_store", "fsl_visible_store"):
