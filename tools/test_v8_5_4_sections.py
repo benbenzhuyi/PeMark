@@ -29,14 +29,35 @@ PAGE_READWRITE = 0x04
 PAGE_EXECUTE_READ = 0x20
 PAGE_EXECUTE_READWRITE = 0x40
 
-EXPECTED = [
-    (b".text", 0x1000, 0xF000, 0x400, 0xF000, SCN_EXECUTE | SCN_READ | 0x20),
-    (b".rdata", 0x10000, 0x3000, 0xF400, 0x3000, SCN_READ | 0x40),
-    (b".idata", 0x13000, 0x1000, 0x12400, 0x1000, SCN_READ | SCN_WRITE | 0x40),
-    (b".bss", 0x14000, 0x2000, 0x0, 0x0, SCN_READ | SCN_WRITE | 0x80),
-    (b".reloc", 0x16000, 0x200, 0x15400, 0x200, SCN_READ | 0x02000000 | 0x40),
-    (b".pdata", 0x17000, 0x200, 0x16400, 0x200, SCN_READ | 0x40),
-]
+def expected_sections(ns):
+    """Derive the layout from the generator's own constants.
+
+    Section extents follow the generator's RVA plan, so growing .bss (as V8.6
+    did) must not require editing this test. What the test pins down instead is
+    the invariant: which permission each region carries and that nothing is
+    both writable and executable.
+    """
+    headers = 0x400
+    text, rdata, idata, bss = (ns["TEXT_RVA"], ns["RDATA_RVA"],
+                               ns["IDATA_RVA"], ns["BSS_RVA"])
+    reloc, pdata = ns["RELOC_RVA"], ns["PDATA_RVA"]
+    return [
+        (b".text", text, rdata - text, headers,
+         rdata - text, SCN_EXECUTE | SCN_READ | 0x20),
+        (b".rdata", rdata, idata - rdata, headers + (rdata - text),
+         idata - rdata, SCN_READ | 0x40),
+        (b".idata", idata, bss - idata, headers + (idata - text),
+         bss - idata, SCN_READ | SCN_WRITE | 0x40),
+        (b".bss", bss, ns["BSS_VSIZE"], 0, 0, SCN_READ | SCN_WRITE | 0x80),
+        (b".reloc", reloc, ns["reloc_raw"], headers + (reloc - text),
+         ns["reloc_raw"],
+         SCN_READ | 0x02000000 | 0x40),
+        (b".pdata", pdata, ns["pdata_raw"], headers + (pdata - text),
+         ns["pdata_raw"],
+         SCN_READ | 0x40),
+    ]
+
+
 EXPECTED_PROTECT = [PAGE_EXECUTE_READ, PAGE_READONLY, PAGE_READWRITE, PAGE_READWRITE,
                     PAGE_READONLY, PAGE_READONLY]
 PREFERRED_IMAGE_BASE = 0x140000000
@@ -108,12 +129,12 @@ def parse_sections(path):
             "reloc": (reloc_rva, reloc_size), "blob": b}
 
 
-def on_disk(structure):
+def on_disk(structure, expected):
     sections, headers, image, filesize = (structure["sections"], structure["headers"],
                                           structure["image"], structure["filesize"])
-    assert len(sections) == len(EXPECTED), "expected four sections"
+    assert len(sections) == len(expected), "expected six sections"
     raw_end = headers
-    for (name, va, vs, rp, rs, chars), (en, eva, evs, erp, ers, echars) in zip(sections, EXPECTED):
+    for (name, va, vs, rp, rs, chars), (en, eva, evs, erp, ers, echars) in zip(sections, expected):
         assert name == en, (name, en)
         assert (va, vs, rp, rs) == (eva, evs, erp, ers), (name, va, vs, rp, rs)
         assert chars == echars, (name, hex(chars))
@@ -127,13 +148,13 @@ def on_disk(structure):
             raw_end = rp + rs
         else:
             assert name == b".bss"
-    assert image >= EXPECTED[-1][1] + EXPECTED[-1][2]
+    assert image >= expected[-1][1] + expected[-1][2]
     # ASLR metadata: DYNAMIC_BASE plus a relocation table that tiles every page.
     assert structure["image_base"] == PREFERRED_IMAGE_BASE
     assert structure["dll_chars"] & 0x0040, "DYNAMIC_BASE must be declared"
     reloc_rva, reloc_size = structure["reloc"]
-    reloc_va = next(s[1] for s in EXPECTED if s[0] == b".reloc")
-    reloc_raw_ptr = next(s[3] for s in EXPECTED if s[0] == b".reloc")
+    reloc_va = next(s[1] for s in expected if s[0] == b".reloc")
+    reloc_raw_ptr = next(s[3] for s in expected if s[0] == b".reloc")
     assert reloc_rva == reloc_va, (hex(reloc_rva), hex(reloc_va))
     assert reloc_size >= 12 and reloc_size % 4 == 0
     blob, cursor, blocks = structure["blob"], 0, 0
@@ -149,12 +170,14 @@ def on_disk(structure):
         cursor += block
         blocks += 1
     assert cursor == reloc_size
-    assert blocks == (0x17000 - 0x1000) // 0x1000
+    pdata_va = next(s[1] for s in expected if s[0] == b".pdata")
+    # The relocation table must cover every page up to .pdata's RVA.
+    assert blocks == (pdata_va - expected[0][1]) // 0x1000
     print("PASS section table: 6 sections, RX/R/RW/RW/R/R, no W+X, relocation "
           "table covers every image page")
 
 
-def loaded(struct_ns):
+def loaded(struct_ns, expected):
     ns, exe = struct_ns
     proc = subprocess.Popen([str(exe)], cwd=str(exe.parent))
     try:
@@ -169,15 +192,14 @@ def loaded(struct_ns):
             base = c.cast(module, c.c_void_p).value
             assert base != PREFERRED_IMAGE_BASE, \
                 "DYNAMIC_BASE image loaded at its preferred base; ASLR is not active"
-            for (name, va, vs, rp, rs, chars), expected in zip(EXPECTED, EXPECTED_PROTECT):
+            for (name, va, vs, rp, rs, chars), protect in zip(expected, EXPECTED_PROTECT):
                 mbi = MEMORY_BASIC_INFORMATION()
                 assert k32.VirtualQueryEx(handle, c.c_void_p(base + va),
                                           c.byref(mbi), c.sizeof(mbi))
-                protect = mbi.Protect
-                assert protect == expected, \
+                assert mbi.Protect == protect, \
                     "%s loaded with protection 0x%02X, expected 0x%02X" % (
-                        name.decode(), protect, expected)
-                assert protect != PAGE_EXECUTE_READWRITE, \
+                        name.decode(), mbi.Protect, protect)
+                assert mbi.Protect != PAGE_EXECUTE_READWRITE, \
                     "%s must not be a writable executable page" % name.decode()
         finally:
             k32.CloseHandle(handle)
@@ -206,10 +228,11 @@ def main():
     release_hash = hashlib.sha256(RELEASE_EXE.read_bytes()).hexdigest()
     ns, exe = build()
     structure = parse_sections(exe)
-    on_disk(structure)
-    loaded((ns, exe))
+    expected = expected_sections(ns)
+    on_disk(structure, expected)
+    loaded((ns, exe), expected)
     assert hashlib.sha256(RELEASE_EXE.read_bytes()).hexdigest() == release_hash
-    print("PASS released V8.5.3 binary unchanged")
+    print("PASS released V8.5.4 binary unchanged")
     return 0
 
 

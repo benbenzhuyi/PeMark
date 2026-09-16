@@ -31,47 +31,48 @@ jobs:
           $expected = "AA8DE9CDA9ED90A2CF66A3A93E021DC91CC192073078A90C53FA9669F478C5CC"
           $actual = (Get-FileHash -Algorithm SHA256 bin/current/pemark_x64_v8_5_4.exe).Hash
           if ($actual -ne $expected) { throw "SHA-256 mismatch: $actual" }
-      - name: Build and inspect the next candidate when present
-        if: ${{ hashFiles('src/candidate/generate_markdown_editor_v8_5_4.py') != '' }}
+      - name: Build and inspect the development channel
+        if: ${{ hashFiles('src/candidate/generate_markdown_editor_v8_6.py') != '' }}
         run: |
-          python src/candidate/generate_markdown_editor_v8_5_4.py
-          python tools/test_v8_5_1.py src/candidate/generate_markdown_editor_v8_5_4.py
-          python tools/inspect_pe.py bin/candidate/pemark_x64_v8_5_4_candidate.exe
-      - name: Exercise V8.5.4 document-safety gates
-        if: ${{ hashFiles('tools/test_v8_5_4_destructive.py') != '' }}
+          python src/candidate/generate_markdown_editor_v8_6.py
+          python tools/test_v8_5_1.py src/candidate/generate_markdown_editor_v8_6.py
+          python tools/inspect_pe.py bin/candidate/pemark_x64_v8_6_candidate.exe
+      - name: Exercise document-safety, encoding and capacity gates
+        if: ${{ hashFiles('tools/test_v8_5_2_destructive.py') != '' }}
         env:
-          PEMARK_GENERATOR: ${{ github.workspace }}/src/current/generate_markdown_editor_v8_5_4.py
-          PEMARK_EXE: ${{ github.workspace }}/bin/current/pemark_x64_v8_5_4.exe
+          PEMARK_GENERATOR: ${{ github.workspace }}/src/candidate/generate_markdown_editor_v8_6.py
+          PEMARK_EXE: ${{ github.workspace }}/bin/candidate/pemark_x64_v8_6_candidate.exe
         run: |
-          python tools/test_v8_5_4_revision.py
-          python tools/test_v8_5_4_open_encoding.py
-          python tools/test_v8_5_4_write_injection.py
-          python tools/test_v8_5_4_destructive.py
-      - name: Exercise V8.5.4 capacity gates
-        if: ${{ hashFiles('tools/test_v8_5_4_capacity_baseline.py') != '' }}
+          python tools/test_v8_5_2_revision.py
+          python tools/test_v8_5_2_open_encoding.py
+          python tools/test_v8_5_2_write_injection.py
+          python tools/test_v8_5_2_destructive.py
+          python tools/test_v8_5_2_capacity_baseline.py
+          python tools/test_v8_5_2_outline_alloc_injection.py
+          python tools/test_v8_5_2_style_alloc_injection.py
+          python tools/test_v8_5_2_style_capacity.py
+          python tools/smoke_test_v8_5_1.py bin/candidate/pemark_x64_v8_6_candidate.exe
+      - name: Exercise arena and memory gates
+        if: ${{ hashFiles('tools/test_v8_5_3_document_arena.py') != '' }}
         env:
-          PEMARK_GENERATOR: ${{ github.workspace }}/src/current/generate_markdown_editor_v8_5_4.py
-          PEMARK_EXE: ${{ github.workspace }}/bin/current/pemark_x64_v8_5_4.exe
+          PEMARK_GENERATOR: ${{ github.workspace }}/src/candidate/generate_markdown_editor_v8_6.py
+          PEMARK_EXE: ${{ github.workspace }}/bin/candidate/pemark_x64_v8_6_candidate.exe
         run: |
-          python tools/test_v8_5_4_capacity_baseline.py
-          python tools/test_v8_5_4_outline_alloc_injection.py
-          python tools/test_v8_5_4_style_alloc_injection.py
-          python tools/test_v8_5_4_style_capacity.py
-      - name: Exercise V8.5.4 render arena when present
-        if: ${{ hashFiles('tools/test_v8_5_4_render_arena.py') != '' }}
-        run: python tools/test_v8_5_4_render_arena.py
-      - name: Exercise V8.5.4 document arena when present
-        if: ${{ hashFiles('tools/test_v8_5_4_document_arena.py') != '' }}
-        run: python tools/test_v8_5_4_document_arena.py
-      - name: Exercise V8.5.4 scratch arenas when present
-        if: ${{ hashFiles('tools/test_v8_5_4_scratch_arenas.py') != '' }}
-        run: python tools/test_v8_5_4_scratch_arenas.py
-      - name: Observe the V8.5.4 memory plateau when present
-        if: ${{ hashFiles('tools/test_v8_5_4_memory_plateau.py') != '' }}
-        run: python tools/test_v8_5_4_memory_plateau.py
-      - name: Build and verify V8.5.4 section separation when present
-        if: ${{ hashFiles('src/candidate/generate_markdown_editor_v8_5_4.py') != '' }}
+          python tools/test_v8_5_3_render_arena.py
+          python tools/test_v8_5_3_document_arena.py
+          python tools/test_v8_5_3_scratch_arenas.py
+          python tools/test_v8_5_3_memory_plateau.py
+      - name: Exercise PE structure gates
+        if: ${{ hashFiles('tools/test_v8_5_4_sections.py') != '' }}
+        env:
+          PEMARK_GENERATOR: ${{ github.workspace }}/src/candidate/generate_markdown_editor_v8_6.py
+          PEMARK_EXE: ${{ github.workspace }}/bin/candidate/pemark_x64_v8_6_candidate.exe
         run: |
-          python src/candidate/generate_markdown_editor_v8_5_4.py
-          python tools/test_v8_5_1.py src/candidate/generate_markdown_editor_v8_5_4.py
           python tools/test_v8_5_4_sections.py
+          python tools/test_v8_5_4_unwind.py
+      - name: Exercise workspace enumeration
+        if: ${{ hashFiles('tools/test_v8_6_workspace_enum.py') != '' }}
+        env:
+          PEMARK_GENERATOR: ${{ github.workspace }}/src/candidate/generate_markdown_editor_v8_6.py
+          PEMARK_EXE: ${{ github.workspace }}/bin/candidate/pemark_x64_v8_6_candidate.exe
+        run: python tools/test_v8_6_workspace_enum.py
