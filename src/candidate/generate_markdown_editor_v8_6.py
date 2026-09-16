@@ -1151,7 +1151,9 @@ em.label('mousemove_event')
 em.mov_r32_ripmem('rax',bsyms['divider_drag']); em.test32('rax'); em.jcc(0x84,'mousemove_not_divider_drag')
 em.call_label('divider_drag_move'); em.jmp('msg_loop')
 em.label('mousemove_not_divider_drag')
-em.jmp('mousemove_hover_only')
+# 自绘滚动条已退役：跳过它们的拖动路由，但必须落到 splitter 判定之前，
+# 否则拖动"侧栏宽度"的分隔条会完全没有反应。
+em.jmp('mousemove_not_scroll_drag')
 em.mov_r32_ripmem('rax',bsyms['files_scroll_drag']); em.test32('rax'); em.jcc(0x84,'mousemove_not_files_scroll')
 em.call_label('files_scroll_drag_move'); em.jmp('msg_loop')
 em.label('mousemove_not_files_scroll')
@@ -2023,17 +2025,14 @@ em.lea_rip('rcx',bsyms['msg']); em.call_iat('TranslateMessage'); em.lea_rip('rcx
 # has been idle for ~180 ms.
 em.mov_r32_ripmem('rax',bsyms['preview_theme_dirty']); em.test32('rax'); em.jcc(0x84,'dispatch_theme_refresh_done')
 em.mov_rax_mr12(0); em.mov_r64_ripmem('r10',bsyms['hwnd_preview']); em.cmp_r64_r64('rax','r10'); em.jcc(0x85,'dispatch_theme_refresh_done')
-em.mov_eax_mr12(8); em.cmp_r32_imm('rax',0x0115); em.jcc(0x84,'dispatch_theme_vscroll')  # WM_VSCROLL
+em.mov_eax_mr12(8); em.cmp_r32_imm('rax',0x0115); em.jcc(0x84,'dispatch_theme_schedule')  # WM_VSCROLL（含拖动滑块）
 em.cmp_r32_imm('rax',0x020A); em.jcc(0x84,'dispatch_theme_schedule')                       # WM_MOUSEWHEEL
+em.cmp_r32_imm('rax',0x0202); em.jcc(0x84,'dispatch_theme_schedule')                       # WM_LBUTTONUP（拖动/选择结束）
 # Lazy Preview styling must also follow keyboard viewport movement (arrows, PgUp/
 # PgDn, Home/End). Scheduling on any Preview WM_KEYDOWN is cheap and avoids stale
 # formatting after keyboard-only navigation.
 em.cmp_r32_imm('rax',0x0100); em.jcc(0x85,'dispatch_theme_refresh_done')
 em.jmp('dispatch_theme_schedule')
-em.label('dispatch_theme_vscroll')
-# V8.6.1：拖动滑块期间（SB_THUMBTRACK=5）绝不重排——拖动途中反复重排既卡顿，
-# 又会让重排后的视口露出尚未格式化的源码。等松手后的 SB_ENDSCROLL 再统一格式化。
-em.mov_rax_mr12(16); em.mov_r32_r32('r10','rax'); em.and_r32_imm('r10',0xFFFF); em.cmp_r32_imm('r10',5); em.jcc(0x84,'dispatch_theme_refresh_done')
 em.label('dispatch_theme_schedule')
 # 180ms 太短：连续滚动时定时器会在手指停顿的间隙里触发，导致滚动中重排（卡顿）。
 em.mov_r64_ripmem('rcx',bsyms['hwnd_main']); em.mov_r32_imm('rdx',0x4D); em.mov_r32_imm('r8',450); em.xor32('r9'); em.call_iat('SetTimer')
@@ -5650,7 +5649,7 @@ for _list_sym in ("hwnd_files", "hwnd_outline"):
         'each list must be opted into dark mode and themed: %s' % _list_sym
 for _guard in ("em.jmp('lbd_test_splitter')",
                "em.label('lbu_not_scroll')\nem.jmp('lbu_not_files_scroll')",
-               "em.label('mousemove_not_divider_drag')\nem.jmp('mousemove_hover_only')"):
+               "em.jmp('mousemove_not_scroll_drag')"):
     assert _guard in _production_source, \
         'the retired overlay must not intercept input: %s' % _guard.replace('\n', ' / ')
 # 拖动分隔条/开关侧栏都会改变文档面的位置与宽度：必须显式重绘，否则会花屏。
