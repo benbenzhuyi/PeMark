@@ -1,4 +1,4 @@
-import struct, hashlib, os, subprocess, textwrap, glob
+import struct, hashlib, os, re, subprocess, textwrap, glob
 
 try:
     WRITE_INJECTION_MODE
@@ -3952,13 +3952,97 @@ if len(idata) > BSS_RVA - IDATA_RVA:
 # V8.5.4：base relocation 与 ASLR。发射的代码本身只用 RIP 相对寻址（数据经
 # lea_rip、外部函数经 IAT），因此没有任何位置需要修正。为了让加载器可以自由
 # 选择基址，仍然需要一张有效的重定位表：每个 4 KiB 页一个块，块内条目为
-# IMAGE_REL_BASED_ABSOLUTE（0），语义是"该页无需修正"。
+# IMAGE_REL_BASED_ABSOLUTE（0），语义是"该页无需修正"。表在下面与 .pdata 的
+# 布局一起生成，因为它必须覆盖到 .reloc 之前的最后一个映像页。
 RELOC_RVA = BSS_RVA + BSS_VSIZE
+
+# V8.5.4：x64 栈回溯元数据（.pdata）。只有非叶子例程需要条目——规范规定找不到
+# 函数表项的地址按叶子处理，返回地址就位于 [RSP]。下面从已生成的机器码里解析
+# 每个被调用例程的 prologue（push 非易失寄存器序列 + sub rsp,imm），据此生成
+# RUNTIME_FUNCTION 与 UNWIND_INFO。无法识别的入口按叶子处理，不产生条目。
+_UWOP_PUSH_NONVOL = 0
+_UWOP_ALLOC_LARGE = 1
+_UWOP_ALLOC_SMALL = 2
+_PUSH_REG = {0x50: 0, 0x51: 1, 0x52: 2, 0x53: 3,
+             0x54: 4, 0x55: 5, 0x56: 6, 0x57: 7}
+
+
+def _parse_prologue(offset):
+    """Return (pushes, alloc, prolog_size) for a non-leaf entry, else None."""
+    i = offset
+    pushes = []
+    while i < len(text):
+        byte = text[i]
+        if byte in _PUSH_REG:
+            pushes.append(_PUSH_REG[byte]); i += 1; continue
+        if byte == 0x41 and i + 1 < len(text) and text[i + 1] in _PUSH_REG:
+            pushes.append(_PUSH_REG[text[i + 1]]); i += 2; continue
+        break
+    alloc = None
+    if i + 3 < len(text) and text[i] == 0x48 and text[i + 1] == 0x83 and text[i + 2] == 0xEC:
+        alloc = text[i + 3]; i += 4
+    elif i + 6 < len(text) and text[i] == 0x48 and text[i + 1] == 0x81 and text[i + 2] == 0xEC:
+        alloc = struct.unpack_from('<I', text, i + 3)[0]; i += 7
+    if alloc is None and not pushes:
+        return None
+    return pushes, alloc, i - offset
+
+
+_call_targets = set(re.findall(r"call_label\('([^']+)'\)",
+                               open(__file__, encoding='utf-8').read()))
+_entries = sorted({em.labels[_name] for _name in _call_targets if _name in em.labels} |
+                  {0})
+_runtime_functions = []
+_unwind_blobs = []
+for _offset in _entries:
+    _parsed = _parse_prologue(_offset)
+    if _parsed is None:
+        continue                      # leaf routine: no entry required
+    _pushes, _alloc, _prolog = _parsed
+    _codes = []
+    if _alloc:
+        if _alloc <= 128 and _alloc % 8 == 0:
+            _codes.append((_prolog, (_alloc // 8 - 1) << 4 | _UWOP_ALLOC_SMALL))
+        else:
+            _codes.append((_prolog, (_UWOP_ALLOC_LARGE)))
+    _cursor = _offset
+    for _reg in reversed(_pushes):
+        _cursor += 2 if text[_cursor] == 0x41 else 1
+        _codes.append((_cursor - _offset, (_reg << 4) | _UWOP_PUSH_NONVOL))
+    _unwind = bytearray()
+    _unwind.append(1)                 # Version 1
+    _unwind.append(0)                 # Flags: no handler, no chain
+    _unwind.append(_prolog)
+    # CountOfCodes counts 2-byte slots, so UWOP_ALLOC_LARGE contributes one extra
+    # slot for its trailing size field (two when the field itself is 4 bytes).
+    _large = bool(_alloc) and not (_alloc <= 128 and _alloc % 8 == 0)
+    _unwind.append(len(_codes) + (1 if _large else 0))
+    _unwind.append(0)                 # FrameRegister/FrameOffset: none
+    for _code_off, _code in _codes:
+        _unwind.extend(struct.pack('<BB', _code_off, _code))
+        if _code == _UWOP_ALLOC_LARGE:
+            # The extra data of a large allocation follows its own code entry.
+            _unwind.extend(struct.pack('<H', _alloc // 8))
+    while len(_unwind) % 4:
+        _unwind.append(0)
+    _runtime_functions.append((_offset, _unwind))
+# UNWIND_INFO lives in .rdata (as linkers do — notepad.exe keeps every unwind
+# blob there) and the exception directory size covers only the array, so the
+# loader/debugger can binary-search the entries by Size/12.
+if len(rdata) % 4:
+    rdata.extend(b'\0' * (4 - len(rdata) % 4))
+_unwind_rvas = []
+for _offset, _blob in _runtime_functions:
+    _unwind_rvas.append(RDATA_RVA + len(rdata))
+    rdata.extend(_blob)
+_pdata_entries = len(_runtime_functions) * 12
+pdata_payload = _pdata_entries
+pdata_raw = align(pdata_payload, FILE_ALIGN)
+PDATA_RVA = RELOC_RVA + 0x1000
+_reloc_pages = (PDATA_RVA - TEXT_RVA) // SECT_ALIGN
 reloc = bytearray()
-_reloc_page = TEXT_RVA
-while _reloc_page < RELOC_RVA:
-    reloc.extend(struct.pack('<IIHH', _reloc_page, 12, 0, 0))
-    _reloc_page += SECT_ALIGN
+for _page_index in range(_reloc_pages):
+    reloc.extend(struct.pack('<IIHH', TEXT_RVA + _page_index * SECT_ALIGN, 12, 0, 0))
 reloc_size = len(reloc)
 reloc_raw = align(reloc_size, FILE_ALIGN)
 
@@ -3984,6 +4068,20 @@ if len(raw) > RELOC_RVA - TEXT_RVA:
 raw.extend(b'\0' * ((RELOC_RVA - TEXT_RVA) - len(raw)))
 raw.extend(reloc)
 raw.extend(b'\0' * (reloc_raw - reloc_size))
+
+# RUNTIME_FUNCTION 数组按 BeginAddress 升序排列。
+_pdata = bytearray()
+_bounds = [entry[0] for entry in _runtime_functions]
+for _index, (_offset, _blob) in enumerate(_runtime_functions):
+    _end = _bounds[_index + 1] if _index + 1 < len(_bounds) else len(text)
+    if _end <= _offset:
+        raise RuntimeError('runtime function ranges must increase')
+    _pdata.extend(struct.pack('<III', TEXT_RVA + _offset, TEXT_RVA + _end,
+                              _unwind_rvas[_index]))
+assert len(_pdata) == pdata_payload, (len(_pdata), pdata_payload)
+raw.extend(b'\0' * ((PDATA_RVA - TEXT_RVA) - len(raw)))
+raw.extend(_pdata)
+raw.extend(b'\0' * (pdata_raw - pdata_payload))
 raw_size = len(raw)
 
 # name, VirtualSize, VirtualAddress, PointerToRawData, SizeOfRawData, Characteristics
@@ -4000,8 +4098,10 @@ sections = [
     (b'.bss\0\0\0\0', BSS_VSIZE, BSS_RVA, 0, 0, 0xC0000080),
     (b'.reloc\0\0', reloc_raw, RELOC_RVA,
      headers_size + (RELOC_RVA - TEXT_RVA), reloc_raw, 0x42000040),
+    (b'.pdata\0\0', pdata_raw, PDATA_RVA,
+     headers_size + (PDATA_RVA - TEXT_RVA), pdata_raw, 0x40000040),
 ]
-size_image = align(RELOC_RVA + reloc_raw, SECT_ALIGN)
+size_image = align(PDATA_RVA + pdata_raw, SECT_ALIGN)
 
 hdr = bytearray(b'\0' * headers_size)
 hdr[0:2] = b'MZ'
@@ -4028,6 +4128,7 @@ struct.pack_into('<HH', opt, 68, 2, DLL_CHARACTERISTICS)  # GUI, NX_COMPAT | DYN
 struct.pack_into('<QQQQ', opt, 72, 0x100000, 0x1000, 0x100000, 0x1000)
 struct.pack_into('<II', opt, 104, 0, 16)
 struct.pack_into('<II', opt, 112 + 8*1, IDATA_RVA, IMPORT_DESC_SIZE)
+struct.pack_into('<II', opt, 112 + 8*3, PDATA_RVA, pdata_payload)
 struct.pack_into('<II', opt, 112 + 8*5, RELOC_RVA, reloc_size)
 struct.pack_into('<II', opt, 112 + 8*12, IAT_RVA, IAT_SIZE)
 hdr[p:p+0xF0] = opt; p += 0xF0
@@ -4049,8 +4150,9 @@ _EXPECTED_SECTIONS = {
     b'.idata': 0xC0000040,   # INITIALIZED_DATA | READ | WRITE
     b'.bss': 0xC0000080,     # UNINITIALIZED_DATA | READ | WRITE
     b'.reloc': 0x42000040,   # INITIALIZED_DATA | DISCARDABLE | READ
+    b'.pdata': 0x40000040,   # INITIALIZED_DATA | READ
 }
-assert len(sections) == 5, 'the image must declare exactly five sections'
+assert len(sections) == 6, 'the image must declare exactly six sections'
 _prev_va_end = 0
 _prev_raw_end = 0
 for _name, _vsize, _va, _ptr, _rsize, _chars in sections:
@@ -4080,6 +4182,24 @@ assert not any(chars & 0x20000000 and chars & 0x80000000 for _, _, _, _, _, char
     'no section may be both writable and executable'
 # (Q) ASLR / 重定位断言：无绝对地址的映像仍必须提供合法的重定位表，
 #     否则加载器无法在非首选基址加载，DYNAMIC_BASE 等于失效或被拒。
+# (R) 栈回溯表断言：条目有序、范围不重叠、UNWIND_INFO 版本与 prologue 一致。
+assert _runtime_functions, 'at least the entry routine needs unwind metadata'
+assert len(_runtime_functions) * 12 == _pdata_entries
+assert all(RDATA_RVA <= rva < RDATA_RVA + len(rdata) for rva in _unwind_rvas), \
+    'unwind blobs must live inside .rdata'
+assert len(rdata) <= IDATA_RVA - RDATA_RVA, 'unwind blobs must fit in .rdata'
+_prev_end = 0
+for _index, (_offset, _blob) in enumerate(_runtime_functions):
+    _begin = TEXT_RVA + _offset
+    _end = (TEXT_RVA + _bounds[_index + 1]) if _index + 1 < len(_bounds) else TEXT_RVA + len(text)
+    assert _begin >= _prev_end, 'RUNTIME_FUNCTION entries must be ordered'
+    assert _end > _begin, 'RUNTIME_FUNCTION ranges must be non-empty'
+    _prev_end = _end
+    assert _blob[0] == 1, 'UNWIND_INFO version must be 1'
+    assert _blob[2] >= 1, 'SizeOfProlog must cover the analysed prologue'
+    assert _blob[3] >= 1, 'at least one unwind code is required'
+assert _reloc_pages * SECT_ALIGN == PDATA_RVA - TEXT_RVA
+
 assert reloc_size >= 12 and reloc_size % 4 == 0, \
     'the relocation table must contain whole blocks'
 _reloc_blocks = 0
@@ -4096,7 +4216,7 @@ while _reloc_cursor < reloc_size:
     _reloc_cursor += _block_size
     _reloc_blocks += 1
 assert _reloc_cursor == reloc_size, 'relocation blocks must tile the table exactly'
-assert _reloc_blocks == (RELOC_RVA - TEXT_RVA) // SECT_ALIGN, \
+assert _reloc_blocks == (PDATA_RVA - TEXT_RVA) // SECT_ALIGN, \
     'every image page must be declared relocation-clean'
 assert DLL_CHARACTERISTICS & 0x0040, 'DYNAMIC_BASE must stay enabled'
 

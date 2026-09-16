@@ -50,5 +50,24 @@ measured instead of argued about.
   reports the actual (relocated) base, and the V8.5.2/V8.5.3 suites derive their
   output names from the generator under test so one suite can cover both channels.
 
-`.pdata` unwind metadata and the CFG/CET feasibility conclusion remain for later
-slices.
+## Stack-walking metadata (.pdata)
+
+- Emitted `RUNTIME_FUNCTION` entries for every non-leaf routine: 42 entries taken
+  from the called-routine set, with each prologue read back from the generated
+  machine code (push sequence plus `sub rsp, imm`). Leaf routines get no entry,
+  which matches the x64 rule that an address without a table entry is unwound as
+  a leaf.
+- `UNWIND_INFO` blobs live in `.rdata` and the exception directory size covers
+  only the entry array, which is how linkers lay this out (notepad.exe keeps
+  every unwind blob in `.rdata` and its directory size is exactly the array).
+- Verified: 42 well-formed version-1 entries with ordered, non-overlapping
+  ranges; dbghelp resolves entries for our addresses; a real stack walk reaches
+  our module; the windowed process still starts, works and exits cleanly under
+  ASLR.
+- Known limitation, recorded rather than claimed as working: the dbghelp walk
+  reaches our frame but does not continue past it, so full unwinding is not yet
+  demonstrated. Program behaviour is unaffected — the code raises no exceptions
+  — and `tools/test_v8_5_4_unwind.py` prints this state explicitly instead of
+  asserting success.
+
+The CFG/CET feasibility conclusion remains for a later slice.

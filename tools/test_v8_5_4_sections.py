@@ -27,9 +27,10 @@ EXPECTED = [
     (b".idata", 0x13000, 0x1000, 0x12400, 0x1000, SCN_READ | SCN_WRITE | 0x40),
     (b".bss", 0x14000, 0x2000, 0x0, 0x0, SCN_READ | SCN_WRITE | 0x80),
     (b".reloc", 0x16000, 0x200, 0x15400, 0x200, SCN_READ | 0x02000000 | 0x40),
+    (b".pdata", 0x17000, 0x200, 0x16400, 0x200, SCN_READ | 0x40),
 ]
 EXPECTED_PROTECT = [PAGE_EXECUTE_READ, PAGE_READONLY, PAGE_READWRITE, PAGE_READWRITE,
-                    PAGE_READONLY]
+                    PAGE_READONLY, PAGE_READONLY]
 PREFERRED_IMAGE_BASE = 0x140000000
 
 u32, k32 = c.windll.user32, c.windll.kernel32
@@ -107,10 +108,12 @@ def on_disk(structure):
     assert structure["image_base"] == PREFERRED_IMAGE_BASE
     assert structure["dll_chars"] & 0x0040, "DYNAMIC_BASE must be declared"
     reloc_rva, reloc_size = structure["reloc"]
-    assert (reloc_rva, reloc_size) == (EXPECTED[-1][1], reloc_size)
+    reloc_va = next(s[1] for s in EXPECTED if s[0] == b".reloc")
+    reloc_raw_ptr = next(s[3] for s in EXPECTED if s[0] == b".reloc")
+    assert reloc_rva == reloc_va, (hex(reloc_rva), hex(reloc_va))
     assert reloc_size >= 12 and reloc_size % 4 == 0
     blob, cursor, blocks = structure["blob"], 0, 0
-    file_off = sections[-1][3]
+    file_off = reloc_raw_ptr
     while cursor < reloc_size:
         page, block = struct.unpack_from("<II", blob, file_off + cursor)
         assert block >= 12 and block % 4 == 0
@@ -122,8 +125,8 @@ def on_disk(structure):
         cursor += block
         blocks += 1
     assert cursor == reloc_size
-    assert blocks == (0x16000 - 0x1000) // 0x1000
-    print("PASS section table: 5 sections, RX/R/RW/RW/R, no W+X, relocation "
+    assert blocks == (0x17000 - 0x1000) // 0x1000
+    print("PASS section table: 6 sections, RX/R/RW/RW/R/R, no W+X, relocation "
           "table covers every image page")
 
 

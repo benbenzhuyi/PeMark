@@ -56,3 +56,16 @@ Diagnosis note: the Windows Application log named the faulting module and
 exception (0xC0000005) for the variants that loaded but crashed; the rejected
 variants produced no event at all, which is what pointed at the section table
 rather than at the code.
+
+## Two easy-to-get-wrong details of x64 unwind metadata (V8.5.4)
+
+Both were wrong on the first attempt and only surfaced through testing:
+
+1. `UNWIND_INFO.CountOfCodes` counts **2-byte slots**, not logical operations. A
+   `UWOP_ALLOC_LARGE` entry owns a trailing size field, so it contributes one
+   extra slot (two when the field is 4 bytes wide). Counting only the logical
+   operation made dbghelp find the entry but fail to unwind the frame.
+2. Unwind blobs belong in `.rdata`, not in `.pdata`, and
+   `IMAGE_DIRECTORY_ENTRY_EXCEPTION.Size` covers only the `RUNTIME_FUNCTION`
+   array. `notepad.exe` is a convenient reference: its `.pdata` is exactly
+   `size / 12` entries and every unwind blob it references lives in `.rdata`.
