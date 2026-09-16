@@ -3963,8 +3963,12 @@ RELOC_RVA = BSS_RVA + BSS_VSIZE
 _UWOP_PUSH_NONVOL = 0
 _UWOP_ALLOC_LARGE = 1
 _UWOP_ALLOC_SMALL = 2
+# A REX-prefixed 0x54..0x57 is R12..R15; without the prefix the same bytes mean
+# RSP/RBP/RSI/RDI. Conflating them produced unwind codes naming the wrong
+# registers, which made a debugger find our entries but fail to walk past them.
 _PUSH_REG = {0x50: 0, 0x51: 1, 0x52: 2, 0x53: 3,
              0x54: 4, 0x55: 5, 0x56: 6, 0x57: 7}
+_PUSH_REG_REX = {0x54: 12, 0x55: 13, 0x56: 14, 0x57: 15}
 
 
 def _parse_prologue(offset):
@@ -3975,8 +3979,8 @@ def _parse_prologue(offset):
         byte = text[i]
         if byte in _PUSH_REG:
             pushes.append(_PUSH_REG[byte]); i += 1; continue
-        if byte == 0x41 and i + 1 < len(text) and text[i + 1] in _PUSH_REG:
-            pushes.append(_PUSH_REG[text[i + 1]]); i += 2; continue
+        if byte == 0x41 and i + 1 < len(text) and text[i + 1] in _PUSH_REG_REX:
+            pushes.append(_PUSH_REG_REX[text[i + 1]]); i += 2; continue
         break
     alloc = None
     if i + 3 < len(text) and text[i] == 0x48 and text[i + 1] == 0x83 and text[i + 2] == 0xEC:

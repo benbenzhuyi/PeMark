@@ -70,4 +70,25 @@ measured instead of argued about.
   — and `tools/test_v8_5_4_unwind.py` prints this state explicitly instead of
   asserting success.
 
-The CFG/CET feasibility conclusion remains for a later slice.
+## CFG / CET conclusion
+
+- Wrote `docs/V8_5_4_CFG_CET_FEASIBILITY.md` from measured facts: 480 IAT call
+  sites, 11 register call sites (three UxTheme exports resolved through
+  `GetProcAddress`), no exports, no runtime-replaceable function pointers, no
+  LOAD_CONFIG directory and `GUARD_CF` not set.
+- CFG is **not implemented**: it would need instrumentation at 491 indirect call
+  sites plus a LOAD_CONFIG table, while the only indirect targets are loader-filled
+  IAT slots and three system DLL exports — there is nothing an attacker could
+  redirect today. The document records the three implementation steps and the
+  trigger that should reopen the decision (plugin-style callbacks or model
+  providers in V9).
+- CET is **not declared**: the emitted code already satisfies the behavioural
+  requirement (no SEH, no `ret` to a computed address, no return address written
+  as data), so a declaration would add load-time risk without changing behaviour.
+  The document records what a future declaration would touch.
+- Also fixed a real defect found while testing the unwind table: the prologue
+  parser mapped REX-prefixed `41 54..57` (R12–R15) onto register numbers 4–7
+  (RSP/RBP/RSI/RDI), so unwind codes named the wrong registers.
+
+V8.5.4's milestone deliverables are complete. One release-gate deviation is
+recorded below rather than hidden.

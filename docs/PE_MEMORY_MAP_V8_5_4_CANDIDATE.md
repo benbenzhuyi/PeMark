@@ -15,7 +15,7 @@ text 实际代码 30672 字节（预算 61440），rdata 4712 字节，idata 360
 
 本次构建：text 实际 30672 字节（余量 30768 字节）；BSS 符号 179 个，最终虚拟 BSS 8192 字节。
 
-SHA-256：`5dfba76471b2d54ee2e5e33e1ee458785a5764328e7e88eb4c36191f31f3f006`
+SHA-256：`44031f1ebcb37cf76ef31cc350140602817a5e960ed356ef2bcf22afc81fd690`
 
 | Symbol | RVA | Size |
 |---|---:|---:|
