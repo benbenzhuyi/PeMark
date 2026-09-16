@@ -11,7 +11,7 @@ The production executable is built without a compiler, assembler, linker,
 .NET compiler, interpreter packager, or embedded Python runtime. Python is used
 only at build and test time.
 
-> **V8.5.2 Preview** is the current public release. Core editing, Preview,
+> **V8.5.3 Preview** is the current public release. Core editing, Preview,
 > Outline, theme, wrap and large-document navigation pass the documented
 > regression suite, and unsaved work is now protected: dirty state is derived
 > from document revisions, destructive transitions share one Save / Discard /
@@ -31,12 +31,12 @@ only at build and test time.
 
 ## Download
 
-Download `pemark_x64_v8_5_2.exe` from GitHub Releases.
+Download `pemark_x64_v8_5_3.exe` from GitHub Releases.
 
 Expected SHA-256:
 
 ```text
-2c105660dbac96b7de18614f43753073b3b5613e22bba160ceb8058646040e30
+6ad87c6dcb3b9d3a35041d1bc37e5792f3cfd16cb79046088a3426200d0bb7d0
 ```
 
 The executable is unsigned. Windows SmartScreen or security products may show a
@@ -64,20 +64,20 @@ python -m pip install unicorn
 From the repository root:
 
 ```powershell
-python .\src\current\generate_markdown_editor_v8_5_2.py
+python .\src\current\generate_markdown_editor_v8_5_3.py
 ```
 
 The generator writes
-`bin/current/pemark_x64_v8_5_2.exe`. No native compiler,
+`bin/current/pemark_x64_v8_5_3.exe`. No native compiler,
 assembler or linker is invoked.
 
 ## Verify
 
 ```powershell
-python .\tools\test_v8_5_1.py .\src\current\generate_markdown_editor_v8_5_2.py
-python .\tools\inspect_pe.py .\bin\current\pemark_x64_v8_5_2.exe
-python .\tools\smoke_test_v8_5_1.py .\bin\current\pemark_x64_v8_5_2.exe
-Get-FileHash -Algorithm SHA256 .\bin\current\pemark_x64_v8_5_2.exe
+python .\tools\test_v8_5_1.py .\src\current\generate_markdown_editor_v8_5_3.py
+python .\tools\inspect_pe.py .\bin\current\pemark_x64_v8_5_3.exe
+python .\tools\smoke_test_v8_5_1.py .\bin\current\pemark_x64_v8_5_3.exe
+Get-FileHash -Algorithm SHA256 .\bin\current\pemark_x64_v8_5_3.exe
 ```
 
 The smoke test controls the real GUI and must run in an interactive Windows
@@ -93,15 +93,15 @@ Current evidence:
 - Arena allocation-failure and 140,000-span capacity cases passed.
 - Two consecutive builds produced the expected SHA-256.
 
-See [V8.5.2 release notes](docs/RELEASE_V8_5_2_PREVIEW.md) and
-[V8.5.2 validation results](docs/V8_5_2_RELEASE_RESULTS.md). The
+See [V8.5.3 release notes](docs/RELEASE_V8_5_3_PREVIEW.md) and
+[V8.5.3 validation results](docs/V8_5_3_RELEASE_RESULTS.md). The
 [documentation index](docs/README.md) separates current guidance from
 historical engineering evidence.
 
 ## Repository layout
 
 ```text
-src/current/        current V8.5.2 Direct-PE generator
+src/current/        current V8.5.3 Direct-PE generator
 bin/current/        matching generated executable
 src/stabilization/  retained stabilization candidates
 archive/            historical generator and binary lineage
@@ -115,7 +115,7 @@ Direct-PE production constraint and Win64 ABI rules are mandatory.
 
 ## Known limitations
 
-V8.5.2 has not completed the release gates for:
+V8.5.3 has not completed the release gates for:
 
 - dynamic capacity for the document, render, position-map and encoded-output
   buffers, which still have fixed sizes and reject oversized input explicitly;

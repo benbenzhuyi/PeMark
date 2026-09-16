@@ -10,8 +10,8 @@ PeMark/
 ├─ README.md                         Package overview
 ├─ manifest.json                     Machine-readable snapshot metadata
 ├─ SHA256SUMS.txt                    Integrity hashes
-├─ src/current/                      Current V8.5.2 Preview generator
-├─ bin/current/                      Matching V8.5.2 Preview EXE
+├─ src/current/                      Current V8.5.3 Preview generator
+├─ bin/current/                      Matching V8.5.3 Preview EXE
 ├─ archive/
 │  ├─ generators/                    Full V7..V8.4.23 lineage
 │  ├─ binaries/                      Matching historical EXEs
@@ -42,5 +42,5 @@ PeMark/
 ```
 
 The original architecture drafts are retained in `docs/` for historical
-context. `V8_5_2_RELEASE_RESULTS.md` records the current baseline and
+context. `V8_5_3_RELEASE_RESULTS.md` records the current baseline and
 `ARCHITECTURE_V8_5_TARGET.md` remains the architectural direction.

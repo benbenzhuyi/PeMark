@@ -22,14 +22,14 @@ jobs:
       - name: Deterministic Direct-PE build
         run: python tools/build_current.py
       - name: Execute emitted-machine-code regressions
-        run: python tools/test_v8_5_1.py src/current/generate_markdown_editor_v8_5_2.py
+        run: python tools/test_v8_5_1.py src/current/generate_markdown_editor_v8_5_3.py
       - name: Inspect generated PE
-        run: python tools/inspect_pe.py bin/current/pemark_x64_v8_5_2.exe
+        run: python tools/inspect_pe.py bin/current/pemark_x64_v8_5_3.exe
       - name: Verify release hash
         shell: pwsh
         run: |
-          $expected = "2C105660DBAC96B7DE18614F43753073B3B5613E22BBA160CEB8058646040E30"
-          $actual = (Get-FileHash -Algorithm SHA256 bin/current/pemark_x64_v8_5_2.exe).Hash
+          $expected = "6AD87C6DCB3B9D3A35041D1BC37E5792F3CFD16CB79046088A3426200D0BB7D0"
+          $actual = (Get-FileHash -Algorithm SHA256 bin/current/pemark_x64_v8_5_3.exe).Hash
           if ($actual -ne $expected) { throw "SHA-256 mismatch: $actual" }
       - name: Build and inspect the next candidate when present
         if: ${{ hashFiles('src/candidate/generate_markdown_editor_v8_5_3.py') != '' }}
@@ -37,26 +37,26 @@ jobs:
           python src/candidate/generate_markdown_editor_v8_5_3.py
           python tools/test_v8_5_1.py src/candidate/generate_markdown_editor_v8_5_3.py
           python tools/inspect_pe.py bin/candidate/pemark_x64_v8_5_3_candidate.exe
-      - name: Exercise V8.5.2 document-safety gates
-        if: ${{ hashFiles('tools/test_v8_5_2_destructive.py') != '' }}
+      - name: Exercise V8.5.3 document-safety gates
+        if: ${{ hashFiles('tools/test_v8_5_3_destructive.py') != '' }}
         env:
-          PEMARK_GENERATOR: ${{ github.workspace }}/src/current/generate_markdown_editor_v8_5_2.py
-          PEMARK_EXE: ${{ github.workspace }}/bin/current/pemark_x64_v8_5_2.exe
+          PEMARK_GENERATOR: ${{ github.workspace }}/src/current/generate_markdown_editor_v8_5_3.py
+          PEMARK_EXE: ${{ github.workspace }}/bin/current/pemark_x64_v8_5_3.exe
         run: |
-          python tools/test_v8_5_2_revision.py
-          python tools/test_v8_5_2_open_encoding.py
-          python tools/test_v8_5_2_write_injection.py
-          python tools/test_v8_5_2_destructive.py
-      - name: Exercise V8.5.2 capacity gates
-        if: ${{ hashFiles('tools/test_v8_5_2_capacity_baseline.py') != '' }}
+          python tools/test_v8_5_3_revision.py
+          python tools/test_v8_5_3_open_encoding.py
+          python tools/test_v8_5_3_write_injection.py
+          python tools/test_v8_5_3_destructive.py
+      - name: Exercise V8.5.3 capacity gates
+        if: ${{ hashFiles('tools/test_v8_5_3_capacity_baseline.py') != '' }}
         env:
-          PEMARK_GENERATOR: ${{ github.workspace }}/src/current/generate_markdown_editor_v8_5_2.py
-          PEMARK_EXE: ${{ github.workspace }}/bin/current/pemark_x64_v8_5_2.exe
+          PEMARK_GENERATOR: ${{ github.workspace }}/src/current/generate_markdown_editor_v8_5_3.py
+          PEMARK_EXE: ${{ github.workspace }}/bin/current/pemark_x64_v8_5_3.exe
         run: |
-          python tools/test_v8_5_2_capacity_baseline.py
-          python tools/test_v8_5_2_outline_alloc_injection.py
-          python tools/test_v8_5_2_style_alloc_injection.py
-          python tools/test_v8_5_2_style_capacity.py
+          python tools/test_v8_5_3_capacity_baseline.py
+          python tools/test_v8_5_3_outline_alloc_injection.py
+          python tools/test_v8_5_3_style_alloc_injection.py
+          python tools/test_v8_5_3_style_capacity.py
       - name: Exercise V8.5.3 render arena when present
         if: ${{ hashFiles('tools/test_v8_5_3_render_arena.py') != '' }}
         run: python tools/test_v8_5_3_render_arena.py

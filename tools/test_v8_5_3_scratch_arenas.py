@@ -2,6 +2,7 @@
 """V8.5.3 decode/encode scratch arenas: sizing, reuse and failure safety."""
 import ctypes as c
 import hashlib
+import os
 from pathlib import Path
 import tempfile
 import time
@@ -10,9 +11,14 @@ from test_v8_5_2_destructive import App
 from test_v8_5_2_open_encoding import write_wstr
 
 ROOT = Path(__file__).resolve().parents[1]
-GEN = ROOT / "src/candidate/generate_markdown_editor_v8_5_3.py"
-EXE = ROOT / "bin/candidate/pemark_x64_v8_5_3_candidate.exe"
-RELEASE_EXE = ROOT / "bin/current/pemark_x64_v8_5_2.exe"
+GEN = Path(os.environ.get(
+    "PEMARK_GENERATOR",
+    ROOT / "src/candidate/generate_markdown_editor_v8_5_3.py"))
+EXE = Path(os.environ.get(
+    "PEMARK_EXE",
+    ROOT / "bin/candidate/pemark_x64_v8_5_3_candidate.exe"))
+# The published binary must stay byte-identical while a test runs.
+RELEASE_EXE = ROOT / "bin/current/pemark_x64_v8_5_3.exe"
 SMALL = ROOT / "tests/v8_5_2/fixtures/utf8_lf.md"
 LARGE = ROOT / "tests/large_regression_1_2mb.md"
 CMD_OPEN_SELECTED = 1901
