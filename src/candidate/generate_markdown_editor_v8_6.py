@@ -237,6 +237,20 @@ wstr('status_utf8_bom','UTF-8 BOM')
 wstr('status_utf16','UTF-16 LE')
 add_bytes('status_parts', struct.pack('<iiiiiii', 210, 330, 455, 545, 690, 810, -1), 4)
 
+# V8.6 切片 3b：文件面板右键菜单与文件操作。
+wstr('fo_m_new_file','New File')
+wstr('fo_m_new_folder','New Folder')
+wstr('fo_m_rename','Rename')
+wstr('fo_m_delete','Delete')
+wstr('fo_m_copy_path','Copy Path')
+wstr('fo_delete_title','Delete')
+wstr('fo_delete_prompt','Move "%s" to the Recycle Bin?')
+wstr('fo_new_file_base','New File')
+wstr('fo_new_folder_base','New Folder')
+wstr('fo_new_ext','.md')
+wstr('fmt_fo_plain','%s%s')
+wstr('fmt_fo_numbered','%s (%d)%s')
+
 # In-memory accelerator table (ACCEL is 6 bytes: BYTE, pad, WORD, WORD).
 FVIRTKEY, FSHIFT, FCONTROL, FALT = 0x01, 0x04, 0x08, 0x10
 _accels = [
@@ -602,6 +616,12 @@ TREE_FLAG_DIR = 1
 TREE_FLAG_EXPANDED = 2
 TREE_FLAG_HIDDEN = 4
 TREE_EXPANDED_MAX = 64
+# 右键菜单命令号（TrackPopupMenu 直接返回，随后以 wParam 投递私有消息 0x8009）。
+FO_CMD_NEW_FILE = 9001
+FO_CMD_NEW_FOLDER = 9002
+FO_CMD_RENAME = 9003
+FO_CMD_DELETE = 9004
+FO_CMD_COPY_PATH = 9005
 bss_alloc('ws_root_path', 512*2, 2)
 bss_alloc('ws_current_path', 512*2, 2)
 bss_alloc('ws_pattern', (512+4)*2, 2)
@@ -627,6 +647,31 @@ bss_alloc('tree_expand_depth', 4, 4)
 bss_alloc('tree_expand_path', 8, 8)
 bss_alloc('tree_enum_pass', 4, 4)
 bss_alloc('rfl_item_index', 4, 4)
+bss_alloc('hwnd_rename', 8, 8)
+bss_alloc('rename_row', 4, 4)
+bss_alloc('rename_active', 4, 4)
+bss_alloc('rename_item_rect', 16, 4)
+bss_alloc('rename_parent', 512*2, 2)
+bss_alloc('rename_buf', 512*2, 2)
+# V8.6 切片 3b：文件面板的右键菜单与文件操作（新建 / 重命名 / 删除到回收站 /
+# 复制路径）。所有动作都从私有消息 0x8009 进入，菜单只负责把命令号 PostMessage，
+# 这样注入式测试可以走与鼠标完全相同的代码路径。
+bss_alloc('fo_popup_menu', 8, 8)
+bss_alloc('fo_row_index', 4, 4)
+bss_alloc('fo_target_dir', 512*2, 2)
+bss_alloc('fo_new_path', 512*2, 2)
+bss_alloc('fo_new_name', 512*2, 2)
+bss_alloc('fo_prompt_buf', 512*2, 2)
+bss_alloc('fo_client_pt', 8, 4)
+bss_alloc('fo_menu_pt', 8, 4)
+bss_alloc('fo_base_ptr', 8, 8)
+bss_alloc('fo_ext_ptr', 8, 8)
+bss_alloc('fo_hglobal', 8, 8)
+bss_alloc('fo_delete_result', 4, 4)
+# SHFILEOPSTRUCTW：hwnd(8) + wFunc(4+4) + pFrom(8) + pTo(8) + fFlags(2+6) +
+# fAnyOperationsAborted(4+4) + hNameMappings(8) + lpszProgressTitle(8) = 64。
+bss_alloc('shfileop', 64, 8)
+bss_alloc('fo_from_buf', 512*2+8, 2)     # SHFileOperation 要求双 NUL 结尾
 # V8.6 切片 2：侧边栏面板模式。0 = 大纲，1 = 文件。两个模式共用同一个
 # ListBox 控件与同一套滚动条几何，只改变列表内容、行文本与行颜色。
 bss_alloc('panel_mode', 4, 4)
@@ -703,9 +748,10 @@ BSS_VSIZE = align(bss_off, 0x1000)
 imports = {
     'KERNEL32.dll': [
         'ExitProcess','CreateFileW','ReadFile','WriteFile','FlushFileBuffers','CloseHandle','VirtualAlloc','VirtualFree',
-        'MoveFileExW','DeleteFileW','GetLastError','GetFileSize',
+        'MoveFileExW','DeleteFileW','GetFileAttributesW','GetLastError','GetFileSize',
         'MultiByteToWideChar','WideCharToMultiByte','lstrcpyW','lstrlenW','GetModuleHandleW','CompareStringOrdinal','LoadLibraryW','GetProcAddress','MulDiv'
         ,'FindFirstFileW','FindNextFileW','FindClose'
+        ,'CreateDirectoryW','GlobalAlloc','GlobalLock','GlobalUnlock','GlobalFree'
     ],
     'USER32.dll': [
         'CreateWindowExW','GetMessageW','TranslateMessage','DispatchMessageW','IsWindow',
@@ -717,10 +763,11 @@ imports = {
         'GetCursorPos','ScreenToClient','SetCapture','ReleaseCapture','SetCursor','BeginPaint','EndPaint','SetScrollRange','SetScrollPos','ShowScrollBar','GetKeyState','GetSystemMetrics','SetTimer','KillTimer','GetMessageTime',
         'CreateAcceleratorTableW','TranslateAcceleratorW','DestroyAcceleratorTable','IsDialogMessageW','SetForegroundWindow','DrawMenuBar','DrawTextW','FillRect','GetMenuStringW','SetMenuInfo','GetWindowDC','ReleaseDC','GetMenuItemRect',
         'TrackPopupMenu','IsZoomed','TrackMouseEvent',
-        'SystemParametersInfoW'
+        'SystemParametersInfoW','DestroyMenu',
+        'OpenClipboard','EmptyClipboard','SetClipboardData','CloseClipboard'
     ],
     'COMDLG32.dll': ['GetOpenFileNameW','GetSaveFileNameW','FindTextW','ReplaceTextW'],
-    'SHELL32.dll': ['SHBrowseForFolderW','SHGetPathFromIDListW','ILFree'],
+    'SHELL32.dll': ['SHBrowseForFolderW','SHGetPathFromIDListW','ILFree','SHFileOperationW'],
     'OLE32.dll': ['CoInitializeEx','CoCreateInstance','CoTaskMemFree'],
     'SHLWAPI.dll': ['StrStrW','StrStrIW'],
     'COMCTL32.dll': ['InitCommonControlsEx'],
@@ -1236,6 +1283,13 @@ em.mov_mrsp_reg64(0x40,'rbx'); em.mov_mrsp_imm32(0x48,14,qword=True); em.mov_mrs
 em.call_iat('CreateWindowExW'); em.mov_ripmem_r64(bsyms['hwnd_files'],'rax'); em.test64('rax'); em.jcc(0x84,'exit')
 em.mov_r64_r64('rcx','rax'); em.mov_r32_imm('rdx',0x01A0); em.xor32('r8'); em.mov_r32_imm('r9',30); em.call_iat('SendMessageW')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.mov_r32_imm('rdx',0x0030); em.mov_r64_ripmem('r8',bsyms['hfont_outline']); em.mov_r32_imm('r9',1); em.call_iat('SendMessageW')
+# Floating rename editor (ID 21). Hidden until a row enters rename mode.
+em.xor32('rcx'); em.lea_rip('rdx',rsyms['class_edit']); em.lea_rip('r8',rsyms['empty']); em.mov_r32_imm('r9',0x44800080)
+em.mov_mrsp_imm32(0x20,0); em.mov_mrsp_imm32(0x28,0); em.mov_mrsp_imm32(0x30,10); em.mov_mrsp_imm32(0x38,10)
+em.mov_mrsp_reg64(0x40,'rbx'); em.mov_mrsp_imm32(0x48,21,qword=True); em.mov_mrsp_reg64(0x50,'r15'); em.mov_mrsp_imm32(0x58,0,qword=True)
+em.call_iat('CreateWindowExW'); em.mov_ripmem_r64(bsyms['hwnd_rename'],'rax'); em.test64('rax'); em.jcc(0x84,'exit')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_rename']); em.mov_r32_imm('rdx',0x0030); em.mov_r64_ripmem('r8',bsyms['hfont_outline']); em.mov_r32_imm('r9',1); em.call_iat('SendMessageW')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_rename']); em.xor32('rdx'); em.call_iat('ShowWindow')
 # 文件标题栏（ID 16）、大纲标题栏（ID 17）、分界线（ID 18）。
 em.xor32('rcx'); em.lea_rip('rdx',rsyms['class_static']); em.lea_rip('r8',rsyms['empty']); em.mov_r32_imm('r9',0x5400000D)
 em.mov_mrsp_imm32(0x20,0); em.mov_mrsp_imm32(0x28,0); em.mov_mrsp_imm32(0x30,228); em.mov_mrsp_imm32(0x38,28)
@@ -1264,6 +1318,8 @@ em.cmp_r32_imm('rax',0x8004); em.jcc(0x84,'document_changed_event')
 em.cmp_r32_imm('rax',0x8005); em.jcc(0x84,'outline_select_event')
 em.cmp_r32_imm('rax',0x8006); em.jcc(0x84,'request_close')
 em.cmp_r32_imm('rax',0x8007); em.jcc(0x84,'list_activate_event')
+em.cmp_r32_imm('rax',0x8008); em.jcc(0x84,'rename_event')
+em.cmp_r32_imm('rax',0x8009); em.jcc(0x84,'file_op_event')  # V8.6 切片 3b: file-panel command
 em.cmp_r32_imm('rax',0x0100); em.jcc(0x84,'keydown_event')  # WM_KEYDOWN: Backspace over the file list
 em.cmp_r32_imm('rax',0x0113); em.jcc(0x84,'timer_event')  # WM_TIMER: debounced Preview theme maintenance
 # Splitter hover/drag is handled in the thread pump because mouse messages are
@@ -1271,6 +1327,10 @@ em.cmp_r32_imm('rax',0x0113); em.jcc(0x84,'timer_event')  # WM_TIMER: debounced 
 em.cmp_r32_imm('rax',0x0200); em.jcc(0x84,'mousemove_event')
 em.cmp_r32_imm('rax',0x0201); em.jcc(0x84,'lbuttondown_event')
 em.cmp_r32_imm('rax',0x0202); em.jcc(0x84,'lbuttonup_event')
+# 切片 3b：右键在文件行上弹出上下文菜单。LISTBOX 不发右键通知，所以像
+# 分隔条与滚动条一样在这里拦截；WM_RBUTTONUP 也一并吞掉，避免默认处理。
+em.cmp_r32_imm('rax',0x0204); em.jcc(0x84,'rbuttondown_event')
+em.cmp_r32_imm('rax',0x0205); em.jcc(0x84,'msg_loop')
 # Ctrl+mouse-wheel zoom. WM_MOUSEWHEEL is queued for the focused child EDIT window,
 # so intercept it in the thread message pump before DispatchMessageW.
 em.cmp_r32_imm('rax',0x020A); em.jcc(0x84,'mousewheel_event')
@@ -1458,9 +1518,42 @@ em.call_label('navigate_outline'); em.jmp('msg_loop')
 em.label('list_activate_event')
 em.call_label('ws_open_or_enter'); em.jmp('msg_loop')
 
+em.label('rename_event')
+em.call_label('rename_begin'); em.jmp('msg_loop')
+
+# V8.6 切片 3b：右键菜单命令。菜单只 PostMessage 命令号，动作路径与测试注入
+# 完全一致（0x8009 是文件面板操作的唯一入口）。
+em.label('file_op_event')
+em.mov_eax_mr12(16); em.mov_r32_r32('rcx','rax'); em.call_label('file_op_dispatch'); em.jmp('msg_loop')
+
+# 右键落在文件列表的某一行上：先选中该行，再弹出上下文菜单。
+# MSG.pt 是屏幕坐标，转成列表客户坐标后交给 LB_ITEMFROMPOINT 命中测试；
+# 空白区不弹菜单（与 Rabbit 一致）。
+em.label('rbuttondown_event')
+em.mov_eax_mr12(36); em.mov_ripmem_r32(bsyms['fo_menu_pt'],'rax')
+em.mov_eax_mr12(40); em.mov_ripmem_r32(bsyms['fo_menu_pt']+4,'rax')
+em.mov_eax_mr12(36); em.mov_ripmem_r32(bsyms['fo_client_pt'],'rax')
+em.mov_eax_mr12(40); em.mov_ripmem_r32(bsyms['fo_client_pt']+4,'rax')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.lea_rip('rdx',bsyms['fo_client_pt']); em.call_iat('ScreenToClient')
+em.mov_r32_ripmem('r10',bsyms['fo_client_pt']+4); em.shl_r32_imm8('r10',16)
+em.mov_r32_ripmem('rax',bsyms['fo_client_pt']); em.and_r32_imm('rax',0xFFFF); em.add_r32_r32('r10','rax')
+em.mov_r32_r32('r9','r10')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.mov_r32_imm('rdx',0x01A9); em.xor32('r8'); em.call_iat('SendMessageW')
+em.mov_r32_r32('r11','rax'); em.shr_r32_imm8('r11',16); em.test32('r11'); em.jcc(0x85,'msg_loop')
+em.and_r32_imm('rax',0xFFFF); em.cmp_r32_imm('rax',0xFFFF); em.jcc(0x84,'msg_loop')
+em.mov_r32_r32('r11','rax')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.mov_r32_imm('rdx',0x0186); em.mov_r32_r32('r8','r11'); em.xor32('r9'); em.call_iat('SendMessageW')
+em.call_label('file_context_menu'); em.jmp('msg_loop')
+
 # V8.6 切片 3：只有当焦点在文件列表上时，Backspace 才是"返回上级"。
 # 编辑区获得焦点时照常派发，删除字符的行为不变。
 em.label('keydown_event')
+em.mov_r32_ripmem('rax',bsyms['rename_active']); em.test32('rax'); em.jcc(0x84,'keydown_not_rename')
+em.mov_rax_mr12(16); em.and_r32_imm('rax',0xFFFF); em.cmp_r32_imm('rax',0x0D); em.jcc(0x85,'keydown_not_enter')
+em.call_label('rename_commit'); em.jmp('msg_loop')
+em.label('keydown_not_enter'); em.cmp_r32_imm('rax',0x1B); em.jcc(0x85,'dispatch')
+em.call_label('rename_cancel'); em.jmp('msg_loop')
+em.label('keydown_not_rename')
 em.mov_r32_ripmem('rax',bsyms['panel_mode']); em.test32('rax'); em.jcc(0x84,'dispatch')
 em.mov_rax_mr12(16); em.cmp_r32_imm('rax',0x08); em.jcc(0x85,'dispatch')
 em.call_iat('GetFocus'); em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.cmp_r64_r64('rax','rcx'); em.jcc(0x85,'dispatch')
@@ -3957,6 +4050,34 @@ em.mov_r32_mreg('rax','r10',TREE_OFF_FLAGS); em.test32('rax'); em.jcc(0x84,'tdn_
 em.mov_word_index2_imm16('rdx','r8',0x5C); em.add_r32_imm8('r8',1)
 em.label('tdn_terminate'); em.mov_word_index2_zero('rdx','r8'); em.emit(0xC3)
 
+# rcx = tree row, rdx = destination: copy only the final path component.
+em.label('tree_copy_leaf_name')
+em.mov_r64_r64('r10','rcx'); em.xor32('r8'); em.xor32('r9')
+em.label('tcln_scan')
+em.movzx_r32_word_index2('rax','r10','r8'); em.test32('rax'); em.jcc(0x84,'tcln_copy_start')
+em.cmp_r32_imm('rax',0x5C); em.jcc(0x85,'tcln_next')
+em.mov_r32_r32('r9','r8'); em.add_r32_imm8('r9',1)
+em.label('tcln_next'); em.add_r32_imm8('r8',1); em.cmp_r32_imm('r8',TREE_PATH_UNITS); em.jcc(0x82,'tcln_scan')
+em.label('tcln_copy_start'); em.mov_r32_r32('r8','r9'); em.xor32('r11')
+em.label('tcln_copy')
+em.movzx_r32_word_index2('rax','r10','r8'); em.test32('rax'); em.jcc(0x84,'tcln_done')
+em.mov_word_index2_reg('rdx','r11','rax'); em.add_r32_imm8('r8',1); em.add_r32_imm8('r11',1); em.jmp('tcln_copy')
+em.label('tcln_done'); em.mov_word_index2_zero('rdx','r11'); em.emit(0xC3)
+
+# rcx = tree row, rdx = destination: copy the parent directory path.
+em.label('tree_parent_dir')
+em.mov_r64_r64('r10','rcx'); em.xor32('r8'); em.xor32('r9')
+em.label('tpd_scan')
+em.movzx_r32_word_index2('rax','r10','r8'); em.test32('rax'); em.jcc(0x84,'tpd_copy')
+em.cmp_r32_imm('rax',0x5C); em.jcc(0x85,'tpd_next')
+em.mov_r32_r32('r9','r8')
+em.label('tpd_next'); em.add_r32_imm8('r8',1); em.cmp_r32_imm('r8',TREE_PATH_UNITS); em.jcc(0x82,'tpd_scan')
+em.label('tpd_copy'); em.xor32('r8'); em.test32('r9'); em.jcc(0x84,'tpd_done')
+em.label('tpd_copy_loop')
+em.movzx_r32_word_index2('rax','r10','r8'); em.mov_word_index2_reg('rdx','r8','rax')
+em.add_r32_imm8('r8',1); em.cmp_r32_r32('r8','r9'); em.jcc(0x82,'tpd_copy_loop')
+em.label('tpd_done'); em.mov_word_index2_zero('rdx','r8'); em.emit(0xC3)
+
 # rcx = name -> eax = 1 when it ends in .md / .markdown / .txt (ASCII, case-insensitive)
 em.label('ws_suffix_match')
 em.xor32('rdx')                                                          # length
@@ -4284,6 +4405,332 @@ em.mov_r32_r32('rax','r14'); em.sub_r32_imm8('rax',1); em.shl_r32_imm8('rax',10)
 em.label('ttp_remove_last'); em.mov_r32_ripmem('rax',bsyms['tree_expanded_count']); em.sub_r32_imm8('rax',1); em.mov_ripmem_r32(bsyms['tree_expanded_count'],'rax')
 em.label('ttp_apply'); em.call_label('rebuild_file_list'); em.call_label('update_status')
 em.add_r64_imm8('rsp',0x28); em.emit(0x5F); em.emit(0x5E); em.emit(0x41,0x5F); em.emit(0x41,0x5E); em.emit(0x41,0x5D); em.emit(0x41,0x5C); em.emit(0xC3)
+
+# Floating inline rename editor: place the hidden EDIT over the selected row.
+# ---------------- V8.6 切片 3b：文件面板右键菜单与文件操作 ----------------
+# rax = 文件列表当前选中的树行指针；没有选中或越界时返回 0。
+em.label('fo_selected_row')
+em.emit(0x48,0x83,0xEC,0x28)
+em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.test64('rcx'); em.jcc(0x84,'fsr_none')
+em.mov_r32_imm('rdx',0x0188); em.xor32('r8'); em.xor32('r9'); em.call_iat('SendMessageW')
+em.cmp_r32_imm('rax',0xFFFFFFFF); em.jcc(0x84,'fsr_none')
+em.mov_r32_ripmem('r11',bsyms['tree_row_count']); em.cmp_r32_r32('rax','r11'); em.jcc(0x83,'fsr_none')
+em.mov_r32_r32('rdx','rax'); em.call_label('tree_row_ptr')
+em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
+em.label('fsr_none'); em.xor32('rax'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
+
+# rcx = 绝对目录路径：加入展开集合（幂等；集合满则放弃，只影响新行可见性）。
+em.label('tree_expand_insert')
+em.emit(0x41,0x54); em.emit(0x41,0x55); em.emit(0x48,0x83,0xEC,0x28)
+em.mov_r64_r64('r12','rcx')
+em.call_label('tree_is_expanded'); em.test32('rax'); em.jcc(0x85,'tei_ret')
+em.mov_r32_ripmem('rax',bsyms['tree_expanded_count']); em.cmp_r32_imm('rax',TREE_EXPANDED_MAX); em.jcc(0x83,'tei_ret')
+em.mov_r32_r32('r13','rax')
+em.mov_r32_r32('rcx','r13'); em.shl_r32_imm8('rcx',10)
+em.lea_rip('rax',bsyms['tree_expanded']); em.add_r64_r64('rax','rcx')
+em.mov_r64_r64('rcx','rax'); em.mov_r64_r64('rdx','r12'); em.call_iat('lstrcpyW')
+em.add_r32_imm8('r13',1); em.mov_ripmem_r32(bsyms['tree_expanded_count'],'r13')
+em.label('tei_ret'); em.add_r64_imm8('rsp',0x28); em.emit(0x41,0x5D); em.emit(0x41,0x5C); em.emit(0xC3)
+
+# rcx = 绝对路径 -> eax = 树行索引；未找到返回 -1（新建后定位新行用）。
+em.label('tree_find_row_by_path')
+em.emit(0x41,0x54); em.emit(0x41,0x55); em.emit(0x41,0x56); em.emit(0x41,0x57); em.emit(0x48,0x83,0xEC,0x28)
+em.mov_r64_r64('r12','rcx')
+em.mov_r32_ripmem('r14',bsyms['tree_row_count']); em.xor32('r13')
+em.label('tfr_loop')
+em.cmp_r32_r32('r13','r14'); em.jcc(0x83,'tfr_none')
+em.mov_r32_r32('rdx','r13'); em.call_label('tree_row_ptr'); em.mov_r64_r64('r15','rax')
+em.mov_r64_r64('rcx','r15'); em.mov_r32_imm('rdx',0xFFFFFFFF); em.mov_r64_r64('r8','r12')
+em.mov_r32_imm('r9',0xFFFFFFFF); em.mov_mrsp_imm32(0x20,1,qword=True)
+em.call_iat('CompareStringOrdinal')
+em.cmp_r32_imm('rax',2); em.jcc(0x84,'tfr_found')
+em.add_r32_imm8('r13',1); em.jmp('tfr_loop')
+em.label('tfr_found'); em.mov_r32_r32('rax','r13'); em.jmp('tfr_ret')
+em.label('tfr_none'); em.mov_r32_imm('rax',0xFFFFFFFF)
+em.label('tfr_ret'); em.add_r64_imm8('rsp',0x28); em.emit(0x41,0x5F); em.emit(0x41,0x5E); em.emit(0x41,0x5D); em.emit(0x41,0x5C); em.emit(0xC3)
+
+# 用 fo_from_buf 作为前缀，从展开集合里剔除被删除的目录及其子树（就地压缩）。
+em.label('tree_prune_expanded')
+em.emit(0x41,0x54); em.emit(0x41,0x55); em.emit(0x41,0x56); em.emit(0x41,0x57); em.emit(0x48,0x83,0xEC,0x28)
+em.lea_rip('r12',bsyms['fo_from_buf'])
+em.mov_r64_r64('rcx','r12'); em.call_iat('lstrlenW'); em.mov_r32_r32('r13','rax')
+em.xor32('r14'); em.xor32('r15')
+em.label('tpe_loop')
+em.mov_r32_ripmem('rax',bsyms['tree_expanded_count']); em.cmp_r32_r32('r14','rax'); em.jcc(0x83,'tpe_finish')
+em.mov_r32_r32('rax','r14'); em.shl_r32_imm8('rax',10)
+em.lea_rip('r10',bsyms['tree_expanded']); em.add_r64_r64('r10','rax')
+em.xor32('r8')
+em.label('tpe_cmp')
+em.cmp_r32_r32('r8','r13'); em.jcc(0x83,'tpe_prefix_ok')
+em.movzx_r32_word_index2('rax','r12','r8'); em.movzx_r32_word_index2('r11','r10','r8')
+em.cmp_r32_r32('rax','r11'); em.jcc(0x85,'tpe_keep')
+em.add_r32_imm8('r8',1); em.jmp('tpe_cmp')
+em.label('tpe_prefix_ok')
+em.movzx_r32_word_index2('rax','r10','r13'); em.test32('rax'); em.jcc(0x84,'tpe_drop')
+em.cmp_r32_imm('rax',0x5C); em.jcc(0x84,'tpe_drop')
+em.jmp('tpe_keep')
+em.label('tpe_drop')
+em.add_r32_imm8('r14',1); em.jmp('tpe_loop')
+em.label('tpe_keep')
+em.cmp_r32_r32('r14','r15'); em.jcc(0x84,'tpe_keep_advance')
+em.mov_r32_r32('rax','r14'); em.shl_r32_imm8('rax',10)
+em.lea_rip('r11',bsyms['tree_expanded']); em.add_r64_r64('r11','rax')
+em.mov_r32_r32('rax','r15'); em.shl_r32_imm8('rax',10)
+em.lea_rip('rcx',bsyms['tree_expanded']); em.add_r64_r64('rcx','rax')
+em.mov_r64_r64('rdx','r11'); em.call_iat('lstrcpyW')
+em.label('tpe_keep_advance')
+em.add_r32_imm8('r15',1); em.add_r32_imm8('r14',1); em.jmp('tpe_loop')
+em.label('tpe_finish')
+em.mov_ripmem_r32(bsyms['tree_expanded_count'],'r15')
+em.add_r64_imm8('rsp',0x28); em.emit(0x41,0x5F); em.emit(0x41,0x5E); em.emit(0x41,0x5D); em.emit(0x41,0x5C); em.emit(0xC3)
+
+# rcx = 命令号：文件面板的唯一动作入口（菜单、测试注入共用）。
+# 把选中行（文件或目录）的完整路径放进剪贴板（CF_UNICODETEXT）。
+em.label('fo_copy_path_selected')
+em.emit(0x41,0x54); em.emit(0x41,0x55); em.emit(0x41,0x56); em.emit(0x41,0x57); em.emit(0x48,0x83,0xEC,0x38)
+em.call_label('fo_selected_row'); em.test64('rax'); em.jcc(0x84,'fcp_ret')
+em.mov_r64_r64('r12','rax')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_main']); em.call_iat('OpenClipboard'); em.test32('rax'); em.jcc(0x84,'fcp_ret')
+em.call_iat('EmptyClipboard')
+em.mov_r64_r64('rcx','r12'); em.call_iat('lstrlenW'); em.mov_r32_r32('r13','rax')
+em.add_r32_imm8('r13',1); em.add_r32_r32('r13','r13')
+em.mov_r32_imm('rcx',2); em.mov_r32_r32('rdx','r13'); em.call_iat('GlobalAlloc'); em.mov_r64_r64('r14','rax')
+em.test64('r14'); em.jcc(0x84,'fcp_close')
+em.mov_r64_r64('rcx','r14'); em.call_iat('GlobalLock'); em.mov_r64_r64('r15','rax')
+em.test64('r15'); em.jcc(0x84,'fcp_free')
+em.mov_r64_r64('rcx','r15'); em.mov_r64_r64('rdx','r12'); em.call_iat('lstrcpyW')
+em.mov_r64_r64('rcx','r14'); em.call_iat('GlobalUnlock')
+em.mov_r32_imm('rcx',13); em.mov_r64_r64('rdx','r14'); em.call_iat('SetClipboardData')
+em.test64('rax'); em.jcc(0x85,'fcp_close')
+em.mov_r64_r64('rcx','r14'); em.call_iat('GlobalFree')
+em.jmp('fcp_close')
+em.label('fcp_free'); em.mov_r64_r64('rcx','r14'); em.call_iat('GlobalFree')
+em.label('fcp_close'); em.call_iat('CloseClipboard')
+em.label('fcp_ret'); em.add_r64_imm8('rsp',0x38)
+em.emit(0x41,0x5F); em.emit(0x41,0x5E); em.emit(0x41,0x5D); em.emit(0x41,0x5C); em.emit(0xC3)
+
+# 删除选中行：确认对话框 → SHFileOperationW(FO_DELETE + FOF_ALLOWUNDO) 进回收站。
+# 根行与拒绝确认都不改变磁盘与树状态。
+em.label('fo_delete_selected')
+em.emit(0x41,0x54); em.emit(0x41,0x55); em.emit(0x41,0x56); em.emit(0x41,0x57); em.emit(0x48,0x83,0xEC,0x38)
+em.call_label('fo_selected_row'); em.test64('rax'); em.jcc(0x84,'fd_ret')
+em.mov_r64_r64('r12','rax')
+em.mov_r64_r64('r15','r12')
+em.mov_r32_mreg('rax','r15',TREE_OFF_FLAGS); em.and_r32_imm('rax',TREE_FLAG_HIDDEN); em.test32('rax'); em.jcc(0x85,'fd_ret')
+em.lea_rip('rcx',bsyms['fo_prompt_buf']); em.lea_rip('rdx',rsyms['fo_delete_prompt']); em.mov_r64_r64('r8','r12'); em.call_iat('wsprintfW')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_main']); em.lea_rip('rdx',bsyms['fo_prompt_buf'])
+em.lea_rip('r8',rsyms['fo_delete_title']); em.mov_r32_imm('r9',0x134); em.call_iat('MessageBoxW')
+em.cmp_r32_imm('rax',6); em.jcc(0x85,'fd_ret')
+em.lea_rip('rcx',bsyms['fo_from_buf']); em.mov_r64_r64('rdx','r12'); em.call_iat('lstrcpyW')
+em.mov_r64_r64('rcx','r12'); em.call_iat('lstrlenW'); em.mov_r32_r32('r13','rax')
+em.lea_rip('rcx',bsyms['fo_from_buf']); em.mov_r32_r32('rax','r13'); em.add_r32_r32('rax','rax')
+em.add_r64_r64('rcx','rax'); em.mov_word_ptr_reg_zero('rcx')
+em.lea_rip('r14',bsyms['shfileop']); em.xor32('rax')
+for _off in (0,8,16,24,32,40,48):
+    em.mov_mreg_reg64('r14',_off,'rax')
+em.mov_r64_ripmem('rax',bsyms['hwnd_main']); em.mov_mreg_reg64('r14',0,'rax')
+em.mov_mreg_imm32('r14',8,3)                                   # FO_DELETE
+em.lea_rip('rax',bsyms['fo_from_buf']); em.mov_mreg_reg64('r14',16,'rax')
+# FOF_ALLOWUNDO(0x40) | FOF_NOCONFIRMATION(0x10) | FOF_SILENT(0x4) | FOF_NOERRORUI(0x400)
+em.mov_mreg_imm32('r14',32,0x454)
+em.xor32('rcx'); em.mov_r32_imm('rdx',2); em.call_iat('CoInitializeEx')
+em.lea_rip('rcx',bsyms['shfileop']); em.call_iat('SHFileOperationW')
+em.mov_ripmem_r32(bsyms['fo_delete_result'],'rax'); em.test32('rax'); em.jcc(0x85,'fd_ret')
+em.call_label('tree_prune_expanded')
+em.call_label('rebuild_file_list'); em.call_label('update_status')
+em.label('fd_ret'); em.add_r64_imm8('rsp',0x38)
+em.emit(0x41,0x5F); em.emit(0x41,0x5E); em.emit(0x41,0x5D); em.emit(0x41,0x5C); em.emit(0xC3)
+
+# rcx = 1 新建文件 / 0 新建文件夹。目标目录 = 选中目录，或选中文件的父目录，
+# 未选中时用工作区根。名字自动去重，创建成功后定位新行并直接进入内联重命名。
+em.label('fo_create_entry')
+em.emit(0x41,0x54); em.emit(0x41,0x55); em.emit(0x41,0x56); em.emit(0x41,0x57); em.emit(0x48,0x83,0xEC,0x38)
+em.mov_r32_r32('r12','rcx')
+em.cmp_r32_imm('r12',1); em.jcc(0x85,'fce_folder_names')
+em.lea_rip('rax',rsyms['fo_new_file_base']); em.mov_ripmem_r64(bsyms['fo_base_ptr'],'rax')
+em.lea_rip('rax',rsyms['fo_new_ext']); em.mov_ripmem_r64(bsyms['fo_ext_ptr'],'rax'); em.jmp('fce_names_ready')
+em.label('fce_folder_names')
+em.lea_rip('rax',rsyms['fo_new_folder_base']); em.mov_ripmem_r64(bsyms['fo_base_ptr'],'rax')
+em.lea_rip('rax',rsyms['empty']); em.mov_ripmem_r64(bsyms['fo_ext_ptr'],'rax')
+em.label('fce_names_ready')
+em.call_label('fo_selected_row'); em.test64('rax'); em.jcc(0x84,'fce_root_target')
+em.mov_r64_r64('r13','rax')
+em.mov_r64_r64('r15','r13')
+em.mov_r32_mreg('rax','r15',TREE_OFF_FLAGS); em.and_r32_imm('rax',TREE_FLAG_DIR); em.test32('rax'); em.jcc(0x84,'fce_parent_target')
+em.lea_rip('rcx',bsyms['fo_target_dir']); em.mov_r64_r64('rdx','r13'); em.call_iat('lstrcpyW'); em.jmp('fce_target_ready')
+em.label('fce_parent_target')
+em.mov_r64_r64('rcx','r13'); em.lea_rip('rdx',bsyms['fo_target_dir']); em.call_label('tree_parent_dir'); em.jmp('fce_target_ready')
+em.label('fce_root_target')
+em.lea_rip('rcx',bsyms['fo_target_dir']); em.lea_rip('rdx',bsyms['tree_root_path']); em.call_iat('lstrcpyW')
+em.label('fce_target_ready')
+em.mov_r32_imm('r14',1)
+em.label('fce_try')
+em.cmp_r32_imm('r14',1); em.jcc(0x85,'fce_numbered')
+em.lea_rip('rcx',bsyms['fo_new_name']); em.lea_rip('rdx',rsyms['fmt_fo_plain'])
+em.mov_r64_ripmem('r8',bsyms['fo_base_ptr']); em.mov_r64_ripmem('r9',bsyms['fo_ext_ptr'])
+em.call_iat('wsprintfW'); em.jmp('fce_join')
+em.label('fce_numbered')
+em.lea_rip('rcx',bsyms['fo_new_name']); em.lea_rip('rdx',rsyms['fmt_fo_numbered'])
+em.mov_r64_ripmem('r8',bsyms['fo_base_ptr']); em.mov_r32_r32('r9','r14')
+em.mov_r64_ripmem('rax',bsyms['fo_ext_ptr']); em.mov_mrsp_reg64(0x20,'rax')
+em.call_iat('wsprintfW')
+em.label('fce_join')
+em.lea_rip('rcx',bsyms['fo_target_dir']); em.lea_rip('rdx',bsyms['fo_new_name']); em.call_label('ws_join_path')
+em.lea_rip('rcx',bsyms['fo_new_path']); em.mov_r64_r64('rdx','rax'); em.call_iat('lstrcpyW')
+# INVALID_FILE_ATTRIBUTES(-1) 表示名字可用：相等才进入创建分支。
+em.lea_rip('rcx',bsyms['fo_new_path']); em.call_iat('GetFileAttributesW'); em.cmp_r32_imm('rax',0xFFFFFFFF); em.jcc(0x84,'fce_create')
+em.add_r32_imm8('r14',1); em.cmp_r32_imm('r14',100); em.jcc(0x82,'fce_try'); em.jmp('fce_ret')
+em.label('fce_create')
+em.cmp_r32_imm('r12',1); em.jcc(0x85,'fce_mkdir')
+em.lea_rip('rcx',bsyms['fo_new_path']); em.mov_r32_imm('rdx',0xC0000000); em.mov_r32_imm('r8',3); em.xor32('r9')
+em.mov_mrsp_imm32(0x20,1,qword=True); em.mov_mrsp_imm32(0x28,0x80,qword=True); em.mov_mrsp_imm32(0x30,0,qword=True)
+em.call_iat('CreateFileW'); em.cmp_rax_neg1(); em.jcc(0x84,'fce_ret')
+em.mov_r64_r64('rcx','rax'); em.call_iat('CloseHandle'); em.jmp('fce_created')
+em.label('fce_mkdir')
+em.lea_rip('rcx',bsyms['fo_new_path']); em.xor32('rdx'); em.call_iat('CreateDirectoryW'); em.test32('rax'); em.jcc(0x84,'fce_ret')
+em.label('fce_created')
+em.lea_rip('rcx',bsyms['fo_target_dir']); em.mov_r32_imm('rdx',0xFFFFFFFF)
+em.lea_rip('r8',bsyms['tree_root_path']); em.mov_r32_imm('r9',0xFFFFFFFF)
+em.mov_mrsp_imm32(0x20,1,qword=True)
+em.call_iat('CompareStringOrdinal'); em.cmp_r32_imm('rax',2); em.jcc(0x84,'fce_no_expand')
+em.lea_rip('rcx',bsyms['fo_target_dir']); em.call_label('tree_expand_insert')
+em.label('fce_no_expand')
+em.call_label('rebuild_file_list')
+em.lea_rip('rcx',bsyms['fo_new_path']); em.call_label('tree_find_row_by_path')
+em.cmp_r32_imm('rax',0xFFFFFFFF); em.jcc(0x84,'fce_status_only')
+em.mov_r32_r32('r13','rax')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.mov_r32_imm('rdx',0x0186); em.mov_r32_r32('r8','r13'); em.xor32('r9'); em.call_iat('SendMessageW')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.mov_r32_imm('rdx',0x0197); em.mov_r32_r32('r8','r13'); em.xor32('r9'); em.call_iat('SendMessageW')
+em.call_label('rename_begin')
+em.label('fce_status_only'); em.call_label('update_status')
+em.label('fce_ret'); em.add_r64_imm8('rsp',0x38)
+em.emit(0x41,0x5F); em.emit(0x41,0x5E); em.emit(0x41,0x5D); em.emit(0x41,0x5C); em.emit(0xC3)
+
+em.label('file_op_dispatch')
+em.emit(0x48,0x83,0xEC,0x28)
+em.mov_r32_r32('rax','rcx')
+em.cmp_r32_imm('rax',FO_CMD_NEW_FILE); em.jcc(0x84,'fod_new_file')
+em.cmp_r32_imm('rax',FO_CMD_NEW_FOLDER); em.jcc(0x84,'fod_new_folder')
+em.cmp_r32_imm('rax',FO_CMD_RENAME); em.jcc(0x84,'fod_rename')
+em.cmp_r32_imm('rax',FO_CMD_DELETE); em.jcc(0x84,'fod_delete')
+em.cmp_r32_imm('rax',FO_CMD_COPY_PATH); em.jcc(0x84,'fod_copy_path')
+em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
+em.label('fod_new_file'); em.mov_r32_imm('rcx',1); em.call_label('fo_create_entry'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
+em.label('fod_new_folder'); em.xor32('rcx'); em.call_label('fo_create_entry'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
+em.label('fod_rename'); em.call_label('rename_begin'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
+em.label('fod_delete'); em.call_label('fo_delete_selected'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
+em.label('fod_copy_path'); em.call_label('fo_copy_path_selected'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
+
+# 右键菜单本身不做任何文件操作：选中命令号后 PostMessage(0x8009) 走上面的分发。
+def _fo_menu_append(cid, sym):
+    em.mov_r64_ripmem('rcx',bsyms['fo_popup_menu'])
+    if sym is None:
+        em.mov_r32_imm('rdx',0x800); em.xor32('r8'); em.xor32('r9')
+    else:
+        em.xor32('rdx'); em.mov_r32_imm('r8',cid); em.lea_rip('r9',rsyms[sym])
+    em.call_iat('AppendMenuW')
+
+em.label('file_context_menu')
+em.emit(0x41,0x54); em.emit(0x41,0x55); em.emit(0x41,0x56); em.emit(0x41,0x57); em.emit(0x48,0x83,0xEC,0x38)
+em.call_label('fo_selected_row'); em.test64('rax'); em.jcc(0x84,'fcm_ret')
+em.mov_r64_r64('r12','rax')
+em.mov_r64_r64('r15','r12')
+em.mov_r32_mreg('r13','r15',TREE_OFF_FLAGS)
+em.call_iat('CreatePopupMenu'); em.mov_r64_r64('r14','rax')
+em.mov_ripmem_r64(bsyms['fo_popup_menu'],'r14'); em.test64('r14'); em.jcc(0x84,'fcm_ret')
+em.mov_r32_r32('rax','r13'); em.and_r32_imm('rax',TREE_FLAG_HIDDEN); em.test32('rax'); em.jcc(0x85,'fcm_root_menu')
+em.mov_r32_r32('rax','r13'); em.and_r32_imm('rax',TREE_FLAG_DIR); em.test32('rax'); em.jcc(0x84,'fcm_file_menu')
+_fo_menu_append(FO_CMD_NEW_FILE,'fo_m_new_file')
+_fo_menu_append(FO_CMD_NEW_FOLDER,'fo_m_new_folder')
+_fo_menu_append(0,None)
+_fo_menu_append(FO_CMD_RENAME,'fo_m_rename')
+_fo_menu_append(FO_CMD_DELETE,'fo_m_delete')
+_fo_menu_append(0,None)
+_fo_menu_append(FO_CMD_COPY_PATH,'fo_m_copy_path')
+em.jmp('fcm_track')
+em.label('fcm_file_menu')
+_fo_menu_append(FO_CMD_RENAME,'fo_m_rename')
+_fo_menu_append(FO_CMD_DELETE,'fo_m_delete')
+_fo_menu_append(0,None)
+_fo_menu_append(FO_CMD_COPY_PATH,'fo_m_copy_path')
+em.jmp('fcm_track')
+# 根行只能"向内新建"或复制路径：重命名/删除根目录是非法的。
+em.label('fcm_root_menu')
+_fo_menu_append(FO_CMD_NEW_FILE,'fo_m_new_file')
+_fo_menu_append(FO_CMD_NEW_FOLDER,'fo_m_new_folder')
+_fo_menu_append(0,None)
+_fo_menu_append(FO_CMD_COPY_PATH,'fo_m_copy_path')
+em.label('fcm_track')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_main']); em.call_iat('SetForegroundWindow')
+em.mov_r64_ripmem('rcx',bsyms['fo_popup_menu']); em.mov_r32_imm('rdx',0x0102)
+em.mov_r32_ripmem('r8',bsyms['fo_menu_pt']); em.mov_r32_ripmem('r9',bsyms['fo_menu_pt']+4)
+em.mov_mrsp_imm32(0x20,0,qword=True)
+em.mov_r64_ripmem('rax',bsyms['hwnd_main']); em.mov_mrsp_reg64(0x28,'rax')
+em.mov_mrsp_imm32(0x30,0,qword=True)
+em.call_iat('TrackPopupMenu')
+em.mov_r32_r32('r15','rax')
+em.mov_r64_ripmem('rcx',bsyms['fo_popup_menu']); em.call_iat('DestroyMenu')
+em.xor32('rax'); em.mov_ripmem_r64(bsyms['fo_popup_menu'],'rax')
+em.test32('r15'); em.jcc(0x84,'fcm_ret')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_main']); em.mov_r32_imm('rdx',0x8009)
+em.mov_r32_r32('r8','r15'); em.xor32('r9'); em.call_iat('PostMessageW')
+em.label('fcm_ret'); em.add_r64_imm8('rsp',0x38)
+em.emit(0x41,0x5F); em.emit(0x41,0x5E); em.emit(0x41,0x5D); em.emit(0x41,0x5C); em.emit(0xC3)
+
+em.label('rename_begin')
+em.emit(0x41,0x54); em.emit(0x41,0x55); em.emit(0x41,0x56); em.emit(0x41,0x57); em.emit(0x48,0x83,0xEC,0x38)
+em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.test64('rcx'); em.jcc(0x84,'rb_ret')
+em.mov_r32_imm('rdx',0x0188); em.xor32('r8'); em.xor32('r9'); em.call_iat('SendMessageW'); em.cmp_r32_imm('rax',0xFFFFFFFF); em.jcc(0x84,'rb_ret')
+em.mov_r32_r32('r12','rax')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.mov_r32_imm('rdx',0x0199); em.mov_r32_r32('r8','r12'); em.xor32('r9'); em.call_iat('SendMessageW'); em.cmp_r32_imm('rax',0xFFFFFFFF); em.jcc(0x84,'rb_ret')
+em.mov_r32_r32('r13','rax'); em.mov_ripmem_r32(bsyms['rename_row'],'r13')
+em.mov_r32_r32('rdx','r13'); em.call_label('tree_row_ptr'); em.mov_r64_r64('r14','rax')
+# 根目录行不可重命名：它是工作区授权根，改名会同时让树与授权失配。
+em.mov_r32_mreg('rax','r14',TREE_OFF_FLAGS); em.and_r32_imm('rax',TREE_FLAG_HIDDEN); em.test32('rax'); em.jcc(0x85,'rb_ret')
+em.mov_r64_r64('rcx','r14'); em.lea_rip('rdx',bsyms['rename_buf']); em.call_label('tree_copy_leaf_name')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_rename']); em.lea_rip('rdx',bsyms['rename_buf']); em.call_iat('SetWindowTextW')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.mov_r32_imm('rdx',0x0198); em.mov_r32_r32('r8','r12'); em.lea_rip('r9',bsyms['rename_item_rect']); em.call_iat('SendMessageW')
+em.lea_rip('rcx',bsyms['rename_item_rect']); em.mov_r32_mreg('rax','rcx',4); em.mov_r32_ripmem('r11',bsyms['files_list_y']); em.add_r32_r32('rax','r11'); em.mov_mreg_reg32('rcx',4,'rax')
+em.mov_r32_mreg('rax','rcx',12); em.add_r32_r32('rax','r11'); em.mov_mreg_reg32('rcx',12,'rax')
+em.mov_mreg_imm32('rcx',0,4); em.mov_r32_ripmem('rax',bsyms['outline_width']); em.sub_r32_imm8('rax',4); em.mov_mreg_reg32('rcx',8,'rax')
+em.lea_rip('r10',bsyms['rename_item_rect']); em.mov_r32_mreg('rdx','r10',0); em.mov_r32_mreg('r8','r10',4); em.mov_r32_mreg('r9','r10',8); em.sub_r32_r32('r9','rdx')
+em.mov_r32_mreg('r11','r10',12); em.sub_r32_r32('r11','r8'); em.mov_r64_ripmem('rcx',bsyms['hwnd_rename']); em.mov_mrsp_reg32(0x20,'r11'); em.mov_mrsp_imm32(0x28,1,qword=True); em.call_iat('MoveWindow')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_rename']); em.mov_r32_imm('rdx',5); em.call_iat('ShowWindow')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_rename']); em.call_iat('SetFocus')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_rename']); em.mov_r32_imm('rdx',0x00B1); em.xor32('r8'); em.mov_r32_imm('r9',0xFFFFFFFF); em.call_iat('SendMessageW')
+em.mov_ripmem_imm32(bsyms['rename_active'],1)
+em.label('rb_ret'); em.add_r64_imm8('rsp',0x38); em.emit(0x41,0x5F); em.emit(0x41,0x5E); em.emit(0x41,0x5D); em.emit(0x41,0x5C); em.emit(0xC3)
+
+em.label('rename_cancel')
+em.emit(0x48,0x83,0xEC,0x28)
+em.mov_ripmem_imm32(bsyms['rename_active'],0)
+em.mov_r64_ripmem('rcx',bsyms['hwnd_rename']); em.xor32('rdx'); em.call_iat('ShowWindow')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.call_iat('SetFocus')
+em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
+
+em.label('rename_commit')
+em.emit(0x41,0x54); em.emit(0x41,0x55); em.emit(0x41,0x56); em.emit(0x41,0x57); em.emit(0x48,0x83,0xEC,0x38)
+em.mov_r32_ripmem('rax',bsyms['rename_active']); em.test32('rax'); em.jcc(0x84,'rc_ret')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_rename']); em.lea_rip('rdx',bsyms['rename_buf']); em.mov_r32_imm('r8',512); em.call_iat('GetWindowTextW'); em.test32('rax'); em.jcc(0x84,'rc_cancel')
+# reject path separators
+em.lea_rip('rcx',bsyms['rename_buf']); em.xor32('r8')
+em.label('rc_scan')
+em.movzx_r32_word_index2('rax','rcx','r8'); em.test32('rax'); em.jcc(0x84,'rc_scan_ok')
+em.cmp_r32_imm('rax',0x5C); em.jcc(0x84,'rc_cancel'); em.cmp_r32_imm('rax',0x2F); em.jcc(0x84,'rc_cancel')
+em.add_r32_imm8('r8',1); em.cmp_r32_imm('r8',512); em.jcc(0x82,'rc_scan')
+em.label('rc_scan_ok')
+em.mov_r32_ripmem('r13',bsyms['rename_row']); em.mov_r32_r32('rdx','r13'); em.call_label('tree_row_ptr'); em.mov_r64_r64('r14','rax')
+em.mov_r64_r64('rcx','r14'); em.lea_rip('rdx',bsyms['rename_parent']); em.call_label('tree_parent_dir')
+em.lea_rip('rcx',bsyms['rename_parent']); em.lea_rip('rdx',bsyms['rename_buf']); em.call_label('ws_join_path'); em.mov_r64_r64('r15','rax')
+em.lea_rip('rcx',bsyms['ws_path_buf']); em.call_iat('GetFileAttributesW'); em.cmp_r32_imm('rax',0xFFFFFFFF); em.jcc(0x85,'rc_cancel')
+em.mov_r64_r64('rcx','r14'); em.mov_r64_r64('rdx','r15'); em.xor32('r8'); em.call_iat('MoveFileExW'); em.test32('rax'); em.jcc(0x84,'rc_cancel')
+em.mov_ripmem_imm32(bsyms['tree_expanded_count'],0)
+em.mov_ripmem_imm32(bsyms['rename_active'],0)
+em.mov_r64_ripmem('rcx',bsyms['hwnd_rename']); em.xor32('rdx'); em.call_iat('ShowWindow')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.call_iat('SetFocus')
+em.call_label('rebuild_file_list'); em.call_label('update_status'); em.jmp('rc_ret')
+em.label('rc_cancel'); em.call_label('rename_cancel')
+em.label('rc_ret'); em.add_r64_imm8('rsp',0x38); em.emit(0x41,0x5F); em.emit(0x41,0x5E); em.emit(0x41,0x5D); em.emit(0x41,0x5C); em.emit(0xC3)
 
 # V8.6 切片 2：用 workspace 条目重建 ListBox（文件模式）。复用同一个控件、
 # 同一套滚动条几何、同一套主题刷子：布局、命中测试、滚轮、hover 与
@@ -5215,6 +5662,10 @@ em.mov_r64_ripmem('rcx',bsyms['hwnd_outline_scroll']); em.mov_r32_imm('rdx',2); 
 em.xor32('rax'); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
 
 em.label('wp_command')
+# Inline rename editor notifications: focus loss commits the rename.
+em.mov_r64_ripmem('rax',bsyms['hwnd_rename']); em.cmp_r64_r64('r9','rax'); em.jcc(0x85,'wp_cmd_not_rename')
+em.mov_r32_r32('r10','r8'); em.shr_r32_imm8('r10',16); em.cmp_r32_imm('r10',0x0200); em.jcc(0x85,'wp_child_return'); em.call_label('rename_commit'); em.jmp('wp_child_return')
+em.label('wp_cmd_not_rename')
 # Source EDIT notifications: EN_CHANGE -> rebuild outline/render on the outer message loop.
 em.mov_r64_ripmem('rax',bsyms['hwnd_edit']); em.cmp_r64_r64('r9','rax'); em.jcc(0x85,'wp_cmd_outline_check')
 em.mov_r32_r32('r10','r8'); em.shr_r32_imm8('r10',16); em.cmp_r32_imm('r10',0x0300); em.jcc(0x85,'wp_child_return')
@@ -5232,8 +5683,10 @@ em.label('wp_cmd_files_child')
 em.mov_r32_r32('r10','r8'); em.shr_r32_imm8('r10',16); em.cmp_r32_imm('r10',1); em.jcc(0x85,'wp_cmd_files_dbl')
 # LBN_SELCHANGE + left button down = Rabbit's single-click open/toggle.
 em.mov_r32_imm('rcx',1); em.call_iat('GetKeyState'); em.and_r32_imm('rax',0x8000); em.test32('rax'); em.jcc(0x84,'wp_child_return')
-em.jmp('wp_cmd_outline_activate')
+em.jmp('wp_cmd_files_activate')
 em.label('wp_cmd_files_dbl'); em.cmp_r32_imm('r10',2); em.jcc(0x85,'wp_child_return')
+em.mov_r32_imm('rdx',0x8008); em.xor32('r8'); em.xor32('r9'); em.call_iat('PostMessageW'); em.jmp('wp_child_return')
+em.label('wp_cmd_files_activate')
 em.label('wp_cmd_outline_activate'); em.mov_r32_imm('rdx',0x8007); em.xor32('r8'); em.xor32('r9'); em.call_iat('PostMessageW'); em.jmp('wp_child_return')
 # Ignore notifications from preview/status and other child controls; menu WM_COMMAND has lParam == 0.
 em.label('wp_cmd_other_child'); em.test64('r9'); em.jcc(0x85,'wp_child_return')
@@ -6748,6 +7201,42 @@ assert 'cmd_close_file' in em.labels and (1007, 'cmd_close_file') in _command_ro
     'Close must exist as its own command next to New'
 assert "append_imm('r12',0,1007,'m_close')" in _production_source, \
     'the File menu must expose Close'
+
+# (Y) V8.6 切片 3b：文件操作例程的栈帧纪律。要拦截的错误模式：入口压栈 3 个
+#     寄存器、出口却弹 4 个（2026-09-17 实测：tree_find_row_by_path 用这种写法
+#     把调用者的 rsp 弹坏，新建目录后约 2 秒以 0xC0000005 崩溃），以及任何
+#     push/pop 不成对的新增例程。
+for _fo_routine in ('fo_selected_row', 'tree_expand_insert', 'tree_find_row_by_path',
+                    'tree_prune_expanded', 'file_op_dispatch', 'file_context_menu',
+                    'fo_copy_path_selected', 'fo_delete_selected', 'fo_create_entry'):
+    assert _fo_routine in em.labels, '%s must be emitted' % _fo_routine
+# 例程的 epilogue 与 "_ret" 标签同行，按标签切块会截断到 pop 之前，所以这里对
+# 整个切片区域统计配对数：区域里每个例程都保存 r12–r15 中的若干个，push 与 pop
+# 总数必须相等（实测漏一个 pop 就会把调用者的 rsp 弹坏并延迟崩溃）。
+_fo_ops_src = _production_source[
+    _production_source.index("em.label('fo_selected_row')"):
+    _production_source.index("em.label('rename_begin')")]
+_fo_pushes = len(re.findall(r"em\.emit\(0x41,0x5[4567]\)", _fo_ops_src)) + \
+    len(re.findall(r"em\.emit\(0x5[3567]\)", _fo_ops_src))
+_fo_pops = len(re.findall(r"em\.emit\(0x41,0x5[CDEF]\)", _fo_ops_src)) + \
+    len(re.findall(r"em\.emit\(0x5[CDEF]\)", _fo_ops_src))
+assert _fo_pushes == _fo_pops, \
+    'file-operation routines must balance saved registers (push %d vs pop %d)' % \
+    (_fo_pushes, _fo_pops)
+assert _fo_pushes == 26, \
+    'the file-operation region saves 26 registers (2 + 4 * 5 + context menu)'
+# 菜单本身只做路由：任何文件操作 API 出现在 file_context_menu 里都意味着
+# "菜单动作"与"注入路径"出现了第二套实现。
+_fo_menu_src = _production_source[
+    _production_source.index("em.label('file_context_menu')"):
+    _production_source.index("em.label('rename_begin')")]
+for _fo_forbidden in ('SHFileOperationW', 'CreateFileW', 'CreateDirectoryW',
+                      'MoveFileExW', 'SetClipboardData', 'DeleteFileW'):
+    assert _fo_forbidden not in _fo_menu_src, \
+        '%s must not be called from the context menu' % _fo_forbidden
+assert "call_iat('TrackPopupMenu')" in _fo_menu_src and \
+       "em.mov_r32_imm('rdx',0x8009)" in _fo_menu_src, \
+    'the context menu must translate its choice into the shared 0x8009 command'
 
 _output_channel = 'test' if INJECTED_BUILD else _BUILD_CHANNEL
 _output_name = (('pemark_x64_v8_6_outline_alloc_%s.exe' % ARENA_ALLOC_INJECTION_MODE)

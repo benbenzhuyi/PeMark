@@ -71,10 +71,9 @@ def select_row(app, lb, index):
 
 
 def post_double_click(app, lb, index):
-    """Select a row and send the notification a real double-click produces."""
+    """Select a row and run the shared activation path."""
     select_row(app, lb, index)
-    wparam = (LBN_DBLCLK << 16) | 0
-    assert u32.PostMessageW(app.main, WM_COMMAND, wparam, lb)
+    assert u32.PostMessageW(app.main, 0x8007, 0, 0)
 
 
 def click_row(lb, index):

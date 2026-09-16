@@ -128,9 +128,14 @@ def child_windows(hwnd):
     return out
 
 def doc_surfaces(hwnd):
-    """两个文档表面：源码 = 'edit'（RichEdit 实例），预览 = 'richedit50w'。"""
+    """两个文档表面：源码 = 'edit'（RichEdit 实例），预览 = 'richedit50w'。
+
+    V8.6.1 起还有一个 ID 21 的浮层重命名输入框，它同样以 'edit' 作为窗口
+    类名，但不是文档表面，必须按子控件 ID 排除；旧版候选没有这个控件，
+    GetDlgItem 返回 0，不会误伤兼容基线。"""
+    rename = u32.GetDlgItem(hwnd, 21)
     return [(h, cls, vis) for h, cls, vis in child_windows(hwnd)
-            if cls in ('edit', 'richedit50w')]
+            if cls in ('edit', 'richedit50w') and h != rename]
 
 def listbox(hwnd):
     for h, cls, vis in child_windows(hwnd):
