@@ -19,6 +19,7 @@ EXE = Path(os.environ.get(
     ROOT / "bin/candidate/pemark_x64_v8_5_3_candidate.exe"))
 # The published binary must stay byte-identical while a test runs.
 RELEASE_EXE = ROOT / "bin/current/pemark_x64_v8_5_3.exe"
+VERSION_TAG = GEN.stem.replace("generate_markdown_editor_", "")
 SMALL = ROOT / "tests/v8_5_2/fixtures/utf8_lf.md"
 LARGE = ROOT / "tests/large_regression_1_2mb.md"
 CMD_OPEN_SELECTED = 1901
@@ -32,8 +33,9 @@ def build(mode="release"):
           "OPEN_TEST_BUILD": True, "ARENA_ALLOC_INJECTION_MODE": mode}
     exec(compile(source, str(GEN), "exec"), ns)
     out = Path(ns["out"])
-    expected = ("pemark_x64_v8_5_3_open_transaction_test.exe" if mode == "release"
-                else f"pemark_x64_v8_5_3_{mode.split('_')[0]}_alloc_{mode}.exe")
+    expected = (f"pemark_x64_{VERSION_TAG}_open_transaction_test.exe"
+                if mode == "release"
+                else f"pemark_x64_{VERSION_TAG}_{mode.split('_')[0]}_alloc_{mode}.exe")
     assert out.name == expected, out.name
     return ns, out
 

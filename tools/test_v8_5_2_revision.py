@@ -112,8 +112,10 @@ def main():
                                     c.byref(needed)):
         proc.kill(); raise c.WinError(c.get_last_error())
     image_base = c.cast(module, c.c_void_p).value
-    assert image_base == PREFERRED_IMAGE_BASE, \
-        f"unexpected image base: 0x{image_base:X}"
+    # V8.5.4 enables ASLR, so the image may load anywhere; every access below is
+    # computed from the base this process actually received.
+    assert image_base != 0, "module base was not resolved"
+    relocated = image_base != PREFERRED_IMAGE_BASE
     def read64(name):
         value, count = c.c_uint64(), c.c_size_t()
         ok = k32.ReadProcessMemory(handle, c.c_void_p(image_base + bsyms[name]),
@@ -198,7 +200,8 @@ def main():
         print("PASS revision/dirty ownership: initial clean, suppressed edit clean, "
               "direct advance dirty; revisions: initial=(0,0), advance=(1,0), "
               "open=(2,2), edit=(3,2), second-edit=(4,2), "
-              "save=(4,4), new=(5,5), exit=0")
+              "save=(4,4), new=(5,5), exit=0; image base 0x%X%s"
+              % (image_base, " (relocated by ASLR)" if relocated else ""))
     finally:
         k32.CloseHandle(handle)
         if proc.poll() is None:

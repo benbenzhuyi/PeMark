@@ -184,10 +184,14 @@ commit 与 working set 是期望结果，不是硬性验收条件。
 - 新增 `tools/test_v8_5_4_sections.py`：既检查磁盘上的节表，也用
   `VirtualQueryEx` 验证已加载映像的页保护为 RX / R / RW / RW，并做一次真实
   窗口启动与干净退出。
+- 新增 `.reloc` 节：每个映像页一个块，条目全部为 `IMAGE_REL_BASED_ABSOLUTE`
+  （本映像没有绝对地址，语义就是"无需修正"）；`DllCharacteristics` 增设
+  `DYNAMIC_BASE`，实测加载基址为 `0x7FF73D810000` 一类随机值而非首选基址，
+  窗口启动、符号访问与干净退出均正常。测试同时校验重定位目录、块结构与
+  实际基址已随机化。
 
 ### 剩余切片
 
-- base relocation 与 ASLR；
 - 适用函数的 `.pdata`/unwind metadata；
 - CFG/CET 可行性结论。
 

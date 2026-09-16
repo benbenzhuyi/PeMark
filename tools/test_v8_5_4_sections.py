@@ -26,8 +26,11 @@ EXPECTED = [
     (b".rdata", 0x10000, 0x3000, 0xF400, 0x3000, SCN_READ | 0x40),
     (b".idata", 0x13000, 0x1000, 0x12400, 0x1000, SCN_READ | SCN_WRITE | 0x40),
     (b".bss", 0x14000, 0x2000, 0x0, 0x0, SCN_READ | SCN_WRITE | 0x80),
+    (b".reloc", 0x16000, 0x200, 0x15400, 0x200, SCN_READ | 0x02000000 | 0x40),
 ]
-EXPECTED_PROTECT = [PAGE_EXECUTE_READ, PAGE_READONLY, PAGE_READWRITE, PAGE_READWRITE]
+EXPECTED_PROTECT = [PAGE_EXECUTE_READ, PAGE_READONLY, PAGE_READWRITE, PAGE_READWRITE,
+                    PAGE_READONLY]
+PREFERRED_IMAGE_BASE = 0x140000000
 
 u32, k32 = c.windll.user32, c.windll.kernel32
 k32.VirtualQueryEx.argtypes = [w.HANDLE, c.c_void_p, c.c_void_p, c.c_size_t]
@@ -64,6 +67,9 @@ def parse_sections(path):
     optsz = struct.unpack_from("<H", b, coff + 16)[0]
     size_of_headers = struct.unpack_from("<I", b, coff + 20 + 60)[0]
     size_of_image = struct.unpack_from("<I", b, coff + 20 + 56)[0]
+    image_base = struct.unpack_from("<Q", b, coff + 20 + 24)[0]
+    dll_chars = struct.unpack_from("<H", b, coff + 20 + 70)[0]
+    reloc_rva, reloc_size = struct.unpack_from("<II", b, coff + 20 + 112 + 8 * 5)
     sh = coff + 20 + optsz
     sections = []
     for i in range(nsec):
@@ -72,11 +78,14 @@ def parse_sections(path):
         vs, va, rs, rp = struct.unpack_from("<IIII", b, o + 8)
         chars = struct.unpack_from("<I", b, o + 36)[0]
         sections.append((name, va, vs, rp, rs, chars))
-    return sections, size_of_headers, size_of_image, len(b)
+    return {"sections": sections, "headers": size_of_headers, "image": size_of_image,
+            "filesize": len(b), "image_base": image_base, "dll_chars": dll_chars,
+            "reloc": (reloc_rva, reloc_size), "blob": b}
 
 
 def on_disk(structure):
-    sections, headers, image, filesize = structure
+    sections, headers, image, filesize = (structure["sections"], structure["headers"],
+                                          structure["image"], structure["filesize"])
     assert len(sections) == len(EXPECTED), "expected four sections"
     raw_end = headers
     for (name, va, vs, rp, rs, chars), (en, eva, evs, erp, ers, echars) in zip(sections, EXPECTED):
@@ -94,7 +103,28 @@ def on_disk(structure):
         else:
             assert name == b".bss"
     assert image >= EXPECTED[-1][1] + EXPECTED[-1][2]
-    print("PASS section table: 4 sections, permissions RX/R/RW/RW, no W+X")
+    # ASLR metadata: DYNAMIC_BASE plus a relocation table that tiles every page.
+    assert structure["image_base"] == PREFERRED_IMAGE_BASE
+    assert structure["dll_chars"] & 0x0040, "DYNAMIC_BASE must be declared"
+    reloc_rva, reloc_size = structure["reloc"]
+    assert (reloc_rva, reloc_size) == (EXPECTED[-1][1], reloc_size)
+    assert reloc_size >= 12 and reloc_size % 4 == 0
+    blob, cursor, blocks = structure["blob"], 0, 0
+    file_off = sections[-1][3]
+    while cursor < reloc_size:
+        page, block = struct.unpack_from("<II", blob, file_off + cursor)
+        assert block >= 12 and block % 4 == 0
+        assert page % 0x1000 == 0
+        entries = (block - 8) // 2
+        for i in range(entries):
+            value = struct.unpack_from("<H", blob, file_off + cursor + 8 + i * 2)[0]
+            assert (value >> 12) == 0, "only ABSOLUTE entries are valid here"
+        cursor += block
+        blocks += 1
+    assert cursor == reloc_size
+    assert blocks == (0x16000 - 0x1000) // 0x1000
+    print("PASS section table: 5 sections, RX/R/RW/RW/R, no W+X, relocation "
+          "table covers every image page")
 
 
 def loaded(struct_ns):
@@ -110,6 +140,8 @@ def loaded(struct_ns):
             assert c.windll.psapi.EnumProcessModules(
                 handle, c.byref(module), c.sizeof(module), c.byref(needed))
             base = c.cast(module, c.c_void_p).value
+            assert base != PREFERRED_IMAGE_BASE, \
+                "DYNAMIC_BASE image loaded at its preferred base; ASLR is not active"
             for (name, va, vs, rp, rs, chars), expected in zip(EXPECTED, EXPECTED_PROTECT):
                 mbi = MEMORY_BASIC_INFORMATION()
                 assert k32.VirtualQueryEx(handle, c.c_void_p(base + va),

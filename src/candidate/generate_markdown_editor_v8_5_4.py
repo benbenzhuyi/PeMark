@@ -58,6 +58,8 @@ WRITE_CALL_INJECTED = WRITE_INJECTION_MODE in {
     'short_then_complete', 'zero_success', 'fail_first', 'late_failure'}
 
 IMAGE_BASE = 0x140000000
+# V8.5.4：NX_COMPAT 保证数据页不可执行，DYNAMIC_BASE 允许加载器选择随机基址。
+DLL_CHARACTERISTICS = 0x0100 | 0x0040
 TEXT_RVA = 0x1000
 # V8.5.4 candidate：在 V8.5.1 基线上建立 document revision 所有权。
 # 原 0x8000 起的 RDATA/IDATA/BSS 整体后移 0x8000，相对间距不变
@@ -3947,6 +3949,19 @@ if len(rdata) > IDATA_RVA - RDATA_RVA:
 if len(idata) > BSS_RVA - IDATA_RVA:
     raise RuntimeError('idata overlaps bss')
 
+# V8.5.4：base relocation 与 ASLR。发射的代码本身只用 RIP 相对寻址（数据经
+# lea_rip、外部函数经 IAT），因此没有任何位置需要修正。为了让加载器可以自由
+# 选择基址，仍然需要一张有效的重定位表：每个 4 KiB 页一个块，块内条目为
+# IMAGE_REL_BASED_ABSOLUTE（0），语义是"该页无需修正"。
+RELOC_RVA = BSS_RVA + BSS_VSIZE
+reloc = bytearray()
+_reloc_page = TEXT_RVA
+while _reloc_page < RELOC_RVA:
+    reloc.extend(struct.pack('<IIHH', _reloc_page, 12, 0, 0))
+    _reloc_page += SECT_ALIGN
+reloc_size = len(reloc)
+reloc_raw = align(reloc_size, FILE_ALIGN)
+
 # Raw layout stays aligned with the RVA plan: a byte at RVA r lives at file
 # offset headers_size + (r - TEXT_RVA). Each section then only has to point at
 # its own window inside that buffer. Packing the sections tightly instead made
@@ -3964,6 +3979,11 @@ raw.extend(idata)
 if len(raw) > BSS_RVA - TEXT_RVA:
     raise RuntimeError('idata overlaps bss')
 raw.extend(b'\0' * ((BSS_RVA - TEXT_RVA) - len(raw)))
+if len(raw) > RELOC_RVA - TEXT_RVA:
+    raise RuntimeError('bss reservation overlaps reloc')
+raw.extend(b'\0' * ((RELOC_RVA - TEXT_RVA) - len(raw)))
+raw.extend(reloc)
+raw.extend(b'\0' * (reloc_raw - reloc_size))
 raw_size = len(raw)
 
 # name, VirtualSize, VirtualAddress, PointerToRawData, SizeOfRawData, Characteristics
@@ -3978,8 +3998,10 @@ sections = [
     (b'.idata\0\0', BSS_RVA - IDATA_RVA, IDATA_RVA,
      headers_size + (IDATA_RVA - TEXT_RVA), BSS_RVA - IDATA_RVA, 0xC0000040),
     (b'.bss\0\0\0\0', BSS_VSIZE, BSS_RVA, 0, 0, 0xC0000080),
+    (b'.reloc\0\0', reloc_raw, RELOC_RVA,
+     headers_size + (RELOC_RVA - TEXT_RVA), reloc_raw, 0x42000040),
 ]
-size_image = align(BSS_RVA + BSS_VSIZE, SECT_ALIGN)
+size_image = align(RELOC_RVA + reloc_raw, SECT_ALIGN)
 
 hdr = bytearray(b'\0' * headers_size)
 hdr[0:2] = b'MZ'
@@ -4002,10 +4024,11 @@ struct.pack_into('<HHHHHH', opt, 40, 6, 0, 0, 0, 6, 0)
 struct.pack_into('<I', opt, 52, 0)
 struct.pack_into('<II', opt, 56, size_image, headers_size)
 struct.pack_into('<I', opt, 64, 0)
-struct.pack_into('<HH', opt, 68, 2, 0x0100)  # GUI, NX_COMPAT only (no ASLR/relocs)
+struct.pack_into('<HH', opt, 68, 2, DLL_CHARACTERISTICS)  # GUI, NX_COMPAT | DYNAMIC_BASE
 struct.pack_into('<QQQQ', opt, 72, 0x100000, 0x1000, 0x100000, 0x1000)
 struct.pack_into('<II', opt, 104, 0, 16)
 struct.pack_into('<II', opt, 112 + 8*1, IDATA_RVA, IMPORT_DESC_SIZE)
+struct.pack_into('<II', opt, 112 + 8*5, RELOC_RVA, reloc_size)
 struct.pack_into('<II', opt, 112 + 8*12, IAT_RVA, IAT_SIZE)
 hdr[p:p+0xF0] = opt; p += 0xF0
 
@@ -4025,8 +4048,9 @@ _EXPECTED_SECTIONS = {
     b'.rdata': 0x40000040,   # INITIALIZED_DATA | READ
     b'.idata': 0xC0000040,   # INITIALIZED_DATA | READ | WRITE
     b'.bss': 0xC0000080,     # UNINITIALIZED_DATA | READ | WRITE
+    b'.reloc': 0x42000040,   # INITIALIZED_DATA | DISCARDABLE | READ
 }
-assert len(sections) == 4, 'the image must declare exactly four sections'
+assert len(sections) == 5, 'the image must declare exactly five sections'
 _prev_va_end = 0
 _prev_raw_end = 0
 for _name, _vsize, _va, _ptr, _rsize, _chars in sections:
@@ -4054,6 +4078,27 @@ assert sections[0][5] & 0x20000000, '.text must stay executable'
 assert size_image >= _prev_va_end, 'SizeOfImage must cover every section'
 assert not any(chars & 0x20000000 and chars & 0x80000000 for _, _, _, _, _, chars in sections), \
     'no section may be both writable and executable'
+# (Q) ASLR / 重定位断言：无绝对地址的映像仍必须提供合法的重定位表，
+#     否则加载器无法在非首选基址加载，DYNAMIC_BASE 等于失效或被拒。
+assert reloc_size >= 12 and reloc_size % 4 == 0, \
+    'the relocation table must contain whole blocks'
+_reloc_blocks = 0
+_reloc_cursor = 0
+while _reloc_cursor < reloc_size:
+    _page, _block_size = struct.unpack_from('<II', reloc, _reloc_cursor)
+    assert _block_size >= 12 and _block_size % 4 == 0, \
+        'relocation block size must cover at least one entry and stay aligned'
+    assert _page % SECT_ALIGN == 0, 'relocation blocks must start on a page'
+    for _entry in range((_block_size - 8) // 2):
+        _value = struct.unpack_from('<H', reloc, _reloc_cursor + 8 + _entry * 2)[0]
+        assert (_value >> 12) == 0, \
+            'this image has no absolute addresses, so every entry must be ABSOLUTE'
+    _reloc_cursor += _block_size
+    _reloc_blocks += 1
+assert _reloc_cursor == reloc_size, 'relocation blocks must tile the table exactly'
+assert _reloc_blocks == (RELOC_RVA - TEXT_RVA) // SECT_ALIGN, \
+    'every image page must be declared relocation-clean'
+assert DLL_CHARACTERISTICS & 0x0040, 'DYNAMIC_BASE must stay enabled'
 
 _output_channel = 'test' if INJECTED_BUILD else _BUILD_CHANNEL
 _output_name = (('pemark_x64_v8_5_4_outline_alloc_%s.exe' % ARENA_ALLOC_INJECTION_MODE)
