@@ -3,6 +3,27 @@
 V8.5.4 shipped as the first stable release; its full record is
 `docs/CHANGELOG_V8_5_4.md`.
 
+## V8.6.1 candidate — File-tree model (slice 1)
+
+The file panel now has a model-only flattened tree, independent of the still
+visible single-directory ListBox:
+
+- `tree_root_path` owns the authorized root; `tree_rows` is a growable
+  544-byte-per-row arena with `path / depth / flags`;
+- `tree_expanded` stores up to 64 expanded directory paths, and
+  `tree_rebuild` inserts children directly after an expanded directory, then
+  walks forward over the published rows, so no recursive call is needed;
+- directories are inserted before files; `.`-hidden entries and files outside
+  `.md / .markdown / .txt` are filtered;
+- an unreadable root publishes `tree_last_error` and leaves an empty row set;
+- `workspace_set_root` now rebuilds the tree model at the same time as the
+  existing flat ListBox, and build command `1910` exposes a model-only rebuild
+  probe for tests.
+
+Evidence: `tools/test_v8_6_tree_model.py` creates a real temporary directory
+tree and verifies filtered rows, directory flags, one- and two-level expansion,
+depth values and the missing-root error. `smoke_test_v8_5_1.py` remains 17/17.
+
 ## V8.6.1 — Custom title row and six tool icons
 
 The main window now uses a merged 32px title row instead of the native

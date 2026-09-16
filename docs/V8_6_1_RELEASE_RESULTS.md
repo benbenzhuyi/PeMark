@@ -24,10 +24,7 @@ EXE SHA-256:
   13/13 groups, 0 failures.
 - `tools/test_v8_6_caption.py`: caption geometry, icon hit rectangles, hover,
   inert placeholders and the live left switch.
-- `tools/smoke_test_v8_5_1.py`: 17/17 on the candidate; the release binary
-  passed a PID-filtered new / preview / source / dark / light / wrap / close
-  smoke matrix because a hand-test instance was holding the interactive
-  window during the final release build.
+- `tools/smoke_test_v8_5_1.py bin/current/pemark_x64_v8_6_1.exe`: 17/17.
 - `tools/inspect_pe.py bin/current/pemark_x64_v8_6_1.exe`: 6 sections,
   machine `0x8664`, subsystem 2, no W+X section.
 

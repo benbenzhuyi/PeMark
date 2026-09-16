@@ -7,15 +7,15 @@
 | `.text` | `0x1000` | 61440 | 61440 | `0x60000020` |
 | `.rdata` | `0x10000` | 12288 | 12288 | `0x40000040` |
 | `.idata` | `0x13000` | 8192 | 8192 | `0xC0000040` |
-| `.bss` | `0x15000` | 16384 | 0 | `0xC0000080` |
-| `.reloc` | `0x19000` | 512 | 512 | `0x42000040` |
-| `.pdata` | `0x1A000` | 1024 | 1024 | `0x40000040` |
+| `.bss` | `0x15000` | 81920 | 0 | `0xC0000080` |
+| `.reloc` | `0x29000` | 512 | 512 | `0x42000040` |
+| `.pdata` | `0x2A000` | 1024 | 1024 | `0x40000040` |
 
-text 实际代码 48173 字节（预算 61440），rdata 5440 字节，idata 4428 字节，BSS 虚拟 16384 字节。
+text 实际代码 49753 字节（预算 61440），rdata 5532 字节，idata 4428 字节，BSS 虚拟 81920 字节。
 
-本次构建：text 实际 48173 字节（余量 13267 字节）；BSS 符号 268 个，最终虚拟 BSS 16384 字节。
+本次构建：text 实际 49753 字节（余量 11687 字节）；BSS 符号 282 个，最终虚拟 BSS 81920 字节。
 
-SHA-256：`66eece0cf54458e69efa1edb2abbda214ac1679f4c8b10af20101f0ac04f7b15`
+SHA-256：`c17ba2fd86036be9e09bb8254f95ccc759e005f8ac6377b5458438a567c326d2`
 
 | Symbol | RVA | Size |
 |---|---:|---:|
@@ -252,38 +252,52 @@ SHA-256：`66eece0cf54458e69efa1edb2abbda214ac1679f4c8b10af20101f0ac04f7b15`
 | `ws_error` | `0x17DD4` | 4 |
 | `ws_entries` | `0x17DD8` | 8 |
 | `ws_capacity` | `0x17DE0` | 4 |
-| `panel_mode` | `0x17DE4` | 4 |
-| `open_bypass_picker` | `0x17DE8` | 4 |
-| `ws_path_buf` | `0x17DF0` | 1024 |
-| `browseinfo` | `0x181F0` | 64 |
-| `fod_ptr` | `0x18230` | 8 |
-| `fod_options` | `0x18238` | 4 |
-| `fod_chosen` | `0x1823C` | 4 |
-| `shell_item` | `0x18240` | 8 |
-| `item_path` | `0x18248` | 8 |
-| `fod_probe_coinit` | `0x18250` | 4 |
-| `fod_probe_hresult` | `0x18254` | 4 |
-| `fod_probe_options_hresult` | `0x18258` | 4 |
-| `fod_probe_vtbl` | `0x18260` | 8 |
-| `fod_probe_entered` | `0x18268` | 4 |
-| `widebuf` | `0x18270` | 8 |
-| `wide_capacity` | `0x18278` | 4 |
-| `bytebuf` | `0x18280` | 8 |
-| `byte_capacity` | `0x18288` | 4 |
-| `document_revision` | `0x18290` | 8 |
-| `saved_revision` | `0x18298` | 8 |
-| `pending_destructive_action` | `0x182A0` | 4 |
-| `save_target_is_temp` | `0x182A4` | 4 |
-| `inject_write_call_count` | `0x182A8` | 4 |
-| `inject_flush_call_count` | `0x182AC` | 4 |
-| `inject_replace_call_count` | `0x182B0` | 4 |
-| `save_stage_path` | `0x182C0` | 1024 |
-| `inject_create_call_count` | `0x186C0` | 4 |
-| `inject_close_call_count` | `0x186C4` | 4 |
-| `eol_state` | `0x186C8` | 4 |
-| `candidate_encoding_state` | `0x186CC` | 4 |
-| `candidate_eol_state` | `0x186D0` | 4 |
-| `outline_srcpos` | `0x186D8` | 8 |
-| `outline_renderpos` | `0x186E0` | 8 |
-| `outline_level` | `0x186E8` | 8 |
-| `outline_capacity` | `0x186F0` | 4 |
+| `tree_root_path` | `0x17DE4` | 1024 |
+| `tree_rows` | `0x181E8` | 8 |
+| `tree_row_count` | `0x181F0` | 4 |
+| `tree_row_capacity` | `0x181F4` | 4 |
+| `tree_expanded` | `0x181F8` | 65536 |
+| `tree_expanded_count` | `0x281F8` | 4 |
+| `tree_last_error` | `0x281FC` | 4 |
+| `tree_insert_index` | `0x28200` | 4 |
+| `tree_insert_depth` | `0x28204` | 4 |
+| `tree_insert_flags` | `0x28208` | 4 |
+| `tree_insert_path` | `0x28210` | 8 |
+| `tree_expand_index` | `0x28218` | 4 |
+| `tree_expand_depth` | `0x2821C` | 4 |
+| `tree_expand_path` | `0x28220` | 8 |
+| `panel_mode` | `0x28228` | 4 |
+| `open_bypass_picker` | `0x2822C` | 4 |
+| `ws_path_buf` | `0x28230` | 1024 |
+| `browseinfo` | `0x28630` | 64 |
+| `fod_ptr` | `0x28670` | 8 |
+| `fod_options` | `0x28678` | 4 |
+| `fod_chosen` | `0x2867C` | 4 |
+| `shell_item` | `0x28680` | 8 |
+| `item_path` | `0x28688` | 8 |
+| `fod_probe_coinit` | `0x28690` | 4 |
+| `fod_probe_hresult` | `0x28694` | 4 |
+| `fod_probe_options_hresult` | `0x28698` | 4 |
+| `fod_probe_vtbl` | `0x286A0` | 8 |
+| `fod_probe_entered` | `0x286A8` | 4 |
+| `widebuf` | `0x286B0` | 8 |
+| `wide_capacity` | `0x286B8` | 4 |
+| `bytebuf` | `0x286C0` | 8 |
+| `byte_capacity` | `0x286C8` | 4 |
+| `document_revision` | `0x286D0` | 8 |
+| `saved_revision` | `0x286D8` | 8 |
+| `pending_destructive_action` | `0x286E0` | 4 |
+| `save_target_is_temp` | `0x286E4` | 4 |
+| `inject_write_call_count` | `0x286E8` | 4 |
+| `inject_flush_call_count` | `0x286EC` | 4 |
+| `inject_replace_call_count` | `0x286F0` | 4 |
+| `save_stage_path` | `0x28700` | 1024 |
+| `inject_create_call_count` | `0x28B00` | 4 |
+| `inject_close_call_count` | `0x28B04` | 4 |
+| `eol_state` | `0x28B08` | 4 |
+| `candidate_encoding_state` | `0x28B0C` | 4 |
+| `candidate_eol_state` | `0x28B10` | 4 |
+| `outline_srcpos` | `0x28B18` | 8 |
+| `outline_renderpos` | `0x28B20` | 8 |
+| `outline_level` | `0x28B28` | 8 |
+| `outline_capacity` | `0x28B30` | 4 |

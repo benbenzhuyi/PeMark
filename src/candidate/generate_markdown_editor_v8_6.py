@@ -589,6 +589,17 @@ WS_OFF_KIND = 524                        # u32 bit0 = directory
 WS_OFF_SIZE_LOW = 528                    # u32
 WS_OFF_SIZE_HIGH = 532                   # u32
 WS_OFF_WRITE_TIME = 536                  # u64 FILETIME
+# V8.6.1 文件树模型（切片 1，无 UI 变化）。
+# 行与 workspace 条目共用 544 字节 stride；path 后仅使用 depth/flags。
+TREE_STRIDE = WS_STRIDE
+TREE_PATH_UNITS = WS_NAME_UNITS
+TREE_OFF_PATH = 0
+TREE_OFF_DEPTH = WS_OFF_ATTRIBUTES
+TREE_OFF_FLAGS = WS_OFF_KIND
+TREE_FLAG_DIR = 1
+TREE_FLAG_EXPANDED = 2
+TREE_FLAG_HIDDEN = 4
+TREE_EXPANDED_MAX = 64
 bss_alloc('ws_root_path', 512*2, 2)
 bss_alloc('ws_current_path', 512*2, 2)
 bss_alloc('ws_pattern', (512+4)*2, 2)
@@ -598,6 +609,20 @@ bss_alloc('ws_entry_count', 4, 4)
 bss_alloc('ws_error', 4, 4)
 bss_alloc('ws_entries', 8, 8)            # arena pointer
 bss_alloc('ws_capacity', 4, 4)           # entries currently owned
+bss_alloc('tree_root_path', 512*2, 2)
+bss_alloc('tree_rows', 8, 8)             # arena pointer
+bss_alloc('tree_row_count', 4, 4)
+bss_alloc('tree_row_capacity', 4, 4)
+bss_alloc('tree_expanded', TREE_EXPANDED_MAX*512*2, 2)
+bss_alloc('tree_expanded_count', 4, 4)
+bss_alloc('tree_last_error', 4, 4)
+bss_alloc('tree_insert_index', 4, 4)
+bss_alloc('tree_insert_depth', 4, 4)
+bss_alloc('tree_insert_flags', 4, 4)
+bss_alloc('tree_insert_path', 8, 8)
+bss_alloc('tree_expand_index', 4, 4)
+bss_alloc('tree_expand_depth', 4, 4)
+bss_alloc('tree_expand_path', 8, 8)
 # V8.6 切片 2：侧边栏面板模式。0 = 大纲，1 = 文件。两个模式共用同一个
 # ListBox 控件与同一套滚动条几何，只改变列表内容、行文本与行颜色。
 bss_alloc('panel_mode', 4, 4)
@@ -1499,6 +1524,7 @@ _command_routes = [(1001,'cmd_new'),(1002,'cmd_open'),(1003,'cmd_save'),(1004,'c
                   (1101,'cmd_undo'),(1102,'cmd_cut'),(1103,'cmd_copy'),(1104,'cmd_paste'),(1105,'cmd_selectall'),(1106,'cmd_find'),(1107,'cmd_findnext'),(1108,'cmd_replace'),(1201,'cmd_about'),
                   (1301,'cmd_zoomin'),(1302,'cmd_zoomout'),(1303,'cmd_zoomreset'),(1304,'cmd_wrap'),(1305,'cmd_status'),(1306,'cmd_preview'),(1307,'cmd_outline'),(1310,'cmd_light'),(1311,'cmd_dark'),(1312,'cmd_theme_toggle'),
                   (1006,'cmd_open_folder'),(1308,'cmd_panel_files'),(1309,'cmd_panel_outline'),
+                  (1910,'cmd_tree_rebuild'),
                   (1007,'cmd_close_file'),
                   (1401,'cmd_md_h1'),(1402,'cmd_md_h2'),(1410,'cmd_md_h3'),(1411,'cmd_md_h4'),(1412,'cmd_md_h5'),(1413,'cmd_md_h6'),(1403,'cmd_md_bold'),(1404,'cmd_md_italic'),(1405,'cmd_md_inline'),(1406,'cmd_md_codeblock'),(1407,'cmd_md_quote'),(1408,'cmd_md_bullet'),(1409,'cmd_md_link')]
 if OPEN_TEST_BUILD:
@@ -3848,6 +3874,46 @@ def emit_ws_entry_ptr():
     em.add_r64_r64('rax','rcx')                                          # index * 544
     em.mov_r64_ripmem('rcx',bsyms['ws_entries']); em.add_r64_r64('rax','rcx')
 
+# Ensure the visible-tree row arena can hold ecx rows.
+em.label('ensure_tree_arena')
+em.emit(0x41,0x54); em.emit(0x41,0x55); em.emit(0x41,0x56); em.emit(0x41,0x57); em.emit(0x56); em.emit(0x57); em.emit(0x48,0x83,0xEC,0x28)
+em.mov_r32_r32('r13','rcx'); em.add_r32_imm8('r13',1)
+em.add_r32_imm8('r13',63); em.and_r32_imm('r13',~63 & 0xFFFFFFFF)
+em.cmp_r32_imm('r13',64); em.jcc(0x83,'tree_need_ready'); em.mov_r32_imm('r13',64)
+em.label('tree_need_ready'); em.mov_r32_ripmem('rax',bsyms['tree_row_capacity']); em.cmp_r32_r32('rax','r13'); em.jcc(0x83,'tree_arena_ok')
+em.mov_r32_r32('r14','r13'); em.shl_r32_imm8('r14',5)
+em.mov_r32_r32('rax','r13'); em.shl_r32_imm8('rax',9)
+em.add_r32_r32('r14','rax')
+em.xor32('rcx'); em.mov_r32_r32('rdx','r14'); em.mov_r32_imm('r8',0x3000); em.mov_r32_imm('r9',4)
+em.call_iat('VirtualAlloc')
+em.test64('rax'); em.jcc(0x84,'tree_arena_fail'); em.mov_r64_r64('r15','rax')
+em.mov_r64_ripmem('r12',bsyms['tree_rows']); em.test64('r12'); em.jcc(0x84,'tree_arena_commit')
+em.mov_r32_ripmem('r14',bsyms['tree_row_count'])
+em.mov_r32_r32('rax','r14'); em.shl_r32_imm8('rax',6)
+em.mov_r32_r32('r8','r14'); em.shl_r32_imm8('r8',2)
+em.add_r32_r32('rax','r8')
+em.mov_r64_r64('rsi','r12'); em.mov_r64_r64('rdi','r15')
+em.label('tree_arena_copy')
+em.test32('rax'); em.jcc(0x84,'tree_arena_copy_done')
+em.mov_r64_mreg('r10','rsi',0); em.mov_mreg_reg64('rdi',0,'r10')
+em.add_r64_imm8('rsi',8); em.add_r64_imm8('rdi',8); em.sub_r32_imm8('rax',1)
+em.jmp('tree_arena_copy')
+em.label('tree_arena_copy_done')
+em.mov_r64_r64('rcx','r12'); em.xor32('rdx'); em.mov_r32_imm('r8',0x8000); em.call_iat('VirtualFree')
+em.label('tree_arena_commit'); em.mov_ripmem_r64(bsyms['tree_rows'],'r15'); em.mov_ripmem_r32(bsyms['tree_row_capacity'],'r13')
+em.label('tree_arena_ok'); em.mov_r32_imm('rax',1); em.jmp('tree_arena_ret')
+em.label('tree_arena_fail'); em.xor32('rax')
+em.label('tree_arena_ret'); em.add_r64_imm8('rsp',0x28); em.emit(0x5F); em.emit(0x5E); em.emit(0x41,0x5F); em.emit(0x41,0x5E); em.emit(0x41,0x5D); em.emit(0x41,0x5C); em.emit(0xC3)
+
+# edx = tree row index -> rax = row pointer. Leaf.
+em.label('tree_row_ptr')
+em.mov_r32_r32('rax','rdx')
+em.mov_r32_r32('rcx','rax'); em.shl_r32_imm8('rcx',9)
+em.shl_r32_imm8('rax',5)
+em.add_r64_r64('rax','rcx')
+em.mov_r64_ripmem('rcx',bsyms['tree_rows']); em.add_r64_r64('rax','rcx')
+em.emit(0xC3)
+
 # rcx = name -> eax = 1 when it ends in .md / .markdown / .txt (ASCII, case-insensitive)
 em.label('ws_suffix_match')
 em.xor32('rdx')                                                          # length
@@ -4003,10 +4069,134 @@ em.mov_r64_r64('r12','rcx')
 em.lea_rip('rcx',bsyms['ws_root_path']); em.mov_r64_r64('rdx','r12'); em.call_iat('lstrcpyW')
 em.lea_rip('rcx',bsyms['ws_current_path']); em.mov_r64_r64('rdx','r12'); em.call_iat('lstrcpyW')
 em.call_label('workspace_refresh')
+# 文件树模型从同一个授权根重建；当前 UI 仍使用单层文件列表。
+em.lea_rip('rcx',bsyms['tree_root_path']); em.mov_r64_r64('rdx','r12'); em.call_iat('lstrcpyW')
+em.call_label('tree_rebuild')
 # V8.6.1：文件面板始终存在，新的根目录枚举完成后立即刷新文件列表与状态栏。
 em.call_label('rebuild_file_list')
 em.call_label('update_status')
 em.label('wsr_ret'); em.add_r64_imm8('rsp',0x30); em.emit(0x41,0x5C); em.emit(0xC3)
+
+# rcx = path, edx = insert row index, r8d = depth.
+em.label('tree_insert_row')
+em.emit(0x41,0x54); em.emit(0x41,0x55); em.emit(0x41,0x56); em.emit(0x41,0x57); em.emit(0x56); em.emit(0x57); em.emit(0x48,0x83,0xEC,0x28)
+em.mov_r32_ripmem('rcx',bsyms['tree_row_count']); em.add_r32_imm8('rcx',1); em.call_label('ensure_tree_arena'); em.test32('rax'); em.jcc(0x84,'tir_fail')
+em.mov_r32_ripmem('r12',bsyms['tree_row_count'])
+em.label('tir_shift')
+em.mov_r32_ripmem('rax',bsyms['tree_insert_index']); em.cmp_r32_r32('r12','rax'); em.jcc(0x8E,'tir_shift_done')
+em.mov_r32_r32('rdx','r12'); em.sub_r32_imm8('rdx',1); em.call_label('tree_row_ptr'); em.mov_r64_r64('r13','rax')
+em.mov_r32_r32('rdx','r12'); em.call_label('tree_row_ptr'); em.mov_r64_r64('r14','rax')
+em.mov_r64_r64('rsi','r13'); em.mov_r64_r64('rdi','r14')
+em.mov_r32_imm('r10',68)
+em.label('tir_copy')
+em.mov_r64_mreg('r11','rsi',0); em.mov_mreg_reg64('rdi',0,'r11')
+em.add_r64_imm8('rsi',8); em.add_r64_imm8('rdi',8); em.sub_r32_imm8('r10',1); em.jcc(0x85,'tir_copy')
+em.sub_r32_imm8('r12',1); em.jmp('tir_shift')
+em.label('tir_shift_done')
+em.mov_r32_ripmem('rdx',bsyms['tree_insert_index']); em.call_label('tree_row_ptr'); em.mov_r64_r64('r15','rax')
+em.mov_r64_r64('rcx','r15'); em.mov_r64_ripmem('rdx',bsyms['tree_insert_path']); em.call_iat('lstrcpyW')
+em.mov_r32_ripmem('rax',bsyms['tree_insert_depth']); em.mov_mreg_reg32('r15',TREE_OFF_DEPTH,'rax')
+em.mov_r32_ripmem('rax',bsyms['tree_insert_flags']); em.mov_mreg_reg32('r15',TREE_OFF_FLAGS,'rax')
+em.mov_r32_ripmem('rax',bsyms['tree_row_count']); em.add_r32_imm8('rax',1); em.mov_ripmem_r32(bsyms['tree_row_count'],'rax')
+em.mov_r32_imm('rax',1); em.jmp('tir_ret')
+em.label('tir_fail'); em.xor32('rax')
+em.label('tir_ret'); em.add_r64_imm8('rsp',0x28); em.emit(0x5F); em.emit(0x5E); em.emit(0x41,0x5F); em.emit(0x41,0x5E); em.emit(0x41,0x5D); em.emit(0x41,0x5C); em.emit(0xC3)
+
+# rcx = path -> eax = 1 when the path is in the expanded set.
+em.label('tree_is_expanded')
+em.emit(0x41,0x54); em.emit(0x41,0x55); em.emit(0x41,0x56); em.emit(0x48,0x83,0xEC,0x30)
+em.mov_r64_r64('r12','rcx')
+em.mov_r32_ripmem('r13',bsyms['tree_expanded_count']); em.xor32('r14')
+em.label('tie_loop')
+em.cmp_r32_r32('r14','r13'); em.jcc(0x8D,'tie_no')
+em.mov_r64_r64('rcx','r12'); em.mov_r32_imm('rdx',0xFFFFFFFF)
+em.lea_rip('r8',bsyms['tree_expanded']); em.mov_r32_r32('rax','r14'); em.shl_r32_imm8('rax',10); em.add_r64_r64('r8','rax')
+em.mov_r32_imm('r9',0xFFFFFFFF); em.mov_mrsp_imm32(0x20,0); em.call_iat('CompareStringOrdinal'); em.cmp_r32_imm('rax',2); em.jcc(0x84,'tie_yes')
+em.add_r32_imm8('r14',1); em.jmp('tie_loop')
+em.label('tie_yes'); em.mov_r32_imm('rax',1); em.jmp('tie_ret')
+em.label('tie_no'); em.xor32('rax')
+em.label('tie_ret'); em.add_r64_imm8('rsp',0x30); em.emit(0x41,0x5E); em.emit(0x41,0x5D); em.emit(0x41,0x5C); em.emit(0xC3)
+
+# rcx = directory path, edx = first insert row, r8d = child depth.
+em.label('tree_expand_children')
+em.emit(0x41,0x54); em.emit(0x41,0x55); em.emit(0x41,0x56); em.emit(0x41,0x57); em.emit(0x48,0x83,0xEC,0x38)
+em.mov_ripmem_r64(bsyms['tree_expand_path'],'rcx')
+em.mov_ripmem_r32(bsyms['tree_expand_index'],'rdx')
+em.mov_ripmem_r32(bsyms['tree_expand_depth'],'r8')
+em.lea_rip('rcx',bsyms['ws_pattern']); em.mov_r64_ripmem('rdx',bsyms['tree_expand_path']); em.call_iat('lstrcpyW')
+em.lea_rip('rcx',bsyms['ws_pattern']); em.call_iat('lstrlenW'); em.mov_r32_r32('r12','rax')
+em.lea_rip('rcx',bsyms['ws_pattern']); em.test32('r12'); em.jcc(0x84,'tree_pat_star')
+em.mov_r32_r32('rdx','r12'); em.sub_r32_imm8('rdx',1); em.movzx_r32_word_index2('rax','rcx','rdx'); em.cmp_r32_imm('rax',0x5C); em.jcc(0x84,'tree_pat_star')
+em.mov_word_index2_imm16('rcx','r12',0x5C); em.add_r32_imm8('r12',1)
+em.label('tree_pat_star'); em.mov_word_index2_imm16('rcx','r12',0x2A); em.add_r32_imm8('r12',1); em.mov_word_index2_zero('rcx','r12')
+em.lea_rip('rcx',bsyms['ws_pattern']); em.lea_rip('rdx',bsyms['ws_find_data']); em.call_iat('FindFirstFileW'); em.cmp_rax_neg1(); em.jcc(0x84,'tree_expand_error'); em.mov_r64_r64('r15','rax')
+em.label('tree_enum_loop')
+em.lea_rip('r13',bsyms['ws_find_data']); em.add_r64_imm8('r13',44)
+em.mov_r64_r64('rcx','r13'); em.movzx_eax_word_ptr('rcx'); em.cmp_r32_imm('rax',0x2E); em.jcc(0x85,'tree_enum_kind')
+em.add_r64_imm8('rcx',2); em.movzx_eax_word_ptr('rcx'); em.test32('rax'); em.jcc(0x84,'tree_enum_next')
+em.cmp_r32_imm('rax',0x2E); em.jcc(0x85,'tree_enum_next')
+em.add_r64_imm8('rcx',2); em.movzx_eax_word_ptr('rcx'); em.test32('rax'); em.jcc(0x84,'tree_enum_next')
+em.jmp('tree_enum_next')
+em.label('tree_enum_kind')
+em.mov_r32_ripmem('r14',bsyms['ws_find_data']); em.and_r32_imm('r14',0x10)
+em.mov_ripmem_imm32(bsyms['tree_insert_flags'],0); em.test32('r14'); em.jcc(0x84,'tree_enum_file')
+em.mov_ripmem_imm32(bsyms['tree_insert_flags'],1)
+em.label('tree_enum_file')
+em.test32('r14'); em.jcc(0x85,'tree_enum_path')
+em.mov_r64_r64('rcx','r13'); em.call_label('ws_suffix_match'); em.test32('rax'); em.jcc(0x84,'tree_enum_next')
+em.label('tree_enum_path')
+em.mov_r64_ripmem('rcx',bsyms['tree_expand_path']); em.mov_r64_r64('rdx','r13'); em.call_label('ws_join_path'); em.mov_ripmem_r64(bsyms['tree_insert_path'],'rax')
+em.mov_r32_ripmem('r14',bsyms['tree_insert_flags']); em.test32('r14'); em.jcc(0x84,'tree_enum_insert')
+em.mov_r64_r64('rcx','rax'); em.call_label('tree_is_expanded'); em.test32('rax'); em.jcc(0x84,'tree_enum_insert'); em.or_r32_imm('r14',TREE_FLAG_EXPANDED)
+em.label('tree_enum_insert')
+em.mov_ripmem_r32(bsyms['tree_insert_flags'],'r14')
+em.mov_r32_ripmem('rax',bsyms['tree_expand_index']); em.mov_ripmem_r32(bsyms['tree_insert_index'],'rax')
+em.mov_r32_ripmem('rax',bsyms['tree_expand_depth']); em.mov_ripmem_r32(bsyms['tree_insert_depth'],'rax')
+em.call_label('tree_insert_row'); em.test32('rax'); em.jcc(0x84,'tree_enum_nomem')
+em.mov_r32_ripmem('rax',bsyms['tree_expand_index']); em.add_r32_imm8('rax',1); em.mov_ripmem_r32(bsyms['tree_expand_index'],'rax')
+em.label('tree_enum_next')
+em.mov_r64_r64('rcx','r15'); em.lea_rip('rdx',bsyms['ws_find_data']); em.call_iat('FindNextFileW'); em.test32('rax'); em.jcc(0x85,'tree_enum_loop')
+em.mov_r64_r64('rcx','r15'); em.call_iat('FindClose'); em.mov_r32_imm('rax',1); em.jmp('tree_expand_ret')
+em.label('tree_enum_nomem'); em.mov_ripmem_imm32(bsyms['tree_last_error'],8); em.mov_r64_r64('rcx','r15'); em.call_iat('FindClose'); em.xor32('rax'); em.jmp('tree_expand_ret')
+em.label('tree_expand_error'); em.call_iat('GetLastError'); em.mov_ripmem_r32(bsyms['tree_last_error'],'rax'); em.xor32('rax')
+em.label('tree_expand_ret'); em.add_r64_imm8('rsp',0x38); em.emit(0x41,0x5F); em.emit(0x41,0x5E); em.emit(0x41,0x5D); em.emit(0x41,0x5C); em.emit(0xC3)
+
+# Rebuild the flattened visible tree. The algorithm inserts children directly
+# after an expanded directory and then walks forward, so no recursive call is
+# needed and each published row is visited exactly once.
+em.label('tree_rebuild')
+em.emit(0x41,0x54); em.emit(0x41,0x55); em.emit(0x41,0x56); em.emit(0x41,0x57); em.emit(0x56); em.emit(0x57); em.emit(0x48,0x83,0xEC,0x38)
+em.mov_ripmem_imm32(bsyms['tree_row_count'],0); em.mov_ripmem_imm32(bsyms['tree_last_error'],0)
+em.lea_rip('rcx',bsyms['tree_root_path']); em.movzx_eax_word_ptr('rcx'); em.test32('rax'); em.jcc(0x84,'tree_rebuild_empty')
+em.mov_ripmem_imm32(bsyms['tree_insert_index'],0); em.mov_ripmem_imm32(bsyms['tree_insert_depth'],0xFFFFFFFF); em.mov_ripmem_imm32(bsyms['tree_insert_flags'],TREE_FLAG_DIR|TREE_FLAG_EXPANDED|TREE_FLAG_HIDDEN); em.lea_rip('rax',bsyms['tree_root_path']); em.mov_ripmem_r64(bsyms['tree_insert_path'],'rax'); em.call_label('tree_insert_row'); em.test32('rax'); em.jcc(0x84,'tree_rebuild_empty')
+em.xor32('r12')
+em.label('tree_rebuild_scan')
+em.mov_r32_ripmem('rax',bsyms['tree_row_count']); em.cmp_r32_r32('r12','rax'); em.jcc(0x8D,'tree_rebuild_scan_done')
+em.mov_r32_r32('rdx','r12'); em.call_label('tree_row_ptr'); em.mov_r64_r64('r13','rax'); em.mov_r64_r64('rsi','r13')
+em.mov_r32_mreg('r14','rsi',TREE_OFF_FLAGS); em.test32('r14'); em.jcc(0x84,'tree_rebuild_next')
+em.mov_r32_r32('rax','r14'); em.and_r32_imm('rax',TREE_FLAG_DIR); em.test32('rax'); em.jcc(0x84,'tree_rebuild_next')
+em.mov_r32_r32('rax','r14'); em.and_r32_imm('rax',TREE_FLAG_EXPANDED); em.test32('rax'); em.jcc(0x84,'tree_rebuild_next')
+em.mov_r32_r32('rdx','r12'); em.add_r32_imm8('rdx',1); em.mov_r32_mreg('r8','rsi',TREE_OFF_DEPTH); em.add_r32_imm8('r8',1); em.mov_r64_r64('rcx','rsi'); em.call_label('tree_expand_children'); em.test32('rax'); em.jcc(0x84,'tree_rebuild_fail')
+em.label('tree_rebuild_next'); em.add_r32_imm8('r12',1); em.jmp('tree_rebuild_scan')
+em.label('tree_rebuild_scan_done')
+# Remove the hidden root row (index 0), leaving only visible rows.
+em.mov_r32_imm('r12',1)
+em.label('tree_remove_hidden')
+em.mov_r32_ripmem('rax',bsyms['tree_row_count']); em.cmp_r32_r32('r12','rax'); em.jcc(0x8D,'tree_remove_done')
+em.mov_r32_r32('rdx','r12'); em.call_label('tree_row_ptr'); em.mov_r64_r64('r13','rax')
+em.mov_r32_r32('rdx','r12'); em.sub_r32_imm8('rdx',1); em.call_label('tree_row_ptr'); em.mov_r64_r64('r14','rax')
+em.mov_r64_r64('rsi','r13'); em.mov_r64_r64('rdi','r14')
+em.mov_r32_imm('r10',68)
+em.label('tree_remove_copy'); em.mov_r64_mreg('r11','rsi',0); em.mov_mreg_reg64('rdi',0,'r11'); em.add_r64_imm8('rsi',8); em.add_r64_imm8('rdi',8); em.sub_r32_imm8('r10',1); em.jcc(0x85,'tree_remove_copy')
+em.add_r32_imm8('r12',1); em.jmp('tree_remove_hidden')
+em.label('tree_remove_done')
+em.mov_r32_ripmem('rax',bsyms['tree_row_count']); em.sub_r32_imm8('rax',1); em.mov_ripmem_r32(bsyms['tree_row_count'],'rax')
+em.mov_r32_imm('rax',1); em.jmp('tree_rebuild_ret')
+em.label('tree_rebuild_empty'); em.xor32('rax')
+em.jmp('tree_rebuild_ret')
+em.label('tree_rebuild_fail'); em.xor32('rax'); em.jmp('tree_rebuild_ret')
+em.label('tree_rebuild_done'); em.mov_r32_imm('rax',1)
+em.label('tree_rebuild_ret'); em.add_r64_imm8('rsp',0x38); em.emit(0x5F); em.emit(0x5E); em.emit(0x41,0x5F); em.emit(0x41,0x5E); em.emit(0x41,0x5D); em.emit(0x41,0x5C); em.emit(0xC3)
 
 # V8.6 切片 2：用 workspace 条目重建 ListBox（文件模式）。复用同一个控件、
 # 同一套滚动条几何、同一套主题刷子：布局、命中测试、滚轮、hover 与
@@ -4072,6 +4262,8 @@ em.label('spmm_ret'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
 
 em.label('cmd_panel_files'); em.mov_r32_imm('rcx',1); em.call_label('set_panel_mode'); em.jmp('msg_loop')
 em.label('cmd_panel_outline'); em.xor32('rcx'); em.call_label('set_panel_mode'); em.jmp('msg_loop')
+# Build/test probe for the model-only tree slice. It has no menu entry.
+em.label('cmd_tree_rebuild'); em.call_label('tree_rebuild'); em.jmp('msg_loop')
 
 # V8.6.1：兑现一次待定的标题栏单击——三态循环 half(1) → minimized(2) →
 # maximized(0) → half(1)，与 Rabbit 的 (state + 1) % 3 一致。目标标题栏取自
