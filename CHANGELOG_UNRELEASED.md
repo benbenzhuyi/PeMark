@@ -23,6 +23,31 @@ reserved keys for later milestones. Build-time assertions tie the accelerator
 table to the menu hints, and `tools/test_v8_6_keymap.py` parses the shipped
 table out of the running process and verifies the reserved keys stay unused.
 
+## V8.6.1 — Sidebar split into two panels (slice 0, skeleton)
+
+The outline and the file browser are no longer two modes of one ListBox. The
+sidebar now holds two independent lists stacked vertically: the file panel owns
+`hwnd_files` plus its own gutter, the outline keeps `hwnd_outline`, and
+`resize_children` splits the available height between them. Each list owns its
+content — workspace entries in the file panel, document headings in the outline
+— so editing a document can no longer disturb the file list, and the earlier
+`panel_mode` "one list at a time" semantics are gone.
+
+Row drawing decides its data source from the control ID (14 = file panel), so
+neither list can read the other's tables. The status bar path segment now
+follows the workspace directly instead of the panel mode.
+
+Still open in slice 0: the 28px panel headers with the half/minimized/maximized
+click behaviour, the draggable 4px divider, the per-panel scrollbar ownership
+(the overlay still serves the outline), `View → Files/Outline Panel` becoming
+visibility switches, and the directory tree itself (slice 1).
+
+Evidence: `tools/test_v8_6_panel.py` rewritten for the two-panel layout (both
+lists visible and stacked, each owning its content, directory/file colours in
+both themes, scrollbar geometry following the panel height);
+`tools/test_v8_6_navigation.py` now drives the file panel. Full V8.5.4 suite,
+the slice 1–4 suites and `smoke_test_v8_5_1.py` (17/17) pass.
+
 V8.6 is scoped to "browse a directory and open files from it" while the
 application still owns a single writable document. The plan
 (`docs/MILESTONE_PLAN.md` §6) deliberately defers destructive file operations,

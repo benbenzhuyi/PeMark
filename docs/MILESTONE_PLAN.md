@@ -313,6 +313,20 @@ commit 与 working set 是期望结果，不是硬性验收条件。
 
 每个切片独立可验证、可回滚，且任何时刻保持可构建。
 
+0. **左边栏双面板骨架（V8.6.1）** —— 骨架已完成，标题栏与分界线待做
+   - 已完成：文件面板拥有自己的 `hwnd_files` 与 gutter，大纲保留
+     `hwnd_outline`；`resize_children` 按上下二等分分配高度；两个列表各自维护
+     内容（文件=workspace 条目，大纲=文档标题），文件列表的行绘制按控件 ID 选择
+     数据源；状态栏路径段改为跟随工作区；旧的"两个模式共用一个 ListBox"语义与
+     相关断言、测试全部替换；
+   - 验收（已完成部分）：`tools/test_v8_6_panel.py` 断言两个列表同时可见、上下
+     堆叠、各自内容不互相泄漏、两种主题下目录/文件行颜色不同、滚动几何跟随面板
+     高度；`tools/test_v8_6_navigation.py` 在文件面板上完成进入目录/返回上级/
+     打开文件全流程；
+   - 待完成：每个面板 28px 标题栏与 half/minimized/maximized 三态、4px 可拖动
+     分界线、滚动条按 hover 面板轮流服务、`View → Files/Outline Panel` 改为
+     显隐开关。
+
 1. **菜单与快捷键集成（进行中）**
    - `File → Open Folder…`、`View → Files / Outline` 切换
    - 最近文件（内存内，最多 10 条）列在 File 菜单底部

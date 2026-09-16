@@ -288,6 +288,9 @@ bss_alloc('hwnd_outline', 8, 8)
 bss_alloc('hwnd_splitter', 8, 8)
 bss_alloc('hwnd_outline_scroll', 8, 8)
 bss_alloc('hwnd_outline_gutter', 8, 8)
+# V8.6.1 双面板：文件面板拥有自己的列表与 gutter（标题栏与分界线在后续步骤加入）。
+bss_alloc('hwnd_files', 8, 8)
+bss_alloc('hwnd_files_gutter', 8, 8)
 bss_alloc('hwnd_status', 8, 8)
 bss_alloc('hwnd_corner', 8, 8)
 bss_alloc('hfont', 8, 8)
@@ -342,6 +345,10 @@ bss_alloc('view_line_start', 4, 4)
 bss_alloc('view_line_len', 4, 4)
 bss_alloc('view_top_pos', 4, 4)
 bss_alloc('outline_width', 4, 4)
+# V8.6.1 双面板几何：文件列表高度、大纲列表的 y 与高度（像素）。
+bss_alloc('files_list_h', 4, 4)
+bss_alloc('outline_list_y', 4, 4)
+bss_alloc('outline_list_h', 4, 4)
 bss_alloc('splitter_drag', 4, 4)
 bss_alloc('scrollbar_w', 4, 4)
 bss_alloc('scroll_trim_w', 4, 4)
@@ -1027,6 +1034,17 @@ em.xor32('rcx'); em.lea_rip('rdx',rsyms['class_static']); em.lea_rip('r8',rsyms[
 em.mov_mrsp_imm32(0x20,228); em.mov_mrsp_imm32(0x28,0); em.mov_mrsp_imm32(0x30,1); em.mov_mrsp_imm32(0x38,590)
 em.mov_mrsp_reg64(0x40,'rbx'); em.mov_mrsp_imm32(0x48,6,qword=True); em.mov_mrsp_reg64(0x50,'r15'); em.mov_mrsp_imm32(0x58,0,qword=True)
 em.call_iat('CreateWindowExW'); em.mov_ripmem_r64(bsyms['hwnd_splitter'],'rax'); em.test64('rax'); em.jcc(0x84,'exit')
+# V8.6.1：文件面板的列表与 gutter（ID 14 / 15）。标题栏与分界线稍后加入。
+em.xor32('rcx'); em.lea_rip('rdx',rsyms['class_listbox']); em.lea_rip('r8',rsyms['empty']); em.mov_r32_imm('r9',0x54010151)
+em.mov_mrsp_imm32(0x20,0); em.mov_mrsp_imm32(0x28,0); em.mov_mrsp_imm32(0x30,210); em.mov_mrsp_imm32(0x38,250)
+em.mov_mrsp_reg64(0x40,'rbx'); em.mov_mrsp_imm32(0x48,14,qword=True); em.mov_mrsp_reg64(0x50,'r15'); em.mov_mrsp_imm32(0x58,0,qword=True)
+em.call_iat('CreateWindowExW'); em.mov_ripmem_r64(bsyms['hwnd_files'],'rax'); em.test64('rax'); em.jcc(0x84,'exit')
+em.mov_r64_r64('rcx','rax'); em.mov_r32_imm('rdx',0x01A0); em.xor32('r8'); em.mov_r32_imm('r9',30); em.call_iat('SendMessageW')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.mov_r32_imm('rdx',0x0030); em.mov_r64_ripmem('r8',bsyms['hfont_outline']); em.mov_r32_imm('r9',1); em.call_iat('SendMessageW')
+em.xor32('rcx'); em.lea_rip('rdx',rsyms['class_static']); em.lea_rip('r8',rsyms['empty']); em.mov_r32_imm('r9',0x5400000D)
+em.mov_mrsp_imm32(0x20,210); em.mov_mrsp_imm32(0x28,0); em.mov_mrsp_imm32(0x30,18); em.mov_mrsp_imm32(0x38,250)
+em.mov_mrsp_reg64(0x40,'rbx'); em.mov_mrsp_imm32(0x48,15,qword=True); em.mov_mrsp_reg64(0x50,'r15'); em.mov_mrsp_imm32(0x58,0,qword=True)
+em.call_iat('CreateWindowExW'); em.mov_ripmem_r64(bsyms['hwnd_files_gutter'],'rax'); em.test64('rax'); em.jcc(0x84,'exit')
 em.call_label('apply_theme'); em.call_label('update_preview'); em.call_label('resize_children'); em.call_label('sync_outline_scrollbar'); em.call_label('sync_panel_menu'); em.call_label('update_status')
 
 # Message pump
@@ -1134,7 +1152,7 @@ em.call_label('ws_open_or_enter'); em.jmp('msg_loop')
 em.label('keydown_event')
 em.mov_r32_ripmem('rax',bsyms['panel_mode']); em.test32('rax'); em.jcc(0x84,'dispatch')
 em.mov_rax_mr12(16); em.cmp_r32_imm('rax',0x08); em.jcc(0x85,'dispatch')
-em.call_iat('GetFocus'); em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.cmp_r64_r64('rax','rcx'); em.jcc(0x85,'dispatch')
+em.call_iat('GetFocus'); em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.cmp_r64_r64('rax','rcx'); em.jcc(0x85,'dispatch')
 em.call_label('ws_go_up'); em.jmp('msg_loop')
 
 em.label('mousewheel_event')
@@ -1835,8 +1853,8 @@ em.label('sync_os_ret'); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
 # Inputs: count/top, content_h, scrollbar_w. Outputs: cached track/thumb/travel/rects.
 em.label('scroll_layout')
 em.emit(0x48,0x83,0xEC,0x28)
-# Use floor(content_h/30): a partially visible row cannot increase the valid top index.
-em.mov_r32_ripmem('rax',bsyms['content_h']); em.test32('rax'); em.jcc(0x89,'scroll_height_ok'); em.xor32('rax')
+# Use floor(outline_list_h/30): a partially visible row cannot increase the valid top index.
+em.mov_r32_ripmem('rax',bsyms['outline_list_h']); em.test32('rax'); em.jcc(0x89,'scroll_height_ok'); em.xor32('rax')
 em.label('scroll_height_ok'); em.xor32('rdx'); em.mov_r32_imm('rcx',30); em.emit(0xF7,0xF1)
 em.test32('rax'); em.jcc(0x85,'sync_rows_ok'); em.mov_r32_imm('rax',1)
 em.label('sync_rows_ok'); em.mov_ripmem_r32(bsyms['outline_visible_rows'],'rax')
@@ -1848,7 +1866,7 @@ em.mov_r32_ripmem('rax',bsyms['outline_scroll_top']); em.test32('rax'); em.jcc(0
 em.label('scroll_top_nonnegative'); em.cmp_r32_r32('rax','r10'); em.jcc(0x86,'scroll_top_clamped'); em.mov_r32_r32('rax','r10')
 em.label('scroll_top_clamped'); em.mov_ripmem_r32(bsyms['outline_scroll_top'],'rax')
 # track height uses 4px top/bottom margins.
-em.mov_r32_ripmem('r10',bsyms['content_h']); em.cmp_r32_imm('r10',8); em.jcc(0x8F,'sync_track_ok'); em.mov_r32_imm('r10',8)
+em.mov_r32_ripmem('r10',bsyms['outline_list_h']); em.cmp_r32_imm('r10',8); em.jcc(0x8F,'sync_track_ok'); em.mov_r32_imm('r10',8)
 em.label('sync_track_ok'); em.sub_r32_imm8('r10',8); em.mov_ripmem_r32(bsyms['outline_scroll_track_h'],'r10')
 # thumb_h：所有行都放得下时等于轨道高，否则取 max(32, visibleRows*track/count)。
 # V8.4.24 二次修复（P0-002 主根因）：V8.4.23 起此分支即写反——cmp 后用
@@ -2020,17 +2038,37 @@ em.mov_r32_ripmem('rax',bsyms['outline_flag']); em.test32('rax'); em.jcc(0x84,'r
 em.mov_r32_ripmem('r10',bsyms['outline_width']); em.mov_r32_ripmem('r11',bsyms['scrollbar_w']); em.mov_r32_r32('rax','r10'); em.sub_r32_r32('rax','r11')  # rax = content/listbox width
 # document begins after total sidebar + 1px divider
 em.mov_r32_r32('r11','r10'); em.add_r32_imm8('r11',1); em.mov_ripmem_r32(bsyms['content_x'],'r11'); em.mov_r32_ripmem('rcx',bsyms['client_w']); em.sub_r32_r32('rcx','r11'); em.mov_ripmem_r32(bsyms['content_w'],'rcx')
-# Outline ListBox content only; it can never paint into the scrollbar gutter.
-em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.xor32('rdx'); em.xor32('r8'); em.mov_r32_r32('r9','rax'); em.mov_r32_ripmem('r11',bsyms['content_h']); em.mov_mrsp_reg32(0x20,'r11'); em.mov_mrsp_imm32(0x28,1,qword=True); em.call_iat('MoveWindow')
-# Gutter background at x=listboxWidth, width=scrollbar_w.
-em.mov_r64_ripmem('rcx',bsyms['hwnd_outline_gutter']); em.mov_r32_ripmem('rdx',bsyms['outline_width']); em.mov_r32_ripmem('rax',bsyms['scrollbar_w']); em.sub_r32_r32('rdx','rax'); em.xor32('r8'); em.mov_r32_r32('r9','rax'); em.mov_r32_ripmem('r11',bsyms['content_h']); em.mov_mrsp_reg32(0x20,'r11'); em.mov_mrsp_imm32(0x28,1,qword=True); em.call_iat('MoveWindow')
-# Independent scrollbar occupies exactly the same gutter rectangle.
-em.mov_r64_ripmem('rcx',bsyms['hwnd_outline_scroll']); em.mov_r32_ripmem('rdx',bsyms['outline_width']); em.mov_r32_ripmem('rax',bsyms['scrollbar_w']); em.sub_r32_r32('rdx','rax'); em.xor32('r8'); em.mov_r32_r32('r9','rax'); em.mov_r32_ripmem('r11',bsyms['content_h']); em.mov_mrsp_reg32(0x20,'r11'); em.mov_mrsp_imm32(0x28,1,qword=True); em.call_iat('MoveWindow')
+# V8.6.1 双面板：文件列表占上半，大纲列表占下半，各自带自己的 gutter。
+em.mov_r32_ripmem('r10',bsyms['content_h']); em.shr_r32_imm8('r10',1); em.mov_ripmem_r32(bsyms['files_list_h'],'r10')
+em.mov_ripmem_r32(bsyms['outline_list_y'],'r10')
+em.mov_r32_ripmem('r11',bsyms['content_h']); em.sub_r32_r32('r11','r10'); em.mov_ripmem_r32(bsyms['outline_list_h'],'r11')
+# 文件列表（上半；r9 = 列表宽）。
+em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.xor32('rdx'); em.xor32('r8')
+em.mov_r32_ripmem('r9',bsyms['outline_width']); em.mov_r32_ripmem('r10',bsyms['scrollbar_w']); em.sub_r32_r32('r9','r10')
+em.mov_r32_ripmem('r11',bsyms['files_list_h']); em.mov_mrsp_reg32(0x20,'r11'); em.mov_mrsp_imm32(0x28,1,qword=True); em.call_iat('MoveWindow')
+# 文件 gutter 与列表同高。
+em.mov_r64_ripmem('rcx',bsyms['hwnd_files_gutter']); em.mov_r32_ripmem('r10',bsyms['scrollbar_w'])
+em.mov_r32_ripmem('rdx',bsyms['outline_width']); em.sub_r32_r32('rdx','r10'); em.xor32('r8'); em.mov_r32_r32('r9','r10')
+em.mov_r32_ripmem('r11',bsyms['files_list_h']); em.mov_mrsp_reg32(0x20,'r11'); em.mov_mrsp_imm32(0x28,1,qword=True); em.call_iat('MoveWindow')
+# 大纲列表（下半）。
+em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.xor32('rdx'); em.mov_r32_ripmem('r8',bsyms['outline_list_y'])
+em.mov_r32_ripmem('r9',bsyms['outline_width']); em.mov_r32_ripmem('r10',bsyms['scrollbar_w']); em.sub_r32_r32('r9','r10')
+em.mov_r32_ripmem('r11',bsyms['outline_list_h']); em.mov_mrsp_reg32(0x20,'r11'); em.mov_mrsp_imm32(0x28,1,qword=True); em.call_iat('MoveWindow')
+# 大纲 gutter 与大纲列表同矩形。
+em.mov_r64_ripmem('rcx',bsyms['hwnd_outline_gutter']); em.mov_r32_ripmem('r10',bsyms['scrollbar_w'])
+em.mov_r32_ripmem('rdx',bsyms['outline_width']); em.sub_r32_r32('rdx','r10'); em.mov_r32_ripmem('r8',bsyms['outline_list_y']); em.mov_r32_r32('r9','r10')
+em.mov_r32_ripmem('r11',bsyms['outline_list_h']); em.mov_mrsp_reg32(0x20,'r11'); em.mov_mrsp_imm32(0x28,1,qword=True); em.call_iat('MoveWindow')
+# 滚动条 overlay 与大纲 gutter 同矩形（切片 0 第一步仍只服务大纲面板）。
+em.mov_r64_ripmem('rcx',bsyms['hwnd_outline_scroll']); em.mov_r32_ripmem('r10',bsyms['scrollbar_w'])
+em.mov_r32_ripmem('rdx',bsyms['outline_width']); em.sub_r32_r32('rdx','r10'); em.mov_r32_ripmem('r8',bsyms['outline_list_y']); em.mov_r32_r32('r9','r10')
+em.mov_r32_ripmem('r11',bsyms['outline_list_h']); em.mov_mrsp_reg32(0x20,'r11'); em.mov_mrsp_imm32(0x28,1,qword=True); em.call_iat('MoveWindow')
 # Keep the custom surface above the fallback gutter STATIC without changing geometry.
 em.mov_r64_ripmem('rcx',bsyms['hwnd_outline_scroll']); em.xor32('rdx'); em.xor32('r8'); em.xor32('r9'); em.mov_mrsp_imm32(0x20,0); em.mov_mrsp_imm32(0x28,0); em.mov_mrsp_imm32(0x30,0x0013); em.call_iat('SetWindowPos')
 # One-pixel visual divider after the gutter.
 em.mov_r64_ripmem('rcx',bsyms['hwnd_splitter']); em.mov_r32_ripmem('rdx',bsyms['outline_width']); em.xor32('r8'); em.mov_r32_imm('r9',1); em.mov_r32_ripmem('r11',bsyms['content_h']); em.mov_mrsp_reg32(0x20,'r11'); em.mov_mrsp_imm32(0x28,1,qword=True); em.call_iat('MoveWindow')
 # Ensure stable visibility without changing any geometry.
+em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.mov_r32_imm('rdx',5); em.call_iat('ShowWindow')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_files_gutter']); em.mov_r32_imm('rdx',5); em.call_iat('ShowWindow')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.mov_r32_imm('rdx',5); em.call_iat('ShowWindow')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_outline_gutter']); em.mov_r32_imm('rdx',5); em.call_iat('ShowWindow')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_splitter']); em.mov_r32_imm('rdx',5); em.call_iat('ShowWindow')
@@ -2040,6 +2078,8 @@ em.mov_r32_ripmem('rax',bsyms['outline_scroll_visible']); em.test32('rax'); em.j
 em.mov_r64_ripmem('rcx',bsyms['hwnd_outline_scroll']); em.mov_r32_imm('rdx',5); em.call_iat('ShowWindow'); em.jmp('resize_doc')
 em.label('resize_scroll_hidden'); em.mov_r64_ripmem('rcx',bsyms['hwnd_outline_scroll']); em.xor32('rdx'); em.call_iat('ShowWindow'); em.jmp('resize_doc')
 em.label('resize_sidebar_hidden')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.xor32('rdx'); em.call_iat('ShowWindow')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_files_gutter']); em.xor32('rdx'); em.call_iat('ShowWindow')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.xor32('rdx'); em.call_iat('ShowWindow')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_outline_gutter']); em.xor32('rdx'); em.call_iat('ShowWindow')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_outline_scroll']); em.xor32('rdx'); em.call_iat('ShowWindow')
@@ -2754,9 +2794,9 @@ em.mov_r64_r64('r12','rcx')
 em.lea_rip('rcx',bsyms['ws_root_path']); em.mov_r64_r64('rdx','r12'); em.call_iat('lstrcpyW')
 em.lea_rip('rcx',bsyms['ws_current_path']); em.mov_r64_r64('rdx','r12'); em.call_iat('lstrcpyW')
 em.call_label('workspace_refresh')
-# 新的根目录已经枚举完成：如果面板正显示文件，立即让列表与模型一致。
-em.mov_r32_ripmem('rax',bsyms['panel_mode']); em.test32('rax'); em.jcc(0x84,'wsr_ret')
+# V8.6.1：文件面板始终存在，新的根目录枚举完成后立即刷新文件列表与状态栏。
 em.call_label('rebuild_file_list')
+em.call_label('update_status')
 em.label('wsr_ret'); em.add_r64_imm8('rsp',0x30); em.emit(0x41,0x5C); em.emit(0xC3)
 
 # V8.6 切片 2：用 workspace 条目重建 ListBox（文件模式）。复用同一个控件、
@@ -2765,12 +2805,10 @@ em.label('wsr_ret'); em.add_r64_imm8('rsp',0x30); em.emit(0x41,0x5C); em.emit(0x
 # owner-draw 的颜色分支提供不依赖新资源的行类型区分。
 em.label('rebuild_file_list')
 em.emit(0x41,0x54); em.emit(0x41,0x55); em.emit(0x41,0x56); em.emit(0x41,0x57); em.emit(0x48,0x83,0xEC,0x28)
-em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.test64('rcx'); em.jcc(0x84,'rfl_ret')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.test64('rcx'); em.jcc(0x84,'rfl_ret')
 em.mov_r32_imm('rdx',0x000B); em.xor32('r8'); em.xor32('r9'); em.call_iat('SendMessageW')
-em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.mov_r32_imm('rdx',0x0184); em.xor32('r8'); em.xor32('r9'); em.call_iat('SendMessageW')
-# 列表内容不再是大纲：清零大纲计数，使 navigate_outline 的边界检查也不会
-# 拿残留的大纲索引去解释目录条目的选中项。
-em.mov_ripmem_imm32(bsyms['outline_count'],0)
+em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.mov_r32_imm('rdx',0x0184); em.xor32('r8'); em.xor32('r9'); em.call_iat('SendMessageW')
+# V8.6.1：文件列表有自己的 ListBox，不再借用大纲控件，因此大纲计数不受影响。
 em.mov_r32_ripmem('r13',bsyms['ws_entry_count'])
 em.mov_r64_ripmem('r14',bsyms['ws_entries'])
 em.xor32('r12')
@@ -2786,31 +2824,28 @@ em.lea_rip('rcx',bsyms['outline_titlebuf']); em.call_iat('lstrlenW')
 em.lea_rip('rcx',bsyms['outline_titlebuf'])
 em.mov_word_index2_imm16('rcx','rax',0x5C); em.add_r32_imm8('rax',1); em.mov_word_index2_zero('rcx','rax')
 em.label('rfl_add')
-em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.mov_r32_imm('rdx',0x0180); em.xor32('r8'); em.lea_rip('r9',bsyms['outline_titlebuf']); em.call_iat('SendMessageW')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.mov_r32_imm('rdx',0x0180); em.xor32('r8'); em.lea_rip('r9',bsyms['outline_titlebuf']); em.call_iat('SendMessageW')
 em.add_r32_imm8('r12',1); em.jmp('rfl_loop')
 em.label('rfl_done')
-em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.mov_r32_imm('rdx',0x000B); em.mov_r32_imm('r8',1); em.xor32('r9'); em.call_iat('SendMessageW')
-em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.xor32('rdx'); em.mov_r32_imm('r8',1); em.call_iat('InvalidateRect')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.mov_r32_imm('rdx',0x000B); em.mov_r32_imm('r8',1); em.xor32('r9'); em.call_iat('SendMessageW')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.xor32('rdx'); em.mov_r32_imm('r8',1); em.call_iat('InvalidateRect')
 em.call_label('sync_outline_scrollbar')
 em.label('rfl_ret')
 em.add_r64_imm8('rsp',0x28); em.emit(0x41,0x5F); em.emit(0x41,0x5E); em.emit(0x41,0x5D); em.emit(0x41,0x5C); em.emit(0xC3)
 
-# rcx = 0（大纲）/ 1（文件）。切换只改变列表内容；控件、几何、滚动条与
-# 主题路径都不变。切回大纲时重跑 update_preview，让列表与三张表重新一致。
+# V8.6.1：两个面板同时存在，因此"切换模式"退化为"刷新两个列表"；参数只是
+# 记录最近聚焦的面板（供状态栏与后续的滚动路由使用）。
 em.label('set_panel_mode')
 em.emit(0x48,0x83,0xEC,0x28)
-em.mov_r32_ripmem('rax',bsyms['panel_mode']); em.cmp_r32_r32('rax','rcx'); em.jcc(0x84,'spm_ret')
 em.mov_ripmem_r32(bsyms['panel_mode'],'rcx')
 em.add_r64_imm8('rsp',0x28); em.jmp('refresh_panel_list')
 em.label('spm_ret'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
 
-# 按当前 panel_mode 重建列表内容。与 set_panel_mode 分开，是因为"工作区换了
-# 但模式没变"同样需要刷新（进入目录、重新选择根目录）。
+# 重建两个列表：大纲来自文档，文件来自当前 workspace。
 em.label('refresh_panel_list')
 em.emit(0x48,0x83,0xEC,0x28)
-em.mov_r32_ripmem('rax',bsyms['panel_mode']); em.test32('rax'); em.jcc(0x84,'rpl_outline')
-em.call_label('rebuild_file_list'); em.jmp('rpl_ret')
-em.label('rpl_outline'); em.call_label('update_preview')
+em.call_label('update_preview')
+em.call_label('rebuild_file_list')
 em.label('rpl_ret'); em.call_label('sync_panel_menu'); em.call_label('update_status'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
 
 # View 菜单的勾选与 panel_mode 的唯一同步点。
@@ -2851,7 +2886,6 @@ em.add_r64_imm8('rsp',0x28); em.emit(0x41,0x5D); em.emit(0x41,0x5C); em.emit(0xC
 # 没有任何分隔符（相对路径）时不动作。
 em.label('ws_go_up')
 em.emit(0x48,0x83,0xEC,0x28)
-em.mov_r32_ripmem('rax',bsyms['panel_mode']); em.test32('rax'); em.jcc(0x84,'wgu_ret')
 em.lea_rip('rcx',bsyms['ws_path_buf']); em.lea_rip('rdx',bsyms['ws_current_path']); em.call_iat('lstrcpyW')
 em.lea_rip('rcx',bsyms['ws_path_buf']); em.call_iat('lstrlenW'); em.mov_r32_r32('r10','rax')
 em.test32('r10'); em.jcc(0x84,'wgu_ret')
@@ -2875,8 +2909,7 @@ em.label('wgu_ret'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
 # 读取/解码/提交路径，不新增第二条打开逻辑。
 em.label('ws_open_or_enter')
 em.emit(0x41,0x54); em.emit(0x41,0x55); em.emit(0x41,0x56); em.emit(0x41,0x57); em.emit(0x48,0x83,0xEC,0x28)
-em.mov_r32_ripmem('rax',bsyms['panel_mode']); em.test32('rax'); em.jcc(0x84,'woe_ret')
-em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.test64('rcx'); em.jcc(0x84,'woe_ret')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.test64('rcx'); em.jcc(0x84,'woe_ret')
 em.mov_r32_imm('rdx',0x0188); em.xor32('r8'); em.xor32('r9'); em.call_iat('SendMessageW')
 em.cmp_r32_imm('rax',0xFFFFFFFF); em.jcc(0x84,'woe_ret')
 em.mov_r32_r32('r12','rax')
@@ -2887,9 +2920,11 @@ em.shl_r32_imm8('rcx',9); em.shl_r32_imm8('rax',5); em.add_r32_r32('rax','rcx')
 em.mov_r64_r64('r15','r13'); em.add_r64_r64('r15','rax')
 em.lea_rip('rcx',bsyms['ws_current_path']); em.mov_r64_r64('rdx','r15'); em.call_label('ws_join_path')
 em.mov_r32_mreg('r10','r15',WS_OFF_KIND); em.test32('r10'); em.jcc(0x84,'woe_file')
-em.mov_r64_r64('rcx','rax'); em.call_label('workspace_set_root'); em.call_label('update_status'); em.jmp('woe_ret')
+em.mov_r64_r64('rcx','rax'); em.call_label('workspace_set_root'); em.call_label('update_status')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.call_iat('SetFocus'); em.jmp('woe_ret')
 em.label('woe_file')
 em.lea_rip('rcx',bsyms['temp_path']); em.mov_r64_r64('rdx','rax'); em.call_iat('lstrcpyW')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.call_iat('SetFocus')
 em.mov_ripmem_imm32(bsyms['open_bypass_picker'],1)
 em.mov_ripmem_imm32(bsyms['pending_destructive_action'],2)
 # destructive_request 的每条出口都以 jmp msg_loop 结束，永不返回，所以这里
@@ -2910,7 +2945,7 @@ if OPEN_TEST_BUILD:
     # 切片 2：把 list_probe_index 指向的行文本导出到 list_probe_text。
     em.label('cmd_dump_row')
     em.mov_r32_imm('rax',0xFFFFFFFF)
-    em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.test64('rcx'); em.jcc(0x84,'cdr_store')
+    em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.test64('rcx'); em.jcc(0x84,'cdr_store')
     em.mov_r32_imm('rdx',0x0189); em.mov_r32_ripmem('r8',bsyms['list_probe_index']); em.lea_rip('r9',bsyms['list_probe_text']); em.call_iat('SendMessageW')
     em.label('cdr_store'); em.mov_ripmem_r32(bsyms['list_probe_result'],'rax'); em.jmp('msg_loop')
     # 切片 3：非交互地驱动"激活选中项"与"返回上级"。
@@ -2937,9 +2972,6 @@ if OPEN_TEST_BUILD:
 em.label('outline_push')
 em.emit(0x48,0x83,0xEC,0x48)  # sub rsp,0x48：栈对齐 + 32 字节影子空间 + 三个参数槽
 em.mov_mrsp_reg32(0x30,'r8'); em.mov_mrsp_reg32(0x38,'r9'); em.mov_mrsp_reg32(0x40,'r10')
-# V8.6 切片 2：文件模式下列表显示目录条目，大纲不再写进同一个 ListBox。
-# 三张表也因此不更新：切回大纲由 set_panel_mode 重跑 update_preview 重建。
-em.mov_r32_ripmem('rax',bsyms['panel_mode']); em.test32('rax'); em.jcc(0x85,'outline_push_ret')
 # 大纲窗口不存在或动态 arena 已满：跳过登记。
 em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.test64('rcx'); em.jcc(0x84,'outline_push_ret')
 em.mov_r32_ripmem('r11',bsyms['outline_count']); em.mov_r32_ripmem('rax',bsyms['outline_capacity']); em.cmp_r32_r32('r11','rax'); em.jcc(0x83,'outline_push_ret')
@@ -3127,9 +3159,6 @@ em.label('pv_timer_reset_done'); em.mov_ripmem_imm32(bsyms['preview_theme_dirty'
 #
 # 大纲准备（吸收自旧 rebuild_outline）：计数清零、冻结重绘、清空列表。
 em.mov_ripmem_imm32(bsyms['outline_count'],0)
-# V8.6 切片 2：文件模式下的 ListBox 属于 workspace，扫描既不能清空它，
-# 也不能把大纲行追加进去（outline_push 同样在入口处返回）。
-em.mov_r32_ripmem('rax',bsyms['panel_mode']); em.test32('rax'); em.jcc(0x85,'pv_scan_prep_done')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.test64('rcx'); em.jcc(0x84,'pv_scan_prep_done')
 em.mov_r32_imm('rdx',0x000B); em.xor32('r8'); em.xor32('r9'); em.call_iat('SendMessageW')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.mov_r32_imm('rdx',0x0184); em.xor32('r8'); em.xor32('r9'); em.call_iat('SendMessageW')
@@ -3310,8 +3339,6 @@ em.label('pv_render_ret'); em.add_r64_imm8('rsp',0x28); em.emit(0x41,0x5F); em.e
 # 再发 LB_GETCURSEL 并立即消费 RAX，中间没有任何 API 调用。
 em.label('navigate_outline')
 em.emit(0x48,0x83,0xEC,0x28)
-# V8.6 切片 2：列表正显示目录条目时，选中项与大纲三表无关，禁止跳转。
-em.mov_r32_ripmem('rax',bsyms['panel_mode']); em.test32('rax'); em.jcc(0x85,'navigate_ret')
 # 1）V8.5.0：选定导航目标表面。preview_flag 由 set_view_mode 家族唯一
 #    写入并保证与实际可见性一致，不再需要 IsWindowVisible 二次确认——
 #    旧版正是让 volatile 数组偏移跨越该调用才引发 P0-001。
@@ -3438,7 +3465,7 @@ em.label('theme_dark_unchecked'); em.xor32('r8')
 em.label('theme_dark_check'); em.call_iat('CheckMenuItem')
 em.call_label('apply_preview_theme_color')
 # Repaint child surfaces so WM_CTLCOLOR* immediately uses the new brushes/colors.
-em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.xor32('rdx'); em.mov_r32_imm('r8',1); em.call_iat('InvalidateRect'); em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.xor32('rdx'); em.mov_r32_imm('r8',1); em.call_iat('InvalidateRect'); em.mov_r64_ripmem('rcx',bsyms['hwnd_splitter']); em.xor32('rdx'); em.mov_r32_imm('r8',1); em.call_iat('InvalidateRect'); em.mov_r64_ripmem('rcx',bsyms['hwnd_outline_scroll']); em.xor32('rdx'); em.xor32('r8'); em.mov_r32_imm('r9',0x105); em.call_iat('RedrawWindow'); em.mov_r64_ripmem('rcx',bsyms['hwnd_preview']); em.xor32('rdx'); em.mov_r32_imm('r8',1); em.call_iat('InvalidateRect'); em.mov_r64_ripmem('rcx',bsyms['hwnd_status']); em.xor32('rdx'); em.mov_r32_imm('r8',1); em.call_iat('InvalidateRect'); em.mov_r64_ripmem('rcx',bsyms['hwnd_corner']); em.xor32('rdx'); em.mov_r32_imm('r8',1); em.call_iat('InvalidateRect'); em.mov_r64_r64('rcx','rbx'); em.xor32('rdx'); em.mov_r32_imm('r8',1); em.call_iat('InvalidateRect'); em.mov_r64_r64('rcx','rbx'); em.call_iat('UpdateWindow'); em.call_label('paint_menu_gaps')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.xor32('rdx'); em.mov_r32_imm('r8',1); em.call_iat('InvalidateRect'); em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.xor32('rdx'); em.mov_r32_imm('r8',1); em.call_iat('InvalidateRect'); em.mov_r64_ripmem('rcx',bsyms['hwnd_splitter']); em.xor32('rdx'); em.mov_r32_imm('r8',1); em.call_iat('InvalidateRect'); em.mov_r64_ripmem('rcx',bsyms['hwnd_outline_scroll']); em.xor32('rdx'); em.xor32('r8'); em.mov_r32_imm('r9',0x105); em.call_iat('RedrawWindow'); em.mov_r64_ripmem('rcx',bsyms['hwnd_preview']); em.xor32('rdx'); em.mov_r32_imm('r8',1); em.call_iat('InvalidateRect'); em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.xor32('rdx'); em.mov_r32_imm('r8',1); em.call_iat('InvalidateRect'); em.mov_r64_ripmem('rcx',bsyms['hwnd_files_gutter']); em.xor32('rdx'); em.mov_r32_imm('r8',1); em.call_iat('InvalidateRect'); em.mov_r64_ripmem('rcx',bsyms['hwnd_status']); em.xor32('rdx'); em.mov_r32_imm('r8',1); em.call_iat('InvalidateRect'); em.mov_r64_ripmem('rcx',bsyms['hwnd_corner']); em.xor32('rdx'); em.mov_r32_imm('r8',1); em.call_iat('InvalidateRect'); em.mov_r64_r64('rcx','rbx'); em.xor32('rdx'); em.mov_r32_imm('r8',1); em.call_iat('InvalidateRect'); em.mov_r64_r64('rcx','rbx'); em.call_iat('UpdateWindow'); em.call_label('paint_menu_gaps')
 em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
 
 # Helper: find next occurrence using SHLWAPI StrStrW/StrStrIW, select it, and scroll caret.
@@ -3529,10 +3556,7 @@ em.label('enc_utf16'); em.lea_rip('r9',rsyms['status_utf16']); em.jmp('enc_send'
 em.label('enc_utf8_bom'); em.lea_rip('r9',rsyms['status_utf8_bom'])
 em.label('enc_send'); em.mov_r64_ripmem('rcx',bsyms['hwnd_status']); em.mov_r32_imm('rdx',0x040B); em.mov_r32_imm('r8',0x1105); em.call_iat('SendMessageW')
 # V8.6 切片 3：第七段显示当前工作区目录（只有文件面板有意义）。
-em.mov_r32_ripmem('rax',bsyms['panel_mode']); em.test32('rax'); em.jcc(0x84,'status_path_clear')
-em.lea_rip('r9',bsyms['ws_current_path']); em.jmp('status_path_send')
-em.label('status_path_clear'); em.lea_rip('r9',rsyms['empty'])
-em.label('status_path_send'); em.mov_r64_ripmem('rcx',bsyms['hwnd_status']); em.mov_r32_imm('rdx',0x040B); em.mov_r32_imm('r8',0x1106); em.call_iat('SendMessageW')
+em.lea_rip('r9',bsyms['ws_current_path']); em.mov_r64_ripmem('rcx',bsyms['hwnd_status']); em.mov_r32_imm('rdx',0x040B); em.mov_r32_imm('r8',0x1106); em.call_iat('SendMessageW')
 em.label('status_ret'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
 
 em.label('exit')
@@ -3646,11 +3670,14 @@ em.mov_r32_r32('r10','r8'); em.shr_r32_imm8('r10',16); em.cmp_r32_imm('r10',0x03
 em.mov_r32_ripmem('r10',bsyms['suppress_edit_change']); em.test32('r10'); em.jcc(0x85,'wp_child_return')
 em.call_label('advance_document_revision'); em.mov_r32_imm('rdx',0x8004); em.xor32('r8'); em.xor32('r9'); em.call_iat('PostMessageW'); em.jmp('wp_child_return')
 # Outline selection notification.
-em.label('wp_cmd_outline_check'); em.mov_r64_ripmem('rax',bsyms['hwnd_outline']); em.cmp_r64_r64('r9','rax'); em.jcc(0x85,'wp_cmd_other_child')
-em.mov_r32_r32('r10','r8'); em.shr_r32_imm8('r10',16); em.cmp_r32_imm('r10',2); em.jcc(0x84,'wp_cmd_outline_activate')
-em.cmp_r32_imm('r10',1); em.jcc(0x85,'wp_child_return')
+# V8.6.1：两个面板各自的通知分流。文件面板的双击才是"激活/打开"，
+# 大纲面板的单选才触发文档跳转。
+em.label('wp_cmd_outline_check'); em.mov_r64_ripmem('rax',bsyms['hwnd_files']); em.cmp_r64_r64('r9','rax'); em.jcc(0x84,'wp_cmd_files_child')
+em.mov_r64_ripmem('rax',bsyms['hwnd_outline']); em.cmp_r64_r64('r9','rax'); em.jcc(0x85,'wp_cmd_other_child')
+em.mov_r32_r32('r10','r8'); em.shr_r32_imm8('r10',16); em.cmp_r32_imm('r10',1); em.jcc(0x85,'wp_child_return')
 em.mov_r32_imm('rdx',0x8005); em.xor32('r8'); em.xor32('r9'); em.call_iat('PostMessageW'); em.jmp('wp_child_return')
-# V8.6 切片 3：LBN_DBLCLK 走独立的激活事件，与单选跳转区分开。
+em.label('wp_cmd_files_child')
+em.mov_r32_r32('r10','r8'); em.shr_r32_imm8('r10',16); em.cmp_r32_imm('r10',2); em.jcc(0x85,'wp_child_return')
 em.label('wp_cmd_outline_activate'); em.mov_r32_imm('rdx',0x8007); em.xor32('r8'); em.xor32('r9'); em.call_iat('PostMessageW'); em.jmp('wp_child_return')
 # Ignore notifications from preview/status and other child controls; menu WM_COMMAND has lParam == 0.
 em.label('wp_cmd_other_child'); em.test64('r9'); em.jcc(0x85,'wp_child_return')
@@ -3683,12 +3710,20 @@ em.mov_r64_ripmem('rax',bsyms['defproc_result']); em.add_r64_imm8('rsp',0x38); e
 
 # Give the owner-drawn outline a relaxed, fixed row height.
 em.label('wp_measureitem')
-em.mov_r32_mreg('rax','r9',4); em.cmp_r32_imm('rax',4); em.jcc(0x85,'wp_default'); em.mov_mreg_imm32('r9',16,30); em.mov_r32_imm('rax',1); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
+em.mov_r32_mreg('rax','r9',4); em.cmp_r32_imm('rax',4); em.jcc(0x84,'wp_measure_set'); em.cmp_r32_imm('rax',14); em.jcc(0x85,'wp_default')
+em.label('wp_measure_set'); em.mov_mreg_imm32('r9',16,30); em.mov_r32_imm('rax',1); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
 
 # Owner-draw status bar and outline rows.
 em.label('wp_drawitem')
 em.mov_ripmem_r64(bsyms['drawitem_ptr'],'r9')
-em.mov_r32_mreg('rax','r9',4); em.cmp_r32_imm('rax',2); em.jcc(0x84,'wp_draw_status'); em.cmp_r32_imm('rax',4); em.jcc(0x84,'wp_draw_outline'); em.cmp_r32_imm('rax',5); em.jcc(0x84,'wp_draw_corner'); em.cmp_r32_imm('rax',6); em.jcc(0x84,'wp_draw_splitter'); em.cmp_r32_imm('rax',7); em.jcc(0x84,'wp_draw_gutter'); # ID 8 is now a dedicated custom child window; it no longer uses WM_DRAWITEM. em.jmp('wp_default')
+em.mov_r32_mreg('rax','r9',4); em.cmp_r32_imm('rax',2); em.jcc(0x84,'wp_draw_status'); em.cmp_r32_imm('rax',4); em.jcc(0x84,'wp_draw_outline'); em.cmp_r32_imm('rax',14); em.jcc(0x84,'wp_draw_outline'); em.cmp_r32_imm('rax',5); em.jcc(0x84,'wp_draw_corner'); em.cmp_r32_imm('rax',6); em.jcc(0x84,'wp_draw_splitter'); em.cmp_r32_imm('rax',7); em.jcc(0x84,'wp_draw_gutter'); em.cmp_r32_imm('rax',15); em.jcc(0x84,'wp_draw_gutter'); em.jmp('wp_default')
+
+# V8.6.1：当前 owner-draw 行属于哪个 ListBox（ID 14 = 文件面板，其余 = 大纲）。
+# 行文本与"行类型表"必须来自同一个控件。
+em.label('wp_row_hwnd')
+em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r32_mreg('rax','r9',4); em.cmp_r32_imm('rax',14); em.jcc(0x84,'wp_row_hwnd_files')
+em.mov_r64_ripmem('rax',bsyms['hwnd_outline']); em.emit(0xC3)
+em.label('wp_row_hwnd_files'); em.mov_r64_ripmem('rax',bsyms['hwnd_files']); em.emit(0xC3)
 
 em.label('wp_draw_status')
 # Owner-draw callbacks do not guarantee our WM_SETFONT font is selected into
@@ -3778,11 +3813,14 @@ em.mov_r64_mreg('rcx','r9',32); em.mov_r64_r64('rdx','r9'); em.add_r64_imm8('rdx
 em.label('wp_outline_fill_sel_light'); em.mov_r64_ripmem('r8',bsyms['hbrush_edit']); em.call_iat('FillRect'); em.jmp('wp_outline_text')
 em.label('wp_outline_fill_normal'); em.mov_r64_mreg('rcx','r9',32); em.mov_r64_r64('rdx','r9'); em.add_r64_imm8('rdx',40); em.mov_r64_ripmem('r8',bsyms['hbrush_outline']); em.call_iat('FillRect')
 em.label('wp_outline_text')
-# Fetch item text from LISTBOX.
-em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r32_mreg('r10','r9',8); em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.mov_r32_imm('rdx',0x0189); em.mov_r32_r32('r8','r10'); em.lea_rip('r9',bsyms['outline_titlebuf']); em.call_iat('SendMessageW')
-# V8.6 切片 2：文件模式的行走 workspace 条目表着色，并且绝不读
-# outline_level——那是一套不同的索引空间。目录用强调色，文件用正文色。
-em.mov_r32_ripmem('rax',bsyms['panel_mode']); em.test32('rax'); em.jcc(0x84,'wp_outline_level_row')
+# Fetch item text from the ListBox this row belongs to (ID decides).
+em.call_label('wp_row_hwnd'); em.mov_r64_r64('rcx','rax')
+em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r32_mreg('r10','r9',8); em.mov_r32_imm('rdx',0x0189); em.mov_r32_r32('r8','r10'); em.lea_rip('r9',bsyms['outline_titlebuf']); em.call_iat('SendMessageW')
+# V8.6.1：文件面板（ID 14）的行按 workspace 条目表着色，绝不读 outline_level
+# ——那是一套不同的索引空间。目录用强调色，文件用正文色。
+em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r32_mreg('rax','r9',4); em.cmp_r32_imm('rax',14); em.jcc(0x84,'wp_file_row_branch')
+em.jmp('wp_outline_level_row')
+em.label('wp_file_row_branch')
 em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r32_mreg('rax','r9',8)
 em.mov_r32_r32('rcx','rax'); em.shl_r32_imm8('rcx',9); em.shl_r32_imm8('rax',5); em.add_r32_r32('rax','rcx')
 em.mov_r64_ripmem('rcx',bsyms['ws_entries']); em.test64('rcx'); em.jcc(0x84,'wp_draw_outline_done')
@@ -4195,7 +4233,11 @@ assert bss_sizes['document_revision'] == 8 and bss_sizes['saved_revision'] == 8,
 _dirty0 = em.labels['is_document_dirty']
 _dirty1 = em.labels['validate_wide_no_nul']
 _dirty_code = bytes(_code[_dirty0:_dirty1])
-assert _dirty_code.count(b'\xC3') == 2 and bytes.fromhex('4c39d0') in _dirty_code, \
+# 按指令模式检查两个叶出口（0x31C0C3 = xor eax,eax; ret，0x31C083C001C3 = 返回 1）。
+# 不要用裸 ret 字节计数：RIP 相对 displacement 里可能出现 0xC3。
+assert bytes.fromhex('4c39d0') in _dirty_code and \
+       bytes.fromhex('31c0c3') in _dirty_code and \
+       bytes.fromhex('31c083c001c3') in _dirty_code, \
     'is_document_dirty 必须比较完整 64-bit revision 并保留 clean/dirty 两个叶出口'
 assert bytes.fromhex('488905') not in _dirty_code and bytes.fromhex('4c8905') not in _dirty_code, \
     'is_document_dirty 必须是只读推导，禁止写入 revision state'
@@ -4833,20 +4875,8 @@ assert WS_OFF_KIND == WS_NAME_UNITS * 2 + 4, \
 for _panel_routine in ('rebuild_file_list', 'set_panel_mode', 'refresh_panel_list',
                        'outline_push', 'navigate_outline', 'wp_outline_level_row'):
     assert _panel_routine in em.labels, '%s must be emitted' % _panel_routine
-_panel_push_src = _production_source[
-    _production_source.index("em.label('outline_push')"):
-    _production_source.index("em.label('outline_push_indent')")]
-assert "bsyms['panel_mode']" in _panel_push_src, \
-    'outline_push must not fill the shared ListBox while the files panel is active'
-_prep_end = _production_source.index("em.label('pv_scan_prep_done')")
-_prep_src = _production_source[max(0, _prep_end - 900):_prep_end]
-assert "bsyms['panel_mode']" in _prep_src and "0x0184" in _prep_src, \
-    'update_preview must not clear the shared ListBox while the files panel is active'
-_panel_nav_src = _production_source[
-    _production_source.index("em.label('navigate_outline')"):
-    _production_source.index("em.label('navigate_pick_source')")]
-assert "bsyms['panel_mode']" in _panel_nav_src, \
-    'outline navigation must be disabled while the files panel is active'
+# V8.6.1：大纲与文件各自拥有 ListBox，因此"扫描不得触碰对方列表"的旧约束换成
+# 控件归属断言（见下方 _dual_panel_src）。
 _panel_draw_src = _production_source[
     _production_source.index("em.label('wp_outline_text')"):
     _production_source.index("em.label('wp_outline_level_row')")]
@@ -4856,9 +4886,9 @@ _panel_list_src = _production_source[
     _production_source.index("em.label('rebuild_file_list')"):
     _production_source.index("em.label('set_panel_mode')")]
 assert "call_iat('lstrcpyW')" in _panel_list_src and \
-       "mov_ripmem_imm32(bsyms['outline_count'],0)" in _panel_list_src and \
+       "bsyms['hwnd_files']" in _panel_list_src and \
        "call_label('sync_outline_scrollbar')" in _panel_list_src, \
-    'rebuild_file_list must own the row text, clear the outline count and resync the scrollbar'
+    'rebuild_file_list must own the row text and fill its own ListBox'
 _panel_switch_src = _production_source[
     _production_source.index("em.label('set_panel_mode')"):
     _production_source.index("em.label('refresh_panel_list')")]
@@ -4926,7 +4956,7 @@ _nav_key_src = _production_source[
     _production_source.index("em.label('keydown_event')"):
     _production_source.index("em.label('mousewheel_event')")]
 assert "call_iat('GetFocus')" in _nav_key_src and \
-       "bsyms['hwnd_outline']" in _nav_key_src and \
+       "bsyms['hwnd_files']" in _nav_key_src and \
        "em.jcc(0x85,'dispatch')" in _nav_key_src, \
     'Backspace must only go up while the file list owns the focus'
 _nav_status_src = _production_source[
