@@ -88,6 +88,23 @@ def discard_unsaved_prompt(hwnd, timeout_ms=1500):
         time.sleep(.05)
     return False
 
+def count_dialogs(hwnd):
+    """Number of owner-modal dialogs (#32770) currently owned by that process."""
+    wanted_pid = wt.DWORD()
+    u32.GetWindowThreadProcessId(hwnd, ctypes.byref(wanted_pid))
+    found = []
+    @ctypes.WINFUNCTYPE(wt.BOOL, wt.HWND, wt.LPARAM)
+    def cb(h, _):
+        pid = wt.DWORD()
+        u32.GetWindowThreadProcessId(h, ctypes.byref(pid))
+        cls = ctypes.create_unicode_buffer(32)
+        u32.GetClassNameW(h, cls, 32)
+        if pid.value == wanted_pid.value and cls.value == '#32770':
+            found.append(h)
+        return True
+    u32.EnumWindows(cb, 0)
+    return len(found)
+
 def child_windows(hwnd):
     """返回 [(hwnd, 类名, 是否可见)]。可见性查 GWL_STYLE(-16) 的
     WS_VISIBLE（注意不是 EXSTYLE）；类名用小写规范化（标准控件
@@ -214,13 +231,24 @@ def main():
 
     # --- 7. 干净退出 ---
     u32.PostMessageW(hwnd, WM_CLOSE, 0, 0)
-    discard_unsaved_prompt(hwnd)
-    try:
-        rc = proc.wait(timeout=5)
+    # A dirty close legitimately waits for the unsaved prompt. Keep answering it
+    # while waiting so a slow machine cannot turn a normal prompt into a timeout.
+    rc = None
+    deadline = time.perf_counter() + 15
+    while time.perf_counter() < deadline:
+        discard_unsaved_prompt(hwnd, timeout_ms=200)
+        if proc.poll() is not None:
+            rc = proc.returncode
+            break
+        time.sleep(.1)
+    if rc is not None:
         check('WM_CLOSE 干净退出（退出码 0）', rc == 0, f'exitcode={rc}')
-    except subprocess.TimeoutExpired:
-        check('WM_CLOSE 干净退出', False, '超时未退出')
+    else:
+        # Distinguish "still waiting for an answer" from "genuinely stuck".
+        check('WM_CLOSE 干净退出', False,
+              f'超时未退出；待处理对话框={count_dialogs(hwnd)}')
         proc.kill()
+        proc.wait(timeout=5)
 
     failed = [r for r in results if not r[1]]
     print(f'\n结果：{len(results) - len(failed)}/{len(results)} 通过')

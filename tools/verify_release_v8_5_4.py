@@ -56,6 +56,25 @@ def main():
         "session_interactive": bool(c.windll.user32.GetForegroundWindow()),
     }
 
+    # Rewriting the binary only works while nothing holds it open. Catch that
+    # first and say so plainly instead of failing several steps in a row.
+    if BINARY.exists():
+        try:
+            with BINARY.open("r+b"):
+                pass
+        except PermissionError:
+            notes.append("bin/current/pemark_x64_v8_5_4.exe is locked. Close any "
+                         "running PeMark window (and let antivirus finish) and "
+                         "rerun this script.")
+            print(json.dumps({
+                "schema": 1, "release": "V8.5.4",
+                "checked_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "environment": environment,
+                "steps": [], "failed_steps": ["binary is locked"],
+                "notes": notes, "status": "FAIL",
+            }, indent=2, ensure_ascii=False))
+            return 1
+
     try:
         import unicorn  # noqa: F401
         results.append({"step": "import unicorn", "status": "PASS", "exit_code": 0,

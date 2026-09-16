@@ -59,6 +59,20 @@ class MEMORY_BASIC_INFORMATION(c.Structure):
 
 def build():
     source = GEN.read_text(encoding="utf-8")
+    if EXE.exists() and EXE.parent.name == "current":
+        # Verify the shipped file itself. Loading the generator's symbol table
+        # would otherwise rewrite the release binary, which fails while the
+        # executable is in use and is not what we want to inspect anyway.
+        scratch = ROOT / "bin" / "verify_scratch"
+        scratch.mkdir(parents=True, exist_ok=True)
+        fake = scratch / GEN.name
+        # The generator reads its own source for build assertions, so the
+        # scratch copy has to exist even though we never use its output.
+        if not fake.exists() or fake.read_text(encoding='utf-8') != source:
+            fake.write_text(source, encoding='utf-8', newline='')
+        ns = {"__file__": str(fake), "__name__": "__pemark_sections_verify__"}
+        exec(compile(source, str(fake), "exec"), ns)
+        return ns, EXE
     ns = {"__file__": str(GEN), "__name__": "__pemark_sections__"}
     exec(compile(source, str(GEN), "exec"), ns)
     out = Path(ns["out"])

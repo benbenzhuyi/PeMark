@@ -64,6 +64,19 @@ class CONTEXT(c.Structure):
 
 def build():
     source = GEN.read_text(encoding="utf-8")
+    if EXE.exists() and EXE.parent.name == "current":
+        # Same rule as the section test: inspect the shipped file without
+        # rewriting it (which would fail while the executable is in use).
+        scratch = ROOT / "bin" / "verify_scratch"
+        scratch.mkdir(parents=True, exist_ok=True)
+        fake = scratch / GEN.name
+        # The generator reads its own source for build assertions, so the
+        # scratch copy has to exist even though we never use its output.
+        if not fake.exists() or fake.read_text(encoding='utf-8') != source:
+            fake.write_text(source, encoding='utf-8', newline='')
+        ns = {"__file__": str(fake), "__name__": "__pemark_unwind_verify__"}
+        exec(compile(source, str(fake), "exec"), ns)
+        return ns, EXE
     ns = {"__file__": str(GEN), "__name__": "__pemark_unwind__"}
     exec(compile(source, str(GEN), "exec"), ns)
     out = Path(ns["out"])
