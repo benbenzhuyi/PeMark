@@ -124,7 +124,8 @@ wstr('menu_help','&Help')
 wstr('m_new','&New\tCtrl+N')
 wstr('m_open','&Open...\tCtrl+O')
 wstr('m_save','&Save\tCtrl+S')
-wstr('m_saveas','Save &As...\tCtrl+Alt+S')
+wstr('m_saveas','Save &As...\tCtrl+Shift+S')
+wstr('m_close','&Close\tCtrl+W')
 wstr('m_exit','E&xit\tAlt+F4')
 wstr('m_undo','&Undo\tCtrl+Z')
 wstr('m_cut','Cu&t\tCtrl+X')
@@ -143,19 +144,19 @@ wstr('m_md_h6','Heading &6\tCtrl+6')
 wstr('m_md_bold','&Bold\tCtrl+Alt+B')
 wstr('m_md_italic','&Italic\tCtrl+I')
 wstr('m_md_inlinecode','Inline &Code\tCtrl+`')
-wstr('m_md_codeblock','Code Bloc&k\tCtrl+Shift+K')
+wstr('m_md_codeblock','Code Bloc&k\tCtrl+Alt+K')
 wstr('m_md_quote','&Quote\tCtrl+Q')
 wstr('m_md_bullet','&Bullet List\tCtrl+Shift+8')
-wstr('m_md_link','&Link\tCtrl+K')
+wstr('m_md_link','&Link\tCtrl+Alt+L')
 wstr('m_zoom','&Zoom')
 wstr('m_zoomin','Zoom &In\tCtrl++ / Ctrl+Wheel Up')
 wstr('m_zoomout','Zoom &Out\tCtrl+- / Ctrl+Wheel Down')
 wstr('m_zoomreset','Restore &Default Zoom\tCtrl+0')
 wstr('m_wrap','&Word Wrap\tCtrl+Shift+W')
-wstr('m_status','&Status Bar\tCtrl+Shift+S')
+wstr('m_status','&Status Bar\tCtrl+Alt+S')
 wstr('m_preview','Markdown &Preview\tCtrl+Shift+P')
-wstr('m_outline','&Outline\tCtrl+B')
-wstr('m_openfolder','Open &Folder...')
+wstr('m_outline','Left &Sidebar\tCtrl+B')
+wstr('m_openfolder','Open &Folder...\tCtrl+Shift+O')
 wstr('m_panel_files','&Files Panel')
 wstr('m_panel_outline','&Outline Panel')
 wstr('m_light','&Light')
@@ -197,7 +198,9 @@ _accels = [
     (FVIRTKEY|FCONTROL, 0x4E, 1001),                  # Ctrl+N
     (FVIRTKEY|FCONTROL, 0x4F, 1002),                  # Ctrl+O
     (FVIRTKEY|FCONTROL, 0x53, 1003),                  # Ctrl+S
-    (FVIRTKEY|FCONTROL|FALT, 0x53, 1004),             # Ctrl+Alt+S Save As (Ctrl+Shift+S reserved for Status Bar)
+    (FVIRTKEY|FCONTROL|FSHIFT, 0x53, 1004),           # Ctrl+Shift+S Save As (Rabbit parity)
+    (FVIRTKEY|FCONTROL|FSHIFT, 0x4F, 1006),           # Ctrl+Shift+O Open Folder (Rabbit parity)
+    (FVIRTKEY|FCONTROL, 0x57, 1007),                  # Ctrl+W Close file (Rabbit parity)
     (FVIRTKEY|FALT, 0x73, 1005),                      # Alt+F4
     (FVIRTKEY|FCONTROL, 0x5A, 1101),                  # Ctrl+Z
     (FVIRTKEY|FCONTROL, 0x58, 1102),                  # Ctrl+X
@@ -213,7 +216,7 @@ _accels = [
     (FVIRTKEY|FCONTROL, 0x6D, 1302),                  # Ctrl+Num-
     (FVIRTKEY|FCONTROL, 0x30, 1303),                  # Ctrl+0
     (FVIRTKEY|FCONTROL|FSHIFT, 0x57, 1304),           # Ctrl+Shift+W
-    (FVIRTKEY|FCONTROL|FSHIFT, 0x53, 1305),           # Ctrl+Shift+S Status Bar
+    (FVIRTKEY|FCONTROL|FALT, 0x53, 1305),             # Ctrl+Alt+S Status Bar (Ctrl+Shift+S is Save As)
     (FVIRTKEY|FCONTROL|FSHIFT, 0x50, 1306),           # Ctrl+Shift+P Markdown preview/source
     (FVIRTKEY|FCONTROL, 0x42, 1307),                  # Ctrl+B Outline
     (FVIRTKEY|FCONTROL|FALT, 0x54, 1312),             # Ctrl+Alt+T Toggle Light/Dark
@@ -226,10 +229,10 @@ _accels = [
     (FVIRTKEY|FCONTROL|FALT, 0x42, 1403),             # Ctrl+Alt+B Bold (Ctrl+B is Outline)
     (FVIRTKEY|FCONTROL, 0x49, 1404),                  # Ctrl+I Italic
     (FVIRTKEY|FCONTROL, 0xC0, 1405),                  # Ctrl+` Inline code
-    (FVIRTKEY|FCONTROL|FSHIFT, 0x4B, 1406),           # Ctrl+Shift+K Code block
+    (FVIRTKEY|FCONTROL|FALT, 0x4B, 1406),             # Ctrl+Alt+K Code block (Ctrl+Shift+K is Delete Line in Rabbit)
     (FVIRTKEY|FCONTROL, 0x51, 1407),                  # Ctrl+Q Quote
     (FVIRTKEY|FCONTROL|FSHIFT, 0x38, 1408),           # Ctrl+Shift+8 Bullet list
-    (FVIRTKEY|FCONTROL, 0x4B, 1409),                  # Ctrl+K Link
+    (FVIRTKEY|FCONTROL|FALT, 0x4C, 1409),             # Ctrl+Alt+L Link (Ctrl+K is the V9 AI quick edit)
     (FVIRTKEY, 0x70, 1201),                           # F1
 ]
 ACCEL_COUNT=len(_accels)
@@ -908,7 +911,7 @@ def append_popup(main, sub, text_sym):
     em.mov_r64_r64('rcx',main); em.mov_r32_imm('rdx',0x10); em.mov_r64_r64('r8',sub); em.lea_rip('r9',rsyms[text_sym]); em.call_iat('AppendMenuW')
 
 append_imm('r12',0,1001,'m_new'); append_imm('r12',0,1002,'m_open'); append_imm('r12',0,1006,'m_openfolder'); append_sep('r12')
-append_imm('r12',0,1003,'m_save'); append_imm('r12',0,1004,'m_saveas'); append_sep('r12'); append_imm('r12',0,1005,'m_exit')
+append_imm('r12',0,1003,'m_save'); append_imm('r12',0,1004,'m_saveas'); append_sep('r12'); append_imm('r12',0,1007,'m_close'); append_sep('r12'); append_imm('r12',0,1005,'m_exit')
 append_popup('rdi','r12','menu_file')
 
 em.call_iat('CreatePopupMenu'); em.mov_r64_r64('r13','rax')
@@ -1187,6 +1190,7 @@ _command_routes = [(1001,'cmd_new'),(1002,'cmd_open'),(1003,'cmd_save'),(1004,'c
                   (1101,'cmd_undo'),(1102,'cmd_cut'),(1103,'cmd_copy'),(1104,'cmd_paste'),(1105,'cmd_selectall'),(1106,'cmd_find'),(1107,'cmd_findnext'),(1108,'cmd_replace'),(1201,'cmd_about'),
                   (1301,'cmd_zoomin'),(1302,'cmd_zoomout'),(1303,'cmd_zoomreset'),(1304,'cmd_wrap'),(1305,'cmd_status'),(1306,'cmd_preview'),(1307,'cmd_outline'),(1310,'cmd_light'),(1311,'cmd_dark'),(1312,'cmd_theme_toggle'),
                   (1006,'cmd_open_folder'),(1308,'cmd_panel_files'),(1309,'cmd_panel_outline'),
+                  (1007,'cmd_close_file'),
                   (1401,'cmd_md_h1'),(1402,'cmd_md_h2'),(1410,'cmd_md_h3'),(1411,'cmd_md_h4'),(1412,'cmd_md_h5'),(1413,'cmd_md_h6'),(1403,'cmd_md_bold'),(1404,'cmd_md_italic'),(1405,'cmd_md_inline'),(1406,'cmd_md_codeblock'),(1407,'cmd_md_quote'),(1408,'cmd_md_bullet'),(1409,'cmd_md_link')]
 if OPEN_TEST_BUILD:
     _command_routes.append((1901, 'cmd_open_selected'))
@@ -1202,6 +1206,9 @@ for cid,label in _command_routes:
 em.jmp('dispatch')
 
 em.label('cmd_new'); em.mov_ripmem_imm32(bsyms['pending_destructive_action'],1); em.jmp('destructive_request')
+# Close 与 New 在单文档模型下是同一个终态（空文档 + clean revision），因此复用
+# 同一条破坏性保护路径，只是菜单与快捷键分开，和 Rabbit 一致。
+em.label('cmd_close_file'); em.mov_ripmem_imm32(bsyms['pending_destructive_action'],1); em.jmp('destructive_request')
 em.label('cmd_new_commit')
 # V8.6：新建文档同样需要文档 arena；失败时不执行 New，保留当前文档。
 em.xor32('rcx'); em.call_label('ensure_document_arena'); em.test32('rax'); em.jcc(0x84,'err_open_alloc')
@@ -4966,6 +4973,43 @@ assert "call_iat('SHBrowseForFolderW')" in _menu_folder_src and \
 assert ('cmd_open_folder_selected' in em.labels) == OPEN_TEST_BUILD and \
        ((1908, 'cmd_open_folder_selected') in _command_routes) == OPEN_TEST_BUILD, \
     'the picker bypass must exist only in the explicit test build'
+
+# (W) 快捷键方案：与 Rabbit 对齐的键位必须唯一且指向正确命令，菜单里的提示必须与
+#     加速键表一致，为后续功能预留的键位不得被占用。
+_accel_by_key = {}
+for _accel_flags, _accel_vk, _accel_cmd in _accels:
+    _accel_by_key[(_accel_flags, _accel_vk)] = _accel_cmd
+assert len(_accel_by_key) == len(_accels), 'accelerator keys must be unique'
+assert _accel_by_key[(FVIRTKEY|FCONTROL|FSHIFT, 0x53)] == 1004, \
+    'Ctrl+Shift+S must be Save As, matching Rabbit'
+assert _accel_by_key[(FVIRTKEY|FCONTROL|FALT, 0x53)] == 1305, \
+    'the status bar keeps the freed Ctrl+Alt+S'
+assert _accel_by_key[(FVIRTKEY|FCONTROL|FSHIFT, 0x4F)] == 1006, \
+    'Ctrl+Shift+O must open a folder, matching Rabbit'
+assert _accel_by_key[(FVIRTKEY|FCONTROL, 0x57)] == 1007, \
+    'Ctrl+W must close the document, matching Rabbit'
+assert _accel_by_key[(FVIRTKEY|FCONTROL, 0x42)] == 1307, \
+    'Ctrl+B must keep toggling the left sidebar'
+assert _accel_by_key[(FVIRTKEY|FCONTROL|FALT, 0x4B)] == 1406 and \
+       _accel_by_key[(FVIRTKEY|FCONTROL|FALT, 0x4C)] == 1409, \
+    'the Markdown modifiers move to the Ctrl+Alt family'
+assert (FVIRTKEY|FCONTROL, 0x4B) not in _accel_by_key, \
+    'Ctrl+K is reserved for the V9 AI quick edit (Rabbit parity)'
+assert (FVIRTKEY|FCONTROL|FSHIFT, 0x4B) not in _accel_by_key, \
+    'Ctrl+Shift+K is reserved for Delete Line (Rabbit parity)'
+assert (FVIRTKEY|FCONTROL, 0x4C) not in _accel_by_key and \
+       (FVIRTKEY|FCONTROL|FSHIFT, 0x4C) not in _accel_by_key, \
+    'Ctrl+L is reserved for quoting to the AI (Rabbit parity)'
+for _menu_hint in (r'Save &As...\tCtrl+Shift+S', r'&Status Bar\tCtrl+Alt+S',
+                   r'Code Bloc&k\tCtrl+Alt+K', r'&Link\tCtrl+Alt+L',
+                   r'Left &Sidebar\tCtrl+B', r'Open &Folder...\tCtrl+Shift+O',
+                   r'&Close\tCtrl+W'):
+    assert _menu_hint in _production_source, \
+        'the menu hint must match the accelerator table: %s' % _menu_hint
+assert 'cmd_close_file' in em.labels and (1007, 'cmd_close_file') in _command_routes, \
+    'Close must exist as its own command next to New'
+assert "append_imm('r12',0,1007,'m_close')" in _production_source, \
+    'the File menu must expose Close'
 
 _output_channel = 'test' if INJECTED_BUILD else _BUILD_CHANNEL
 _output_name = (('pemark_x64_v8_6_outline_alloc_%s.exe' % ARENA_ALLOC_INJECTION_MODE)
