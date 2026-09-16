@@ -57,13 +57,15 @@ English | [简体中文](PUBLISHING_CHECKLIST.zh-CN.md)
   in `docs/V8_5_4_RELEASE_RESULTS.md`.
 - [x] Publish the independent-machine verification pack
   (`docs/V8_5_4_VERIFICATION_PACK.md`, `tools/verify_release_v8_5_4.py`).
-- [ ] Confirm the independent-machine JSON summary reports PASS.
-- [ ] Create annotated tag `v8.5.4`.
-- [ ] Create a GitHub release named `PeMark V8.5.4` **without** marking it a
+- [x] Confirm the independent-machine JSON summary reports PASS
+  (Windows 11 26200, Python 3.12.10, `failed_steps: []`, 17/17 GUI smoke,
+  identical binary SHA-256 across machines).
+- [x] Create annotated tag `v8.5.4`.
+- [x] Create a GitHub release named `PeMark V8.5.4` **without** marking it a
   pre-release.
-- [ ] Use `docs/RELEASE_V8_5_4_GITHUB.md` as the release body.
-- [ ] Attach only `bin/current/pemark_x64_v8_5_4.exe` as the release asset.
-- [ ] Verify the uploaded asset SHA-256 is
+- [x] Use `docs/RELEASE_V8_5_4_GITHUB.md` as the release body.
+- [x] Attach only `bin/current/pemark_x64_v8_5_4.exe` as the release asset.
+- [x] Verify the uploaded asset SHA-256 is
   `aa8de9cda9ed90a2cf66a3a93e021dc91cc192073078a90c53fa9669f478c5cc`.
 
 ## Repository settings

@@ -55,12 +55,13 @@
   `V8_5_4_RELEASE_RESULTS.md`。
 - [x] 发布独立机器验证包（`V8_5_4_VERIFICATION_PACK.md` 与
   `tools/verify_release_v8_5_4.py`）。
-- [ ] 确认独立机器返回的 JSON 摘要为 PASS。
-- [ ] 创建带说明的 `v8.5.4` 标签。
-- [ ] 创建名为 `PeMark V8.5.4` 的 GitHub Release，**不**勾选 pre-release。
-- [ ] 使用 `RELEASE_V8_5_4_GITHUB.md` 作为发布正文。
-- [ ] 只附加 `bin/current/pemark_x64_v8_5_4.exe`。
-- [ ] 确认附件 SHA-256 为
+- [x] 确认独立机器返回的 JSON 摘要为 PASS（Windows 11 26200、Python 3.12.10、
+  `failed_steps: []`、GUI 17/17，且两台机器二进制 SHA-256 完全一致）。
+- [x] 创建带说明的 `v8.5.4` 标签。
+- [x] 创建名为 `PeMark V8.5.4` 的 GitHub Release，**不**勾选 pre-release。
+- [x] 使用 `RELEASE_V8_5_4_GITHUB.md` 作为发布正文。
+- [x] 只附加 `bin/current/pemark_x64_v8_5_4.exe`。
+- [x] 确认附件 SHA-256 为
   `aa8de9cda9ed90a2cf66a3a93e021dc91cc192073078a90c53fa9669f478c5cc`。
 
 ## 仓库设置
