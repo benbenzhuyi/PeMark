@@ -82,3 +82,9 @@ jobs:
           PEMARK_GENERATOR: ${{ github.workspace }}/src/candidate/generate_markdown_editor_v8_6.py
           PEMARK_EXE: ${{ github.workspace }}/bin/candidate/pemark_x64_v8_6_candidate.exe
         run: python tools/test_v8_6_panel.py
+      - name: Exercise list navigation and file opening
+        if: ${{ hashFiles('tools/test_v8_6_navigation.py') != '' }}
+        env:
+          PEMARK_GENERATOR: ${{ github.workspace }}/src/candidate/generate_markdown_editor_v8_6.py
+          PEMARK_EXE: ${{ github.workspace }}/bin/candidate/pemark_x64_v8_6_candidate.exe
+        run: python tools/test_v8_6_navigation.py

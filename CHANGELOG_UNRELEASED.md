@@ -73,3 +73,34 @@ binary unchanged.
 One defect was found while implementing the slice: the outline scan cleared the
 shared ListBox unconditionally, so editing the document while the file panel was
 active emptied the file list.
+
+## Slice 3 — Navigating the workspace and opening from the list
+
+Complete. A double-click on a directory row makes it the workspace root and the
+list follows; Backspace goes up one level, but only while the file list owns the
+keyboard focus, so the editor keeps its normal delete behaviour. The status bar
+gained a seventh part that publishes the workspace directory whenever the file
+panel is showing and clears it otherwise.
+
+A double-click on a file row does not introduce a second way to open a document.
+It only fills `temp_path`, sets `pending_destructive_action = 2` and raises
+`open_bypass_picker`, then enters the existing `destructive_request`. The shared
+unsaved-changes controller runs first; once the user confirms, `destructive_open`
+skips the picker for that one request and continues into the unchanged
+`cmd_open_selected` read/decode/commit path. Cancelling clears the flag and keeps
+the current document.
+
+Evidence: `tools/test_v8_6_navigation.py` PASS — entering a directory through the
+double-click notification, Backspace going up only with the list focused, the
+status bar painting the directory (and clearing it for the outline panel), a
+clean file opening with the right text, Cancel keeping a dirty document and its
+revision gap, Discard continuing into the new document, an undecodable file
+leaving the previous document untouched, and a UTF-16LE file keeping its
+encoding. Full V8.5.4 suite, slice-1 and slice-2 suites and
+`smoke_test_v8_5_1.py` 17/17 PASS; two builds byte-identical; released V8.5.4
+binary unchanged.
+
+One defect was found and fixed while implementing the slice: the new list
+activation jumped into the never-returning Open path without discarding its own
+return address, which left the stack permanently misaligned by eight bytes and
+crashed the process inside the Open transaction.

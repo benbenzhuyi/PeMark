@@ -7,15 +7,15 @@
 | `.text` | `0x1000` | 61440 | 61440 | `0x60000020` |
 | `.rdata` | `0x10000` | 12288 | 12288 | `0x40000040` |
 | `.idata` | `0x13000` | 4096 | 4096 | `0xC0000040` |
-| `.bss` | `0x14000` | 12288 | 0 | `0xC0000080` |
-| `.reloc` | `0x17000` | 512 | 512 | `0x42000040` |
-| `.pdata` | `0x18000` | 1024 | 1024 | `0x40000040` |
+| `.bss` | `0x14000` | 16384 | 0 | `0xC0000080` |
+| `.reloc` | `0x18000` | 512 | 512 | `0x42000040` |
+| `.pdata` | `0x19000` | 1024 | 1024 | `0x40000040` |
 
-text 实际代码 33145 字节（预算 61440），rdata 4824 字节，idata 3694 字节，BSS 虚拟 12288 字节。
+text 实际代码 33958 字节（预算 61440），rdata 4864 字节，idata 3722 字节，BSS 虚拟 16384 字节。
 
-本次构建：text 实际 33145 字节（余量 28295 字节）；BSS 符号 189 个，最终虚拟 BSS 12288 字节。
+本次构建：text 实际 33958 字节（余量 27482 字节）；BSS 符号 191 个，最终虚拟 BSS 16384 字节。
 
-SHA-256：`d3370be1f47689c0b80f3ccfd9459a1ccdba842236c937cfe2f7bc4530568f04`
+SHA-256：`6f8c945a813f32d47e8312fba7b4043d1b9bb5878306e636bf72613a1580b845`
 
 | Symbol | RVA | Size |
 |---|---:|---:|
@@ -187,24 +187,26 @@ SHA-256：`d3370be1f47689c0b80f3ccfd9459a1ccdba842236c937cfe2f7bc4530568f04`
 | `ws_entries` | `0x168F8` | 8 |
 | `ws_capacity` | `0x16900` | 4 |
 | `panel_mode` | `0x16904` | 4 |
-| `widebuf` | `0x16908` | 8 |
-| `wide_capacity` | `0x16910` | 4 |
-| `bytebuf` | `0x16918` | 8 |
-| `byte_capacity` | `0x16920` | 4 |
-| `document_revision` | `0x16928` | 8 |
-| `saved_revision` | `0x16930` | 8 |
-| `pending_destructive_action` | `0x16938` | 4 |
-| `save_target_is_temp` | `0x1693C` | 4 |
-| `inject_write_call_count` | `0x16940` | 4 |
-| `inject_flush_call_count` | `0x16944` | 4 |
-| `inject_replace_call_count` | `0x16948` | 4 |
-| `save_stage_path` | `0x16950` | 1024 |
-| `inject_create_call_count` | `0x16D50` | 4 |
-| `inject_close_call_count` | `0x16D54` | 4 |
-| `eol_state` | `0x16D58` | 4 |
-| `candidate_encoding_state` | `0x16D5C` | 4 |
-| `candidate_eol_state` | `0x16D60` | 4 |
-| `outline_srcpos` | `0x16D68` | 8 |
-| `outline_renderpos` | `0x16D70` | 8 |
-| `outline_level` | `0x16D78` | 8 |
-| `outline_capacity` | `0x16D80` | 4 |
+| `open_bypass_picker` | `0x16908` | 4 |
+| `ws_path_buf` | `0x16910` | 1024 |
+| `widebuf` | `0x16D10` | 8 |
+| `wide_capacity` | `0x16D18` | 4 |
+| `bytebuf` | `0x16D20` | 8 |
+| `byte_capacity` | `0x16D28` | 4 |
+| `document_revision` | `0x16D30` | 8 |
+| `saved_revision` | `0x16D38` | 8 |
+| `pending_destructive_action` | `0x16D40` | 4 |
+| `save_target_is_temp` | `0x16D44` | 4 |
+| `inject_write_call_count` | `0x16D48` | 4 |
+| `inject_flush_call_count` | `0x16D4C` | 4 |
+| `inject_replace_call_count` | `0x16D50` | 4 |
+| `save_stage_path` | `0x16D60` | 1024 |
+| `inject_create_call_count` | `0x17160` | 4 |
+| `inject_close_call_count` | `0x17164` | 4 |
+| `eol_state` | `0x17168` | 4 |
+| `candidate_encoding_state` | `0x1716C` | 4 |
+| `candidate_eol_state` | `0x17170` | 4 |
+| `outline_srcpos` | `0x17178` | 8 |
+| `outline_renderpos` | `0x17180` | 8 |
+| `outline_level` | `0x17188` | 8 |
+| `outline_capacity` | `0x17190` | 4 |

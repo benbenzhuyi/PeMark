@@ -185,7 +185,7 @@ wstr('status_cr','Classic Mac (CR)')
 wstr('status_utf8','UTF-8')
 wstr('status_utf8_bom','UTF-8 BOM')
 wstr('status_utf16','UTF-16 LE')
-add_bytes('status_parts', struct.pack('<iiiiii', 210, 330, 455, 545, 690, -1), 4)
+add_bytes('status_parts', struct.pack('<iiiiiii', 210, 330, 455, 545, 690, 810, -1), 4)
 
 # In-memory accelerator table (ACCEL is 6 bytes: BYTE, pad, WORD, WORD).
 FVIRTKEY, FSHIFT, FCONTROL, FALT = 0x01, 0x04, 0x08, 0x10
@@ -477,6 +477,10 @@ bss_alloc('ws_capacity', 4, 4)           # entries currently owned
 # V8.6 切片 2：侧边栏面板模式。0 = 大纲，1 = 文件。两个模式共用同一个
 # ListBox 控件与同一套滚动条几何，只改变列表内容、行文本与行颜色。
 bss_alloc('panel_mode', 4, 4)
+# V8.6 切片 3：目录导航。ws_path_buf 只用于拼接/截断路径，避免与枚举
+# 模式串 ws_pattern 混用；open_bypass_picker 记录"已确认的 Open 跳过选择器"。
+bss_alloc('open_bypass_picker', 4, 4)
+bss_alloc('ws_path_buf', 512*2, 16)
 bss_alloc('widebuf', 8, 8)            # pointer into the decode/serialize arena
 bss_alloc('wide_capacity', 4, 4)      # committed units
 bss_alloc('bytebuf', 8, 8)            # pointer into the file-byte arena
@@ -539,6 +543,7 @@ imports = {
     ],
     'USER32.dll': [
         'CreateWindowExW','GetMessageW','TranslateMessage','DispatchMessageW','IsWindow',
+        'GetFocus',
         'CreateMenu','CreatePopupMenu','AppendMenuW','GetWindowTextLengthW','GetWindowTextW',
         'SetWindowTextW','SendMessageW','MoveWindow','SetWindowPos','MessageBoxW','SetFocus',
         'RegisterClassExW','DefWindowProcW','PostQuitMessage','PostMessageW','LoadCursorW',
@@ -961,7 +966,7 @@ em.mov_mrsp_reg64(0x40,'rbx'); em.mov_mrsp_imm32(0x48,2,qword=True); em.mov_mrsp
 em.call_iat('CreateWindowExW'); em.mov_ripmem_r64(bsyms['hwnd_status'],'rax')
 em.test64('rax'); em.jcc(0x84,'exit')
 em.mov_r64_r64('rcx','rax'); em.mov_r32_imm('rdx',0x0030); em.mov_r64_ripmem('r8',bsyms['hfont_status']); em.mov_r32_imm('r9',1); em.call_iat('SendMessageW')
-em.mov_r64_ripmem('rcx',bsyms['hwnd_status']); em.mov_r32_imm('rdx',0x0404); em.mov_r32_imm('r8',6); em.lea_rip('r9',rsyms['status_parts']); em.call_iat('SendMessageW')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_status']); em.mov_r32_imm('rdx',0x0404); em.mov_r32_imm('r8',7); em.lea_rip('r9',rsyms['status_parts']); em.call_iat('SendMessageW')
 # Small theme-colored STATIC overlay at the status bar's lower-right edge. Some
 # Windows builds still paint a legacy light sizing-grip there even without
 # SBARS_SIZEGRIP; this child masks only that decorative corner.
@@ -1022,6 +1027,8 @@ em.cmp_r32_imm('rax',0x8003); em.jcc(0x84,'findreplace_event')
 em.cmp_r32_imm('rax',0x8004); em.jcc(0x84,'document_changed_event')
 em.cmp_r32_imm('rax',0x8005); em.jcc(0x84,'outline_select_event')
 em.cmp_r32_imm('rax',0x8006); em.jcc(0x84,'request_close')
+em.cmp_r32_imm('rax',0x8007); em.jcc(0x84,'list_activate_event')
+em.cmp_r32_imm('rax',0x0100); em.jcc(0x84,'keydown_event')  # WM_KEYDOWN: Backspace over the file list
 em.cmp_r32_imm('rax',0x0113); em.jcc(0x84,'timer_event')  # WM_TIMER: debounced Preview theme maintenance
 # Splitter hover/drag is handled in the thread pump because mouse messages are
 # delivered to child controls, not the top-level WndProc.
@@ -1107,6 +1114,17 @@ em.call_label('sync_model_from_editor'); em.call_label('update_preview'); em.cal
 em.label('outline_select_event')
 em.call_label('navigate_outline'); em.jmp('msg_loop')
 
+em.label('list_activate_event')
+em.call_label('ws_open_or_enter'); em.jmp('msg_loop')
+
+# V8.6 切片 3：只有当焦点在文件列表上时，Backspace 才是"返回上级"。
+# 编辑区获得焦点时照常派发，删除字符的行为不变。
+em.label('keydown_event')
+em.mov_r32_ripmem('rax',bsyms['panel_mode']); em.test32('rax'); em.jcc(0x84,'dispatch')
+em.mov_rax_mr12(16); em.cmp_r32_imm('rax',0x08); em.jcc(0x85,'dispatch')
+em.call_iat('GetFocus'); em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.cmp_r64_r64('rax','rcx'); em.jcc(0x85,'dispatch')
+em.call_label('ws_go_up'); em.jmp('msg_loop')
+
 em.label('mousewheel_event')
 # wParam: LOWORD = MK_* key flags; HIWORD = signed wheel delta.
 # Ctrl+wheel remains document zoom.  A plain wheel over the borderless Outline
@@ -1166,6 +1184,8 @@ if OPEN_TEST_BUILD:
     _command_routes.append((1903, 'cmd_show_files'))
     _command_routes.append((1904, 'cmd_show_outline'))
     _command_routes.append((1905, 'cmd_dump_row'))
+    _command_routes.append((1906, 'cmd_list_activate'))
+    _command_routes.append((1907, 'cmd_go_up'))
 for cid,label in _command_routes:
     em.cmp_r32_imm('rax',cid); em.jcc(0x84,label)
 em.jmp('dispatch')
@@ -1407,13 +1427,18 @@ em.call_label('is_document_dirty'); em.test32('rax'); em.jcc(0x84,'destructive_c
 em.mov_r64_r64('rcx','rbx'); em.lea_rip('rdx',rsyms['unsaved_prompt']); em.lea_rip('r8',rsyms['err_title']); em.mov_r32_imm('r9',0x33); em.call_iat('MessageBoxW')
 em.cmp_r32_imm('rax',6); em.jcc(0x84,'cmd_save')       # IDYES: save then continue
 em.cmp_r32_imm('rax',7); em.jcc(0x84,'destructive_continue') # IDNO: discard
-em.label('destructive_cancel'); em.mov_ripmem_imm32(bsyms['pending_destructive_action'],0); em.mov_ripmem_imm32(bsyms['save_target_is_temp'],0); em.jmp('msg_loop')
+em.label('destructive_cancel'); em.mov_ripmem_imm32(bsyms['pending_destructive_action'],0); em.mov_ripmem_imm32(bsyms['save_target_is_temp'],0); em.mov_ripmem_imm32(bsyms['open_bypass_picker'],0); em.jmp('msg_loop')
 em.label('destructive_continue')
 em.mov_r32_ripmem('r10',bsyms['pending_destructive_action']); em.mov_ripmem_imm32(bsyms['pending_destructive_action'],0)
 em.cmp_r32_imm('r10',1); em.jcc(0x84,'cmd_new_commit')
-em.cmp_r32_imm('r10',2); em.jcc(0x84,'cmd_open_dialog')
+em.cmp_r32_imm('r10',2); em.jcc(0x84,'destructive_open')
 em.cmp_r32_imm('r10',3); em.jcc(0x84,'destructive_close')
 em.jmp('msg_loop')
+# V8.6 切片 3：从文件列表发起并且已确认的 Open 跳过文件选择器，直接用列表里
+# 已经定好的 temp_path 走 cmd_open_selected（同一套读取/解码/提交路径）。
+em.label('destructive_open')
+em.mov_r32_ripmem('rax',bsyms['open_bypass_picker']); em.mov_ripmem_imm32(bsyms['open_bypass_picker'],0); em.test32('rax'); em.jcc(0x84,'cmd_open_dialog')
+em.jmp('cmd_open_selected')
 em.label('destructive_close'); em.mov_r64_r64('rcx','rbx'); em.call_iat('DestroyWindow'); em.jmp('msg_loop')
 
 # Edit commands
@@ -2747,7 +2772,78 @@ em.emit(0x48,0x83,0xEC,0x28)
 em.mov_r32_ripmem('rax',bsyms['panel_mode']); em.test32('rax'); em.jcc(0x84,'rpl_outline')
 em.call_label('rebuild_file_list'); em.jmp('rpl_ret')
 em.label('rpl_outline'); em.call_label('update_preview')
-em.label('rpl_ret'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
+em.label('rpl_ret'); em.call_label('update_status'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
+
+# ---------------- V8.6 切片 3：目录导航与从列表打开 ----------------
+# rcx = 基路径, rdx = 条目名 -> rax = ws_path_buf 中的拼接结果。
+# 分隔符只在缺失时补一个，空基路径不补。
+em.label('ws_join_path')
+em.emit(0x41,0x54); em.emit(0x41,0x55); em.emit(0x48,0x83,0xEC,0x28)
+em.mov_r64_r64('r12','rcx'); em.mov_r64_r64('r13','rdx')
+em.lea_rip('rcx',bsyms['ws_path_buf']); em.mov_r64_r64('rdx','r12'); em.call_iat('lstrcpyW')
+em.lea_rip('rcx',bsyms['ws_path_buf']); em.call_iat('lstrlenW'); em.mov_r32_r32('r11','rax')
+em.test32('r11'); em.jcc(0x84,'wjp_copy')
+em.lea_rip('rcx',bsyms['ws_path_buf'])
+em.mov_r32_r32('rax','r11'); em.sub_r32_imm8('rax',1)
+em.movzx_r32_word_index2('r10','rcx','rax'); em.cmp_r32_imm('r10',0x5C); em.jcc(0x84,'wjp_copy')
+em.mov_word_index2_imm16('rcx','r11',0x5C); em.add_r32_imm8('r11',1); em.mov_word_index2_zero('rcx','r11')
+em.label('wjp_copy')
+em.lea_rip('rcx',bsyms['ws_path_buf']); em.mov_r32_r32('rdx','r11'); em.add_r32_r32('rdx','rdx'); em.add_r64_r64('rcx','rdx')
+em.mov_r64_r64('rdx','r13'); em.call_iat('lstrcpyW')
+em.lea_rip('rax',bsyms['ws_path_buf'])
+em.add_r64_imm8('rsp',0x28); em.emit(0x41,0x5D); em.emit(0x41,0x5C); em.emit(0xC3)
+
+# 返回上级：截断 ws_current_path 的最后一段后重新枚举。"C:\" 形式保留分隔符；
+# 没有任何分隔符（相对路径）时不动作。
+em.label('ws_go_up')
+em.emit(0x48,0x83,0xEC,0x28)
+em.mov_r32_ripmem('rax',bsyms['panel_mode']); em.test32('rax'); em.jcc(0x84,'wgu_ret')
+em.lea_rip('rcx',bsyms['ws_path_buf']); em.lea_rip('rdx',bsyms['ws_current_path']); em.call_iat('lstrcpyW')
+em.lea_rip('rcx',bsyms['ws_path_buf']); em.call_iat('lstrlenW'); em.mov_r32_r32('r10','rax')
+em.test32('r10'); em.jcc(0x84,'wgu_ret')
+em.mov_r32_r32('r11','r10'); em.sub_r32_imm8('r11',1)
+em.lea_rip('rcx',bsyms['ws_path_buf'])
+em.label('wgu_scan')
+em.movzx_r32_word_index2('rax','rcx','r11'); em.cmp_r32_imm('rax',0x5C); em.jcc(0x84,'wgu_found')
+em.test32('r11'); em.jcc(0x84,'wgu_ret')
+em.sub_r32_imm8('r11',1); em.jmp('wgu_scan')
+em.label('wgu_found')
+em.cmp_r32_imm('r11',2); em.jcc(0x85,'wgu_cut')
+em.lea_rip('rcx',bsyms['ws_path_buf']); em.add_r64_imm8('rcx',2); em.movzx_eax_word_ptr('rcx')
+em.cmp_r32_imm('rax',0x3A); em.jcc(0x85,'wgu_cut'); em.add_r32_imm8('r11',1)
+em.label('wgu_cut')
+em.lea_rip('rcx',bsyms['ws_path_buf']); em.mov_word_index2_zero('rcx','r11')
+em.lea_rip('rcx',bsyms['ws_path_buf']); em.call_label('workspace_set_root'); em.call_label('update_status')
+em.label('wgu_ret'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
+
+# 双击（或在列表上回车）：目录进入，文件走现有 Open 事务——只设置临时路径与
+# pending action，让 destructive_request 复用未保存保护与 cmd_open_selected 的
+# 读取/解码/提交路径，不新增第二条打开逻辑。
+em.label('ws_open_or_enter')
+em.emit(0x41,0x54); em.emit(0x41,0x55); em.emit(0x41,0x56); em.emit(0x41,0x57); em.emit(0x48,0x83,0xEC,0x28)
+em.mov_r32_ripmem('rax',bsyms['panel_mode']); em.test32('rax'); em.jcc(0x84,'woe_ret')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.test64('rcx'); em.jcc(0x84,'woe_ret')
+em.mov_r32_imm('rdx',0x0188); em.xor32('r8'); em.xor32('r9'); em.call_iat('SendMessageW')
+em.cmp_r32_imm('rax',0xFFFFFFFF); em.jcc(0x84,'woe_ret')
+em.mov_r32_r32('r12','rax')
+em.mov_r64_ripmem('r13',bsyms['ws_entries']); em.test64('r13'); em.jcc(0x84,'woe_ret')
+em.mov_r32_ripmem('r14',bsyms['ws_entry_count']); em.cmp_r32_r32('r12','r14'); em.jcc(0x83,'woe_ret')
+em.mov_r32_r32('rax','r12'); em.mov_r32_r32('rcx','r12')
+em.shl_r32_imm8('rcx',9); em.shl_r32_imm8('rax',5); em.add_r32_r32('rax','rcx')
+em.mov_r64_r64('r15','r13'); em.add_r64_r64('r15','rax')
+em.lea_rip('rcx',bsyms['ws_current_path']); em.mov_r64_r64('rdx','r15'); em.call_label('ws_join_path')
+em.mov_r32_mreg('r10','r15',WS_OFF_KIND); em.test32('r10'); em.jcc(0x84,'woe_file')
+em.mov_r64_r64('rcx','rax'); em.call_label('workspace_set_root'); em.call_label('update_status'); em.jmp('woe_ret')
+em.label('woe_file')
+em.lea_rip('rcx',bsyms['temp_path']); em.mov_r64_r64('rdx','rax'); em.call_iat('lstrcpyW')
+em.mov_ripmem_imm32(bsyms['open_bypass_picker'],1)
+em.mov_ripmem_imm32(bsyms['pending_destructive_action'],2)
+# destructive_request 的每条出口都以 jmp msg_loop 结束，永不返回，所以这里
+# 必须同时丢弃调用者的返回地址；否则栈会永久错位 8 字节并破坏对齐。
+em.add_r64_imm8('rsp',0x28); em.emit(0x41,0x5F); em.emit(0x41,0x5E); em.emit(0x41,0x5D); em.emit(0x41,0x5C); em.add_r64_imm8('rsp',8)
+em.jmp('destructive_request')
+em.label('woe_ret')
+em.add_r64_imm8('rsp',0x28); em.emit(0x41,0x5F); em.emit(0x41,0x5E); em.emit(0x41,0x5D); em.emit(0x41,0x5C); em.emit(0xC3)
 
 # Build-time-only probe (command 1902): enumerate whatever temp_path points at
 # and leave the entries in BSS for the Windows harness to read back.
@@ -2763,6 +2859,9 @@ if OPEN_TEST_BUILD:
     em.mov_r64_ripmem('rcx',bsyms['hwnd_outline']); em.test64('rcx'); em.jcc(0x84,'cdr_store')
     em.mov_r32_imm('rdx',0x0189); em.mov_r32_ripmem('r8',bsyms['list_probe_index']); em.lea_rip('r9',bsyms['list_probe_text']); em.call_iat('SendMessageW')
     em.label('cdr_store'); em.mov_ripmem_r32(bsyms['list_probe_result'],'rax'); em.jmp('msg_loop')
+    # 切片 3：非交互地驱动"激活选中项"与"返回上级"。
+    em.label('cmd_list_activate'); em.call_label('ws_open_or_enter'); em.jmp('msg_loop')
+    em.label('cmd_go_up'); em.call_label('ws_go_up'); em.jmp('msg_loop')
 
 
 # ---------------- V8.4.25 统一扫描：大纲条目推送例程 ----------------
@@ -3371,6 +3470,11 @@ em.mov_r32_ripmem('rax',bsyms['encoding_state']); em.cmp_r32_imm('rax',1); em.jc
 em.label('enc_utf16'); em.lea_rip('r9',rsyms['status_utf16']); em.jmp('enc_send')
 em.label('enc_utf8_bom'); em.lea_rip('r9',rsyms['status_utf8_bom'])
 em.label('enc_send'); em.mov_r64_ripmem('rcx',bsyms['hwnd_status']); em.mov_r32_imm('rdx',0x040B); em.mov_r32_imm('r8',0x1105); em.call_iat('SendMessageW')
+# V8.6 切片 3：第七段显示当前工作区目录（只有文件面板有意义）。
+em.mov_r32_ripmem('rax',bsyms['panel_mode']); em.test32('rax'); em.jcc(0x84,'status_path_clear')
+em.lea_rip('r9',bsyms['ws_current_path']); em.jmp('status_path_send')
+em.label('status_path_clear'); em.lea_rip('r9',rsyms['empty'])
+em.label('status_path_send'); em.mov_r64_ripmem('rcx',bsyms['hwnd_status']); em.mov_r32_imm('rdx',0x040B); em.mov_r32_imm('r8',0x1106); em.call_iat('SendMessageW')
 em.label('status_ret'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
 
 em.label('exit')
@@ -3485,8 +3589,11 @@ em.mov_r32_ripmem('r10',bsyms['suppress_edit_change']); em.test32('r10'); em.jcc
 em.call_label('advance_document_revision'); em.mov_r32_imm('rdx',0x8004); em.xor32('r8'); em.xor32('r9'); em.call_iat('PostMessageW'); em.jmp('wp_child_return')
 # Outline selection notification.
 em.label('wp_cmd_outline_check'); em.mov_r64_ripmem('rax',bsyms['hwnd_outline']); em.cmp_r64_r64('r9','rax'); em.jcc(0x85,'wp_cmd_other_child')
-em.mov_r32_r32('r10','r8'); em.shr_r32_imm8('r10',16); em.cmp_r32_imm('r10',1); em.jcc(0x85,'wp_child_return')
+em.mov_r32_r32('r10','r8'); em.shr_r32_imm8('r10',16); em.cmp_r32_imm('r10',2); em.jcc(0x84,'wp_cmd_outline_activate')
+em.cmp_r32_imm('r10',1); em.jcc(0x85,'wp_child_return')
 em.mov_r32_imm('rdx',0x8005); em.xor32('r8'); em.xor32('r9'); em.call_iat('PostMessageW'); em.jmp('wp_child_return')
+# V8.6 切片 3：LBN_DBLCLK 走独立的激活事件，与单选跳转区分开。
+em.label('wp_cmd_outline_activate'); em.mov_r32_imm('rdx',0x8007); em.xor32('r8'); em.xor32('r9'); em.call_iat('PostMessageW'); em.jmp('wp_child_return')
 # Ignore notifications from preview/status and other child controls; menu WM_COMMAND has lParam == 0.
 em.label('wp_cmd_other_child'); em.test64('r9'); em.jcc(0x85,'wp_child_return')
 # Menu/accelerator command. Preserve original wParam in r8 for the private message.
@@ -4724,6 +4831,58 @@ if OPEN_TEST_BUILD:
     assert bss_sizes['list_probe_text'] == 1024 and \
            bss_sizes['list_probe_result'] == 4, \
         'the row-export probe owns its own buffer, away from owner-draw scratch'
+
+# (U) V8.6 切片 3：目录导航与从列表打开的所有权断言。要拦截的错误模式：
+#     绕过未保存保护的第二条打开路径、双击与单选混淆、Backspace 抢走编辑区
+#     的删除键、状态栏丢失路径段。
+for _nav_routine in ('ws_join_path', 'ws_go_up', 'ws_open_or_enter',
+                     'list_activate_event', 'keydown_event', 'destructive_open'):
+    assert _nav_routine in em.labels, '%s must be emitted' % _nav_routine
+_nav_open_src = _production_source[
+    _production_source.index("em.label('ws_open_or_enter')"):
+    _production_source.index("em.label('woe_ret')")]
+assert "mov_ripmem_imm32(bsyms['pending_destructive_action'],2)" in _nav_open_src and \
+       "em.jmp('destructive_request')" in _nav_open_src and \
+       "call_label('workspace_set_root')" in _nav_open_src, \
+    'the list must enter directories and route files through the shared Open transaction'
+_nav_dispatch_src = _production_source[
+    _production_source.index("em.label('destructive_open')"):
+    _production_source.index("em.label('destructive_close')")]
+assert "open_bypass_picker" in _nav_dispatch_src and \
+       "em.jmp('cmd_open_selected')" in _nav_dispatch_src and \
+       "em.jcc(0x84,'cmd_open_dialog')" in _nav_dispatch_src, \
+    'only a confirmed list Open may skip the picker, and the default stays the picker'
+assert "mov_ripmem_imm32(bsyms['open_bypass_picker'],0)" in _production_source, \
+    'the bypass flag must be cleared when it is consumed or cancelled'
+_nav_list_src = _production_source[
+    _production_source.index("em.label('wp_cmd_outline_check')"):
+    _production_source.index("em.label('wp_cmd_other_child')")]
+assert "cmp_r32_imm('r10',2)" in _nav_list_src and "0x8007" in _nav_list_src, \
+    'LBN_DBLCLK must be routed to the activation event, not the selection event'
+_nav_pump_src = _production_source[
+    _production_source.index("em.label('msg_loop')"):
+    _production_source.index("em.label('mousemove_event')")]
+assert "0x8007" in _nav_pump_src and "0x0100" in _nav_pump_src, \
+    'the pump must dispatch the activation event and WM_KEYDOWN'
+_nav_key_src = _production_source[
+    _production_source.index("em.label('keydown_event')"):
+    _production_source.index("em.label('mousewheel_event')")]
+assert "call_iat('GetFocus')" in _nav_key_src and \
+       "bsyms['hwnd_outline']" in _nav_key_src and \
+       "em.jcc(0x85,'dispatch')" in _nav_key_src, \
+    'Backspace must only go up while the file list owns the focus'
+_nav_status_src = _production_source[
+    _production_source.index("em.label('update_status')"):
+    _production_source.index("em.label('status_ret')")]
+assert "0x1106" in _nav_status_src and "bsyms['ws_current_path']" in _nav_status_src, \
+    'the status bar must show the workspace directory'
+assert "em.mov_r32_imm('r8',7); em.lea_rip('r9',rsyms['status_parts'])" in _production_source, \
+    'the status bar must publish seven parts'
+for _nav_symbol in ('cmd_list_activate', 'cmd_go_up'):
+    assert (_nav_symbol in em.labels) == OPEN_TEST_BUILD, \
+        'the navigation probes must exist only in the explicit test build'
+assert ((1906, 'cmd_list_activate') in _command_routes) == OPEN_TEST_BUILD and \
+       ((1907, 'cmd_go_up') in _command_routes) == OPEN_TEST_BUILD
 
 _output_channel = 'test' if INJECTED_BUILD else _BUILD_CHANNEL
 _output_name = (('pemark_x64_v8_6_outline_alloc_%s.exe' % ARENA_ALLOC_INJECTION_MODE)
