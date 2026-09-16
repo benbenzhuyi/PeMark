@@ -2028,6 +2028,11 @@ em.mov_rax_mr12(0); em.mov_r64_ripmem('r10',bsyms['hwnd_preview']); em.cmp_r64_r
 em.mov_eax_mr12(8); em.cmp_r32_imm('rax',0x0115); em.jcc(0x84,'dispatch_theme_schedule')  # WM_VSCROLL（含拖动滑块）
 em.cmp_r32_imm('rax',0x020A); em.jcc(0x84,'dispatch_theme_schedule')                       # WM_MOUSEWHEEL
 em.cmp_r32_imm('rax',0x0202); em.jcc(0x84,'dispatch_theme_schedule')                       # WM_LBUTTONUP（拖动/选择结束）
+# V8.6.1：RichEdit 自己的滑块属于非客户区——拖动期间只发 WM_MOUSEMOVE、
+# 松手发 WM_NCLBUTTONUP，既没有 WM_VSCROLL 也没有 WM_LBUTTONUP。少了这两个
+# 触发点，拖完滑块后视图就停在未渲染的源码上，必须再蹭一下鼠标才恢复。
+em.cmp_r32_imm('rax',0x0200); em.jcc(0x84,'dispatch_theme_schedule')                       # WM_MOUSEMOVE（拖动中一直重排定时器）
+em.cmp_r32_imm('rax',0x00A2); em.jcc(0x84,'dispatch_theme_schedule')                       # WM_NCLBUTTONUP（非客户区拖动结束）
 # Lazy Preview styling must also follow keyboard viewport movement (arrows, PgUp/
 # PgDn, Home/End). Scheduling on any Preview WM_KEYDOWN is cheap and avoids stale
 # formatting after keyboard-only navigation.
