@@ -7,15 +7,15 @@
 | `.text` | `0x1000` | 61440 | 61440 | `0x60000020` |
 | `.rdata` | `0x10000` | 12288 | 12288 | `0x40000040` |
 | `.idata` | `0x13000` | 8192 | 8192 | `0xC0000040` |
-| `.bss` | `0x15000` | 90112 | 0 | `0xC0000080` |
-| `.reloc` | `0x2B000` | 1024 | 1024 | `0x42000040` |
-| `.pdata` | `0x2C000` | 1024 | 1024 | `0x40000040` |
+| `.bss` | `0x15000` | 94208 | 0 | `0xC0000080` |
+| `.reloc` | `0x2C000` | 1024 | 1024 | `0x42000040` |
+| `.pdata` | `0x2D000` | 1536 | 1536 | `0x40000040` |
 
-text 实际代码 54460 字节（预算 61440），rdata 5980 字节，idata 4826 字节，BSS 虚拟 90112 字节。
+text 实际代码 56003 字节（预算 61440），rdata 6068 字节，idata 4862 字节，BSS 虚拟 94208 字节。
 
-本次构建：text 实际 54460 字节（余量 6980 字节）；BSS 符号 304 个，最终虚拟 BSS 90112 字节。
+本次构建：text 实际 56003 字节（余量 5437 字节）；BSS 符号 313 个，最终虚拟 BSS 94208 字节。
 
-SHA-256：`6637c80f23b36825a6c1217b9b7c08e3b97bde2b09edf4ccad4ac355a1bb69b1`
+SHA-256：`01b81b9c847a20c135b7b89a8db2c24442883e70003006662b12c8500afaf2f3`
 
 | Symbol | RVA | Size |
 |---|---:|---:|
@@ -286,40 +286,49 @@ SHA-256：`6637c80f23b36825a6c1217b9b7c08e3b97bde2b09edf4ccad4ac355a1bb69b1`
 | `fo_ext_ptr` | `0x29A78` | 8 |
 | `fo_hglobal` | `0x29A80` | 8 |
 | `fo_delete_result` | `0x29A88` | 4 |
-| `shfileop` | `0x29A90` | 64 |
-| `fo_from_buf` | `0x29AD0` | 1032 |
-| `panel_mode` | `0x29ED8` | 4 |
-| `open_bypass_picker` | `0x29EDC` | 4 |
-| `ws_path_buf` | `0x29EE0` | 1024 |
-| `browseinfo` | `0x2A2E0` | 64 |
-| `fod_ptr` | `0x2A320` | 8 |
-| `fod_options` | `0x2A328` | 4 |
-| `fod_chosen` | `0x2A32C` | 4 |
-| `shell_item` | `0x2A330` | 8 |
-| `item_path` | `0x2A338` | 8 |
-| `fod_probe_coinit` | `0x2A340` | 4 |
-| `fod_probe_hresult` | `0x2A344` | 4 |
-| `fod_probe_options_hresult` | `0x2A348` | 4 |
-| `fod_probe_vtbl` | `0x2A350` | 8 |
-| `fod_probe_entered` | `0x2A358` | 4 |
-| `widebuf` | `0x2A360` | 8 |
-| `wide_capacity` | `0x2A368` | 4 |
-| `bytebuf` | `0x2A370` | 8 |
-| `byte_capacity` | `0x2A378` | 4 |
-| `document_revision` | `0x2A380` | 8 |
-| `saved_revision` | `0x2A388` | 8 |
-| `pending_destructive_action` | `0x2A390` | 4 |
-| `save_target_is_temp` | `0x2A394` | 4 |
-| `inject_write_call_count` | `0x2A398` | 4 |
-| `inject_flush_call_count` | `0x2A39C` | 4 |
-| `inject_replace_call_count` | `0x2A3A0` | 4 |
-| `save_stage_path` | `0x2A3B0` | 1024 |
-| `inject_create_call_count` | `0x2A7B0` | 4 |
-| `inject_close_call_count` | `0x2A7B4` | 4 |
-| `eol_state` | `0x2A7B8` | 4 |
-| `candidate_encoding_state` | `0x2A7BC` | 4 |
-| `candidate_eol_state` | `0x2A7C0` | 4 |
-| `outline_srcpos` | `0x2A7C8` | 8 |
-| `outline_renderpos` | `0x2A7D0` | 8 |
-| `outline_level` | `0x2A7D8` | 8 |
-| `outline_capacity` | `0x2A7E0` | 4 |
+| `files_btn_collapse_rect` | `0x29A8C` | 16 |
+| `files_btn_refresh_rect` | `0x29A9C` | 16 |
+| `files_title_rect` | `0x29AAC` | 16 |
+| `files_path_rect` | `0x29ABC` | 16 |
+| `files_btn_hot` | `0x29ACC` | 4 |
+| `files_btn_hot_next` | `0x29AD0` | 4 |
+| `fo_sel_path_buf` | `0x29AD4` | 1024 |
+| `docs_path_buf` | `0x29ED4` | 1024 |
+| `init_done` | `0x2A2D4` | 4 |
+| `shfileop` | `0x2A2D8` | 64 |
+| `fo_from_buf` | `0x2A318` | 1032 |
+| `panel_mode` | `0x2A720` | 4 |
+| `open_bypass_picker` | `0x2A724` | 4 |
+| `ws_path_buf` | `0x2A730` | 1024 |
+| `browseinfo` | `0x2AB30` | 64 |
+| `fod_ptr` | `0x2AB70` | 8 |
+| `fod_options` | `0x2AB78` | 4 |
+| `fod_chosen` | `0x2AB7C` | 4 |
+| `shell_item` | `0x2AB80` | 8 |
+| `item_path` | `0x2AB88` | 8 |
+| `fod_probe_coinit` | `0x2AB90` | 4 |
+| `fod_probe_hresult` | `0x2AB94` | 4 |
+| `fod_probe_options_hresult` | `0x2AB98` | 4 |
+| `fod_probe_vtbl` | `0x2ABA0` | 8 |
+| `fod_probe_entered` | `0x2ABA8` | 4 |
+| `widebuf` | `0x2ABB0` | 8 |
+| `wide_capacity` | `0x2ABB8` | 4 |
+| `bytebuf` | `0x2ABC0` | 8 |
+| `byte_capacity` | `0x2ABC8` | 4 |
+| `document_revision` | `0x2ABD0` | 8 |
+| `saved_revision` | `0x2ABD8` | 8 |
+| `pending_destructive_action` | `0x2ABE0` | 4 |
+| `save_target_is_temp` | `0x2ABE4` | 4 |
+| `inject_write_call_count` | `0x2ABE8` | 4 |
+| `inject_flush_call_count` | `0x2ABEC` | 4 |
+| `inject_replace_call_count` | `0x2ABF0` | 4 |
+| `save_stage_path` | `0x2AC00` | 1024 |
+| `inject_create_call_count` | `0x2B000` | 4 |
+| `inject_close_call_count` | `0x2B004` | 4 |
+| `eol_state` | `0x2B008` | 4 |
+| `candidate_encoding_state` | `0x2B00C` | 4 |
+| `candidate_eol_state` | `0x2B010` | 4 |
+| `outline_srcpos` | `0x2B018` | 8 |
+| `outline_renderpos` | `0x2B020` | 8 |
+| `outline_level` | `0x2B028` | 8 |
+| `outline_capacity` | `0x2B030` | 4 |

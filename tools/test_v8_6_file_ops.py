@@ -129,8 +129,9 @@ def main():
             write_wstr(app, "ws_root_path", root)
             write_wstr(app, "ws_current_path", root)
             app.post_command(CMD_TREE_REBUILD)
-            wait_for(lambda: u32.SendMessageW(list_hwnd, LB_GETCOUNT, 0, 0) >= 3,
-                     3, "tree list was not populated")
+            wait_for(lambda: {"alpha.md", "beta.md"} <=
+                     {p.rsplit("\\", 1)[-1] for p in tree_paths(app)}, 5,
+                     "the temporary workspace did not replace the default one")
 
             # 1. Copy Path writes the absolute path as CF_UNICODETEXT.
             select_leaf(app, list_hwnd, "alpha.md")

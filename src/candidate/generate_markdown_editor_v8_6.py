@@ -250,6 +250,11 @@ wstr('fo_new_folder_base','New Folder')
 wstr('fo_new_ext','.md')
 wstr('fmt_fo_plain','%s%s')
 wstr('fmt_fo_numbered','%s (%d)%s')
+# V8.6 切片 4：文件标题栏的根路径缩略与两个按钮。
+wstr('header_collapse','\u00ab')
+wstr('header_refresh','\u21bb')
+wstr('m_refresh_tree','&Refresh Tree')
+wstr('m_collapse_all','Collapse All')
 
 # In-memory accelerator table (ACCEL is 6 bytes: BYTE, pad, WORD, WORD).
 FVIRTKEY, FSHIFT, FCONTROL, FALT = 0x01, 0x04, 0x08, 0x10
@@ -622,6 +627,9 @@ FO_CMD_NEW_FOLDER = 9002
 FO_CMD_RENAME = 9003
 FO_CMD_DELETE = 9004
 FO_CMD_COPY_PATH = 9005
+# 切片 4：文件标题栏按钮与 File 菜单共用的命令号。
+CMD_REFRESH_TREE = 1313
+CMD_COLLAPSE_ALL = 1314
 bss_alloc('ws_root_path', 512*2, 2)
 bss_alloc('ws_current_path', 512*2, 2)
 bss_alloc('ws_pattern', (512+4)*2, 2)
@@ -668,6 +676,16 @@ bss_alloc('fo_base_ptr', 8, 8)
 bss_alloc('fo_ext_ptr', 8, 8)
 bss_alloc('fo_hglobal', 8, 8)
 bss_alloc('fo_delete_result', 4, 4)
+# V8.6 切片 4：文件标题栏的根路径缩略与"全部折叠/刷新"按钮。
+bss_alloc('files_btn_collapse_rect', 16, 4)
+bss_alloc('files_btn_refresh_rect', 16, 4)
+bss_alloc('files_title_rect', 16, 4)
+bss_alloc('files_path_rect', 16, 4)
+bss_alloc('files_btn_hot', 4, 4)
+bss_alloc('files_btn_hot_next', 4, 4)
+bss_alloc('fo_sel_path_buf', 512*2, 2)
+bss_alloc('docs_path_buf', 512*2, 2)
+bss_alloc('init_done', 4, 4)
 # SHFILEOPSTRUCTW：hwnd(8) + wFunc(4+4) + pFrom(8) + pTo(8) + fFlags(2+6) +
 # fAnyOperationsAborted(4+4) + hNameMappings(8) + lpszProgressTitle(8) = 64。
 bss_alloc('shfileop', 64, 8)
@@ -767,7 +785,8 @@ imports = {
         'OpenClipboard','EmptyClipboard','SetClipboardData','CloseClipboard'
     ],
     'COMDLG32.dll': ['GetOpenFileNameW','GetSaveFileNameW','FindTextW','ReplaceTextW'],
-    'SHELL32.dll': ['SHBrowseForFolderW','SHGetPathFromIDListW','ILFree','SHFileOperationW'],
+    'SHELL32.dll': ['SHBrowseForFolderW','SHGetPathFromIDListW','ILFree','SHFileOperationW',
+                    'SHGetFolderPathW'],
     'OLE32.dll': ['CoInitializeEx','CoCreateInstance','CoTaskMemFree'],
     'SHLWAPI.dll': ['StrStrW','StrStrIW'],
     'COMCTL32.dll': ['InitCommonControlsEx'],
@@ -1130,12 +1149,24 @@ em.mov_ripmem_r64(bsyms['hmenu_file'],'r12')
 
 def append_imm(menu, flags, itemid, text_sym):
     em.mov_r64_r64('rcx',menu); em.mov_r32_imm('rdx',flags); em.mov_r32_imm('r8',itemid); em.lea_rip('r9',rsyms[text_sym]); em.call_iat('AppendMenuW')
+
+# 切片 4：文件标题栏按钮的命中（r10 = 客户 x，r11 = 标题栏内 y）。
+# 命中就 PostMessage 该按钮的命令号，未命中落到 miss_label 继续原有判定。
+def _em_hit_files_btn(sym, cmd, miss_label):
+    em.mov_r32_ripmem('rax',bsyms[sym]); em.cmp_r32_r32('r10','rax'); em.jcc(0x8C,miss_label)
+    em.mov_r32_ripmem('rax',bsyms[sym]+8); em.cmp_r32_r32('r10','rax'); em.jcc(0x8D,miss_label)
+    em.mov_r32_ripmem('rax',bsyms[sym]+4); em.cmp_r32_r32('r11','rax'); em.jcc(0x8C,miss_label)
+    em.mov_r32_ripmem('rax',bsyms[sym]+12); em.cmp_r32_r32('r11','rax'); em.jcc(0x8D,miss_label)
+    em.mov_r64_ripmem('rcx',bsyms['hwnd_main']); em.mov_r32_imm('rdx',0x8001)
+    em.mov_r32_imm('r8',cmd); em.xor32('r9'); em.call_iat('PostMessageW'); em.jmp('msg_loop')
 def append_sep(menu):
     em.mov_r64_r64('rcx',menu); em.mov_r32_imm('rdx',0x800); em.xor32('r8'); em.xor32('r9'); em.call_iat('AppendMenuW')
 def append_popup(main, sub, text_sym):
     em.mov_r64_r64('rcx',main); em.mov_r32_imm('rdx',0x10); em.mov_r64_r64('r8',sub); em.lea_rip('r9',rsyms[text_sym]); em.call_iat('AppendMenuW')
 
-append_imm('r12',0,1001,'m_new'); append_imm('r12',0,1002,'m_open'); append_imm('r12',0,1006,'m_openfolder'); append_sep('r12')
+append_imm('r12',0,1001,'m_new'); append_imm('r12',0,1002,'m_open'); append_imm('r12',0,1006,'m_openfolder')
+# 切片 4：文件面板的两个标题栏按钮同样出现在 File 菜单里，便于无鼠标操作。
+append_imm('r12',0,1313,'m_refresh_tree'); append_imm('r12',0,1314,'m_collapse_all'); append_sep('r12')
 append_imm('r12',0,1003,'m_save'); append_imm('r12',0,1004,'m_saveas'); append_sep('r12'); append_imm('r12',0,1007,'m_close'); append_sep('r12'); append_imm('r12',0,1005,'m_exit')
 append_popup('rdi','r12','menu_file')
 
@@ -1305,7 +1336,11 @@ em.mov_mrsp_reg64(0x40,'rbx'); em.mov_mrsp_imm32(0x48,18,qword=True); em.mov_mrs
 em.call_iat('CreateWindowExW'); em.mov_ripmem_r64(bsyms['hwnd_panel_divider'],'rax'); em.test64('rax'); em.jcc(0x84,'exit')
 em.mov_ripmem_imm32(bsyms['files_state'],1); em.mov_ripmem_imm32(bsyms['outline_state'],1)
 em.mov_ripmem_imm32(bsyms['panel_split'],500)
+em.call_label('load_default_workspace')
 em.call_label('apply_theme'); em.call_label('update_preview'); em.call_label('resize_children'); em.call_label('sync_outline_scrollbar'); em.call_label('sync_panel_menu'); em.call_label('update_status')
+# 初始化完成的显式标志：外部测试宿主在写 BSS 前必须等它，否则会与
+# 启动期的默认工作区加载（shell 查询 + 目录枚举）竞争。
+em.mov_ripmem_imm32(bsyms['init_done'],1)
 
 # Message pump
 em.label('msg_loop')
@@ -1353,7 +1388,7 @@ em.call_label('outline_scroll_drag_move'); em.jmp('msg_loop')
 em.label('mousemove_not_scroll_drag')
 em.mov_r32_ripmem('rax',bsyms['splitter_drag']); em.test32('rax'); em.jcc(0x84,'mousemove_hover_only')
 em.call_label('splitter_drag_move'); em.jmp('msg_loop')
-em.label('mousemove_hover_only'); em.call_label('update_divider_hover'); em.call_label('update_files_hover'); em.call_label('update_outline_hover'); em.jmp('dispatch')
+em.label('mousemove_hover_only'); em.call_label('update_divider_hover'); em.call_label('update_files_header_hover'); em.call_label('update_files_hover'); em.call_label('update_outline_hover'); em.jmp('dispatch')
 
 em.label('lbuttondown_event')
 # Convert current pointer to main-client coordinates once.  The permanent scrollbar
@@ -1389,7 +1424,14 @@ em.mov_r64_ripmem('rcx',bsyms['hwnd_main']); em.call_iat('SetCapture'); em.jmp('
 em.label('lbd_frame_outline_header')
 em.mov_r32_ripmem('rax',bsyms['divider_y']); em.add_r32_imm8('rax',32); em.cmp_r32_r32('r11','rax'); em.jcc(0x8D,'lbd_after_frame')
 em.mov_ripmem_imm32(bsyms['panel_click_now'],1); em.jmp('lbd_frame_header')
-em.label('lbd_frame_files_header'); em.mov_ripmem_imm32(bsyms['panel_click_now'],0)
+# 切片 4：标题栏右端的两个按钮优先于三态循环——点按钮不得改变面板状态。
+em.label('lbd_frame_files_header')
+em.mov_r32_ripmem('r10',bsyms['cursor_pt'])
+em.mov_r32_ripmem('r11',bsyms['cursor_pt']+4); em.mov_r32_ripmem('rax',bsyms['content_y']); em.sub_r32_r32('r11','rax')
+_em_hit_files_btn('files_btn_collapse_rect', CMD_COLLAPSE_ALL, 'lbd_fh_test_refresh')
+em.label('lbd_fh_test_refresh')
+_em_hit_files_btn('files_btn_refresh_rect', CMD_REFRESH_TREE, 'lbd_fh_plain')
+em.label('lbd_fh_plain'); em.mov_ripmem_imm32(bsyms['panel_click_now'],0)
 em.label('lbd_frame_header')
 # GetMessageTime 是 API 调用，会破坏 volatile 的 R9：目标标题栏必须先落到 BSS，
 # 调用之后再取回，否则会把"点了哪个面板"读成随机值。
@@ -1622,6 +1664,7 @@ _command_routes = [(1001,'cmd_new'),(1002,'cmd_open'),(1003,'cmd_save'),(1004,'c
                   (1301,'cmd_zoomin'),(1302,'cmd_zoomout'),(1303,'cmd_zoomreset'),(1304,'cmd_wrap'),(1305,'cmd_status'),(1306,'cmd_preview'),(1307,'cmd_outline'),(1310,'cmd_light'),(1311,'cmd_dark'),(1312,'cmd_theme_toggle'),
                   (1006,'cmd_open_folder'),(1308,'cmd_panel_files'),(1309,'cmd_panel_outline'),
                   (1910,'cmd_tree_rebuild'),
+                  (1313,'cmd_refresh_tree'),(1314,'cmd_collapse_all'),
                   (1007,'cmd_close_file'),
                   (1401,'cmd_md_h1'),(1402,'cmd_md_h2'),(1410,'cmd_md_h3'),(1411,'cmd_md_h4'),(1412,'cmd_md_h5'),(1413,'cmd_md_h6'),(1403,'cmd_md_bold'),(1404,'cmd_md_italic'),(1405,'cmd_md_inline'),(1406,'cmd_md_codeblock'),(1407,'cmd_md_quote'),(1408,'cmd_md_bullet'),(1409,'cmd_md_link')]
 if OPEN_TEST_BUILD:
@@ -2472,6 +2515,29 @@ em.label('scroll_visible_store')
 em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
 
 # V8.6.1：4px 面板分界线在悬停或拖动中变强调色，并给出上下调整光标。
+# 切片 4：文件标题栏的两个按钮同样按 hover 变强调色——几何与命中测试共用
+# files_btn_*_rect，状态变化才重绘标题栏。
+em.label('update_files_header_hover')
+em.emit(0x48,0x83,0xEC,0x28)
+em.mov_ripmem_imm32(bsyms['files_btn_hot_next'],0)
+em.mov_r32_ripmem('r10',bsyms['cursor_pt'])
+em.mov_r32_ripmem('r11',bsyms['cursor_pt']+4); em.mov_r32_ripmem('rax',bsyms['content_y']); em.sub_r32_r32('r11','rax')
+em.test32('r11'); em.jcc(0x88,'ufh_apply')
+em.cmp_r32_imm('r11',28); em.jcc(0x8D,'ufh_apply')
+em.mov_r32_ripmem('rax',bsyms['files_btn_collapse_rect']); em.cmp_r32_r32('r10','rax'); em.jcc(0x8C,'ufh_test_refresh')
+em.mov_r32_ripmem('rax',bsyms['files_btn_collapse_rect']+8); em.cmp_r32_r32('r10','rax'); em.jcc(0x8D,'ufh_test_refresh')
+em.mov_ripmem_imm32(bsyms['files_btn_hot_next'],1); em.jmp('ufh_apply')
+em.label('ufh_test_refresh')
+em.mov_r32_ripmem('rax',bsyms['files_btn_refresh_rect']); em.cmp_r32_r32('r10','rax'); em.jcc(0x8C,'ufh_apply')
+em.mov_r32_ripmem('rax',bsyms['files_btn_refresh_rect']+8); em.cmp_r32_r32('r10','rax'); em.jcc(0x8D,'ufh_apply')
+em.mov_ripmem_imm32(bsyms['files_btn_hot_next'],2)
+em.label('ufh_apply')
+em.mov_r32_ripmem('rax',bsyms['files_btn_hot']); em.mov_r32_ripmem('rdx',bsyms['files_btn_hot_next']); em.cmp_r32_r32('rax','rdx'); em.jcc(0x84,'ufh_ret')
+em.mov_ripmem_r32(bsyms['files_btn_hot'],'rdx')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_files_header']); em.test64('rcx'); em.jcc(0x84,'ufh_ret')
+em.xor32('rdx'); em.mov_r32_imm('r8',1); em.call_iat('InvalidateRect')
+em.label('ufh_ret'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
+
 # 悬停命中区与按下命中区共用同一段几何：x ∈ [0, outline_width)、
 # y ∈ [divider_y, divider_y+4)。无变化时不重绘、不换光标。
 em.label('update_divider_hover')
@@ -4225,6 +4291,21 @@ em.mov_r64_ripmem('rcx',bsyms['ws_find_handle']); em.call_iat('FindClose')
 em.label('ws_refresh_ret')
 em.add_r64_imm8('rsp',0x28); em.emit(0x41,0x5F); em.emit(0x41,0x5E); em.emit(0x41,0x5D); em.emit(0x41,0x5C); em.emit(0xC3)
 
+# V8.6 切片 4：启动即加载系统"文档"目录（CSIDL_PERSONAL）。
+# 目录不存在或不可读时保持空工作区，绝不在没有授权根的情况下枚举。
+em.label('load_default_workspace')
+em.emit(0x48,0x83,0xEC,0x28)
+em.mov_r64_ripmem('rcx',bsyms['hwnd_main']); em.mov_r32_imm('rdx',5)
+em.xor32('r8'); em.xor32('r9')
+em.lea_rip('rax',bsyms['docs_path_buf']); em.mov_mrsp_reg64(0x20,'rax')
+em.call_iat('SHGetFolderPathW'); em.test32('rax'); em.jcc(0x85,'ldw_ret')
+em.lea_rip('rcx',bsyms['docs_path_buf']); em.call_iat('GetFileAttributesW')
+em.cmp_r32_imm('rax',0xFFFFFFFF); em.jcc(0x84,'ldw_ret')
+em.and_r32_imm('rax',0x10); em.test32('rax'); em.jcc(0x84,'ldw_ret')
+em.lea_rip('rcx',bsyms['docs_path_buf']); em.call_label('workspace_set_root')
+em.mov_r32_imm('rcx',1); em.call_label('set_panel_mode')
+em.label('ldw_ret'); em.add_r64_imm8('rsp',0x28); em.emit(0xC3)
+
 # rcx = directory path: remember it as the root and the current directory, then
 # enumerate it. No UI involvement yet - slice 1 is model only.
 em.label('workspace_set_root')
@@ -4795,6 +4876,31 @@ em.label('cmd_panel_files'); em.mov_r32_imm('rcx',1); em.call_label('set_panel_m
 em.label('cmd_panel_outline'); em.xor32('rcx'); em.call_label('set_panel_mode'); em.jmp('msg_loop')
 # Build/test probe for the tree projection. It has no menu entry.
 em.label('cmd_tree_rebuild'); em.call_label('rebuild_file_list'); em.jmp('msg_loop')
+
+# V8.6 切片 4：标题栏按钮与 File 菜单共用的两个动作。
+# 刷新 = 重新枚举并重建，选中项按路径找回；全部折叠 = 清空展开集合后同样处理，
+# 于是列表只剩工作区根的第一层子项。
+em.label('file_panel_refresh_keep_selection')
+em.emit(0x41,0x54); em.emit(0x48,0x83,0xEC,0x20)
+em.call_label('fo_selected_row'); em.test64('rax'); em.jcc(0x84,'fprk_no_selection')
+em.lea_rip('rcx',bsyms['fo_sel_path_buf']); em.mov_r64_r64('rdx','rax'); em.call_iat('lstrcpyW')
+em.jmp('fprk_rebuild')
+em.label('fprk_no_selection')
+em.lea_rip('rcx',bsyms['fo_sel_path_buf']); em.mov_word_ptr_reg_zero('rcx')
+em.label('fprk_rebuild')
+em.call_label('rebuild_file_list')
+em.lea_rip('rcx',bsyms['fo_sel_path_buf']); em.movzx_eax_word_ptr('rcx'); em.test32('rax'); em.jcc(0x84,'fprk_ret')
+em.lea_rip('rcx',bsyms['fo_sel_path_buf']); em.call_label('tree_find_row_by_path')
+em.cmp_r32_imm('rax',0xFFFFFFFF); em.jcc(0x84,'fprk_ret')
+em.mov_r32_r32('r12','rax')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.mov_r32_imm('rdx',0x0186); em.mov_r32_r32('r8','r12'); em.xor32('r9'); em.call_iat('SendMessageW')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.mov_r32_imm('rdx',0x0197); em.mov_r32_r32('r8','r12'); em.xor32('r9'); em.call_iat('SendMessageW')
+em.label('fprk_ret'); em.call_label('update_status'); em.add_r64_imm8('rsp',0x20); em.emit(0x41,0x5C); em.emit(0xC3)
+
+em.label('cmd_refresh_tree'); em.call_label('file_panel_refresh_keep_selection'); em.jmp('msg_loop')
+em.label('cmd_collapse_all')
+em.mov_ripmem_imm32(bsyms['tree_expanded_count'],0)
+em.call_label('file_panel_refresh_keep_selection'); em.jmp('msg_loop')
 
 # V8.6.1：兑现一次待定的标题栏单击——三态循环 half(1) → minimized(2) →
 # maximized(0) → half(1)，与 Rabbit 的 (state + 1) % 3 一致。目标标题栏取自
@@ -5763,7 +5869,80 @@ def emit_panel_header(title_sym, tag):
     em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r64_mreg('rcx','r9',32); em.lea_rip('rdx',rsyms[title_sym]); em.mov_r32_imm('r8',0xFFFFFFFF); em.lea_rip('r9',bsyms['draw_rect']); em.mov_mrsp_imm32(0x20,0x0824); em.call_iat('DrawTextW')
     em.mov_r32_imm('rax',1); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
 
-em.label('wp_draw_files_header'); emit_panel_header('panel_files', 'files')
+# V8.6 切片 4：文件标题栏比大纲标题栏多两样东西——中间的根路径缩略（路径省略号）
+# 与右端的"全部折叠 / 刷新"按钮。按钮矩形在这里缓存，命中测试与 hover 复用同一
+# 份几何，因此不存在"画在这里、点在别处"的漂移。
+def _em_files_btn_rect(sym, far_px, near_px):
+    em.mov_r64_ripmem('r9',bsyms['drawitem_ptr'])
+    em.mov_r32_mreg('rax','r9',48); em.sub_r32_imm8('rax',far_px); em.mov_ripmem_r32(bsyms[sym],'rax')
+    em.mov_r32_mreg('rax','r9',48); em.sub_r32_imm8('rax',near_px); em.mov_ripmem_r32(bsyms[sym]+8,'rax')
+    em.mov_r32_mreg('rax','r9',44); em.add_r32_imm8('rax',5); em.mov_ripmem_r32(bsyms[sym]+4,'rax')
+    em.mov_r32_mreg('rax','r9',44); em.add_r32_imm8('rax',23); em.mov_ripmem_r32(bsyms[sym]+12,'rax')
+
+def _em_files_btn_color(hot_id, tag):
+    em.mov_r32_ripmem('rax',bsyms['files_btn_hot']); em.cmp_r32_imm('rax',hot_id); em.jcc(0x84,'wp_fh_hot_' + tag)
+    em.mov_r32_ripmem('rax',bsyms['theme_dark']); em.test32('rax'); em.jcc(0x84,'wp_fh_calm_light_' + tag)
+    em.mov_r32_imm('rdx',0x00A8A8A8); em.jmp('wp_fh_send_' + tag)
+    em.label('wp_fh_calm_light_' + tag); em.mov_r32_imm('rdx',0x00686868); em.jmp('wp_fh_send_' + tag)
+    em.label('wp_fh_hot_' + tag)
+    em.mov_r32_ripmem('rax',bsyms['theme_dark']); em.test32('rax'); em.jcc(0x84,'wp_fh_hot_light_' + tag)
+    em.mov_r32_imm('rdx',0x00FFFFFF); em.jmp('wp_fh_send_' + tag)
+    em.label('wp_fh_hot_light_' + tag); em.mov_r32_imm('rdx',0x00101010)
+    em.label('wp_fh_send_' + tag)
+    em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r64_mreg('rcx','r9',32); em.call_iat('SetTextColor')
+
+def emit_files_header():
+    em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r64_mreg('rcx','r9',32)
+    em.mov_r64_r64('rdx','r9'); em.add_r64_imm8('rdx',40)
+    em.mov_r64_ripmem('r8',bsyms['hbrush_status']); em.call_iat('FillRect')
+    em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r64_mreg('rcx','r9',32)
+    em.mov_r64_ripmem('rdx',bsyms['hfont_panel']); em.call_iat('SelectObject')
+    em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r64_mreg('rcx','r9',32)
+    em.mov_r32_ripmem('rax',bsyms['theme_dark']); em.test32('rax'); em.jcc(0x84,'wp_fh_light')
+    em.mov_r32_imm('rdx',0x00E6E6E6); em.jmp('wp_fh_color')
+    em.label('wp_fh_light'); em.mov_r32_imm('rdx',0x00202020)
+    em.label('wp_fh_color'); em.call_iat('SetTextColor')
+    em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r64_mreg('rcx','r9',32)
+    em.mov_r32_imm('rdx',1); em.call_iat('SetBkMode')
+    _em_files_btn_rect('files_btn_collapse_rect', 46, 26)
+    _em_files_btn_rect('files_btn_refresh_rect', 24, 4)
+    # 标题："Files" 占左侧 56px，路径从其右侧 8px 开始，两处都不会互相覆盖。
+    em.mov_r64_ripmem('r9',bsyms['drawitem_ptr'])
+    em.lea_rip('rcx',bsyms['files_title_rect'])
+    em.mov_r32_mreg('rax','r9',40); em.add_r32_imm8('rax',10); em.mov_ptr_r32('rcx','rax')
+    em.mov_r32_mreg('rax','r9',44); em.mov_mreg_reg32('rcx',4,'rax')
+    em.mov_r32_mreg('rax','rcx',0); em.add_r32_imm8('rax',56); em.mov_mreg_reg32('rcx',8,'rax')
+    em.mov_r32_mreg('rax','r9',52); em.mov_mreg_reg32('rcx',12,'rax')
+    em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r64_mreg('rcx','r9',32)
+    em.lea_rip('rdx',rsyms['panel_files']); em.mov_r32_imm('r8',0xFFFFFFFF)
+    em.lea_rip('r9',bsyms['files_title_rect']); em.mov_mrsp_imm32(0x20,0x0824); em.call_iat('DrawTextW')
+    # 根路径缩略：DT_PATH_ELLIPSIS 把中间折叠，首尾都保留。绘制用它自己的
+    # 矩形缓冲——DT_PATH_ELLIPSIS 会回写 lprc，直接拿 DRAWITEMSTRUCT.rcItem
+    # 当 lprc 会在 user32 内部把标题栏绘制打成访问违例。
+    em.mov_r64_ripmem('r9',bsyms['drawitem_ptr'])
+    em.lea_rip('rcx',bsyms['files_path_rect'])
+    em.mov_r32_mreg('rax','r9',40); em.add_r32_imm8('rax',66); em.mov_ptr_r32('rcx','rax')
+    em.mov_r32_mreg('rax','r9',44); em.add_r32_imm8('rax',4); em.mov_mreg_reg32('rcx',4,'rax')
+    em.mov_r32_mreg('rax','r9',48); em.sub_r32_imm8('rax',52); em.mov_mreg_reg32('rcx',8,'rax')
+    em.mov_r32_mreg('rax','r9',52); em.sub_r32_imm8('rax',4); em.mov_mreg_reg32('rcx',12,'rax')
+    em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r64_mreg('rcx','r9',32)
+    # tree_root_path 是内联的 UTF-16 缓冲，必须取地址交给 DrawTextW；
+    # mov_r64_ripmem 会把字符串头 8 字节当成指针。
+    em.lea_rip('rdx',bsyms['tree_root_path']); em.mov_r32_imm('r8',0xFFFFFFFF)
+    em.lea_rip('r9',bsyms['files_path_rect']); em.mov_mrsp_imm32(0x20,0x4824); em.call_iat('DrawTextW')
+    # 两个按钮字形：命中 hover 时换成强调色。
+    _em_files_btn_color(1, 'collapse')
+    em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r64_mreg('rcx','r9',32)
+    em.lea_rip('rdx',rsyms['header_collapse']); em.mov_r32_imm('r8',0xFFFFFFFF)
+    em.lea_rip('r9',bsyms['files_btn_collapse_rect']); em.mov_mrsp_imm32(0x20,0x25); em.call_iat('DrawTextW')
+    _em_files_btn_color(2, 'refresh')
+    em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r64_mreg('rcx','r9',32)
+    em.lea_rip('rdx',rsyms['header_refresh']); em.mov_r32_imm('r8',0xFFFFFFFF)
+    em.lea_rip('r9',bsyms['files_btn_refresh_rect']); em.mov_mrsp_imm32(0x20,0x25); em.call_iat('DrawTextW')
+    em.mov_r32_imm('rax',1); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
+
+em.label('wp_draw_files_header'); emit_files_header()
+em.label('wp_draw_outline_header'); emit_panel_header('panel_outline', 'outline')
 em.label('wp_draw_outline_header'); emit_panel_header('panel_outline', 'outline')
 
 em.label('wp_draw_status')
@@ -7063,7 +7242,10 @@ for _frame_line in (
         "em.add_r32_imm8('rax',4); em.cmp_r32_r32('r11','rax'); em.jcc(0x8D,'lbd_frame_outline_header')",
         "em.mov_ripmem_r32(bsyms['divider_drag_y'],'r11'); em.mov_ripmem_imm32(bsyms['divider_drag'],1)",
         "em.mov_ripmem_imm32(bsyms['panel_click_now'],1); em.jmp('lbd_frame_header')",
-        "em.label('lbd_frame_files_header'); em.mov_ripmem_imm32(bsyms['panel_click_now'],0)",
+        # 切片 4 起，文件标题栏先给两个按钮做命中，未命中才落到三态循环。
+        "_em_hit_files_btn('files_btn_collapse_rect', CMD_COLLAPSE_ALL, 'lbd_fh_test_refresh')",
+        "_em_hit_files_btn('files_btn_refresh_rect', CMD_REFRESH_TREE, 'lbd_fh_plain')",
+        "em.label('lbd_fh_plain'); em.mov_ripmem_imm32(bsyms['panel_click_now'],0)",
         "em.mov_ripmem_imm32(bsyms['divider_drag'],0); em.call_iat('ReleaseCapture'); em.call_label('update_divider_hover')"):
     assert _frame_line in _production_source, 'panel frame hit test lost: %s' % _frame_line
 _click_src = _production_source[
@@ -7237,6 +7419,41 @@ for _fo_forbidden in ('SHFileOperationW', 'CreateFileW', 'CreateDirectoryW',
 assert "call_iat('TrackPopupMenu')" in _fo_menu_src and \
        "em.mov_r32_imm('rdx',0x8009)" in _fo_menu_src, \
     'the context menu must translate its choice into the shared 0x8009 command'
+
+# (Z) V8.6 切片 4：文件标题栏按钮、刷新/折叠与默认工作区的所有权断言。
+for _hdr_routine in ('load_default_workspace', 'cmd_refresh_tree', 'cmd_collapse_all',
+                     'file_panel_refresh_keep_selection', 'update_files_header_hover'):
+    assert _hdr_routine in em.labels, '%s must be emitted' % _hdr_routine
+for _hdr_symbol in ('files_btn_collapse_rect', 'files_btn_refresh_rect',
+                    'files_title_rect', 'files_path_rect', 'files_btn_hot',
+                    'docs_path_buf', 'init_done'):
+    assert _hdr_symbol in bsyms, '%s must exist' % _hdr_symbol
+for _hdr_rect in ('files_btn_collapse_rect', 'files_btn_refresh_rect'):
+    assert bss_sizes[_hdr_rect] == 16, '%s must be a RECT' % _hdr_rect
+assert "em.label('wp_draw_files_header'); emit_files_header()" in _production_source, \
+    'the file header must use the path-and-buttons painter'
+# 命中、hover 与绘制共用同一份缓存矩形：按钮不允许出现第二套几何。
+assert _production_source.count("_em_hit_files_btn(") == 3, \
+    'the two header buttons must be hit-tested through the shared geometry helper'
+assert _production_source.count("call_label('file_panel_refresh_keep_selection')") == 2, \
+    'refresh and collapse-all must share one selection-preserving rebuild'
+assert "call_iat('SHGetFolderPathW')" in _production_source and \
+       "em.call_label('load_default_workspace')" in _production_source, \
+    'the default workspace must come from the system Documents folder'
+assert _production_source.index("em.call_label('load_default_workspace')") < \
+       _production_source.index("mov_ripmem_imm32(bsyms['init_done'],1)"), \
+    'init_done must be published after the default workspace is loaded'
+# 路径缩略用 DrawTextW 画内联缓冲：必须取地址。曾经把它当指针读（mov 而非
+# lea），DrawTextW 会拿到字符串头 8 字节当地址并在 user32 里访问违例。
+assert "em.lea_rip('rdx',bsyms['tree_root_path'])" in _production_source and \
+       "em.mov_r64_ripmem('rdx',bsyms['tree_root_path'])" not in _production_source, \
+    'the header path label must pass tree_root_path by address'
+# hover 例程跑在消息泵里：泵把 &MSG 放在 r12，任何被调用例程都不能改写它。
+_ufh_src = _production_source[
+    _production_source.index("em.label('update_files_header_hover')"):
+    _production_source.index("em.label('update_divider_hover')")]
+assert "r12" not in _ufh_src, \
+    'the header hover must not clobber the pump MSG pointer in r12'
 
 _output_channel = 'test' if INJECTED_BUILD else _BUILD_CHANNEL
 _output_name = (('pemark_x64_v8_6_outline_alloc_%s.exe' % ARENA_ALLOC_INJECTION_MODE)

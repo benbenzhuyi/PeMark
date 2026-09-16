@@ -104,6 +104,17 @@ class App:
         assert psapi.EnumProcessModules(self.handle, c.byref(module),
                                         c.sizeof(module), c.byref(needed))
         self.base = c.cast(module, c.c_void_p).value
+        # V8.6.1 切片 4：启动期会加载系统"文档"目录（shell 查询 + 目录枚举），
+        # WaitForInputIdle 可能在那之前就返回。等生成器发布的 init_done 标志，
+        # 保证测试写入 BSS 时初始化已经结束。
+        if "init_done" in self.bsyms:
+            deadline = time.perf_counter() + 10
+            while time.perf_counter() < deadline:
+                if self.read32("init_done"):
+                    break
+                time.sleep(.02)
+            else:
+                raise AssertionError("the process never published init_done")
 
     def close_handle(self):
         if self.handle:
