@@ -22,14 +22,14 @@ jobs:
       - name: Deterministic Direct-PE build
         run: python tools/build_current.py
       - name: Execute emitted-machine-code regressions
-        run: python tools/test_v8_5_1.py src/current/generate_markdown_editor_v8_5_4.py
+        run: python tools/test_v8_5_1.py src/current/generate_markdown_editor_v8_6_1.py
       - name: Inspect generated PE
-        run: python tools/inspect_pe.py bin/current/pemark_x64_v8_5_4.exe
+        run: python tools/inspect_pe.py bin/current/pemark_x64_v8_6_1.exe
       - name: Verify release hash
         shell: pwsh
         run: |
-          $expected = "AA8DE9CDA9ED90A2CF66A3A93E021DC91CC192073078A90C53FA9669F478C5CC"
-          $actual = (Get-FileHash -Algorithm SHA256 bin/current/pemark_x64_v8_5_4.exe).Hash
+          $expected = "ABD79DE90999A70F3B5328C63CB73109EA0A38CAC85C5ED59F197CAB397AC4BC"
+          $actual = (Get-FileHash -Algorithm SHA256 bin/current/pemark_x64_v8_6_1.exe).Hash
           if ($actual -ne $expected) { throw "SHA-256 mismatch: $actual" }
       - name: Build and inspect the development channel
         if: ${{ hashFiles('src/candidate/generate_markdown_editor_v8_6.py') != '' }}
@@ -82,6 +82,12 @@ jobs:
           PEMARK_GENERATOR: ${{ github.workspace }}/src/candidate/generate_markdown_editor_v8_6.py
           PEMARK_EXE: ${{ github.workspace }}/bin/candidate/pemark_x64_v8_6_candidate.exe
         run: python tools/test_v8_6_panel.py
+      - name: Exercise the custom title row and icons
+        if: ${{ hashFiles('tools/test_v8_6_caption.py') != '' }}
+        env:
+          PEMARK_GENERATOR: ${{ github.workspace }}/src/candidate/generate_markdown_editor_v8_6.py
+          PEMARK_EXE: ${{ github.workspace }}/bin/candidate/pemark_x64_v8_6_candidate.exe
+        run: python tools/test_v8_6_caption.py
       - name: Exercise list navigation and file opening
         if: ${{ hashFiles('tools/test_v8_6_navigation.py') != '' }}
         env:

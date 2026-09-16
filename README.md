@@ -11,14 +11,11 @@ The production executable is built without a compiler, assembler, linker,
 .NET compiler, interpreter packager, or embedded Python runtime. Python is used
 only at build and test time.
 
-> **V8.5.4** is the current stable release. Core editing, Preview, Outline,
-> theme, wrap and large-document navigation pass the documented regression
-> suite, and unsaved work is protected: dirty state is derived from document
-> revisions, destructive transitions share one Save / Discard / Cancel
-> controller, saving replaces the target atomically through a sibling staging
-> file, and opening is transactional. Every fixed document-sized buffer is gone,
-> and the image enforces W^X with ASLR enabled. The known limitations are listed
-> below.
+> **V8.6.1** is the current release snapshot. It keeps the V8.5.4 document
+> safety, dynamic capacity and PE-hardening baseline, and adds the merged
+> Codex-style title row with the left/right sidebar switches and Fluent tool
+> icons. The V8.6 file-panel tree and file operations are still scheduled
+> follow-up slices.
 
 ## Highlights
 
@@ -32,12 +29,13 @@ only at build and test time.
 
 ## Download
 
-Download `pemark_x64_v8_5_4.exe` from GitHub Releases.
+Download `pemark_x64_v8_6_1.exe` from the V8.6.1 release/current snapshot
+(build it locally with the generator if no binary asset is attached yet).
 
 Expected SHA-256:
 
 ```text
-aa8de9cda9ed90a2cf66a3a93e021dc91cc192073078a90c53fa9669f478c5cc
+abd79de90999a70f3b5328c63cb73109ea0a38cac85c5ed59f197cab397ac4bc
 ```
 
 The executable is unsigned. Windows SmartScreen or security products may show a
@@ -65,20 +63,20 @@ python -m pip install unicorn
 From the repository root:
 
 ```powershell
-python .\src\current\generate_markdown_editor_v8_5_4.py
+python .\src\current\generate_markdown_editor_v8_6_1.py
 ```
 
 The generator writes
-`bin/current/pemark_x64_v8_5_4.exe`. No native compiler,
+`bin/current/pemark_x64_v8_6_1.exe`. No native compiler,
 assembler or linker is invoked.
 
 ## Verify
 
 ```powershell
-python .\tools\test_v8_5_1.py .\src\current\generate_markdown_editor_v8_5_4.py
-python .\tools\inspect_pe.py .\bin\current\pemark_x64_v8_5_4.exe
-python .\tools\smoke_test_v8_5_1.py .\bin\current\pemark_x64_v8_5_4.exe
-Get-FileHash -Algorithm SHA256 .\bin\current\pemark_x64_v8_5_4.exe
+python .\tools\test_v8_5_1.py .\src\current\generate_markdown_editor_v8_6_1.py
+python .\tools\inspect_pe.py .\bin\current\pemark_x64_v8_6_1.exe
+python .\tools\smoke_test_v8_5_1.py .\bin\current\pemark_x64_v8_6_1.exe
+Get-FileHash -Algorithm SHA256 .\bin\current\pemark_x64_v8_6_1.exe
 ```
 
 The smoke test controls the real GUI and must run in an interactive Windows
@@ -94,15 +92,14 @@ Current evidence:
 - Arena allocation-failure and 140,000-span capacity cases passed.
 - Two consecutive builds produced the expected SHA-256.
 
-See [V8.5.4 release notes](docs/RELEASE_V8_5_4_PREVIEW.md) and
-[V8.5.4 validation results](docs/V8_5_4_RELEASE_RESULTS.md). The
+See [V8.6.1 validation results](docs/V8_6_1_RELEASE_RESULTS.md). The
 [documentation index](docs/README.md) separates current guidance from
 historical engineering evidence.
 
 ## Repository layout
 
 ```text
-src/current/        current V8.5.4 Direct-PE generator
+src/current/        current V8.6.1 Direct-PE generator
 bin/current/        matching generated executable
 src/stabilization/  retained stabilization candidates
 archive/            historical generator and binary lineage
@@ -116,15 +113,13 @@ Direct-PE production constraint and Win64 ABI rules are mandatory.
 
 ## Known limitations
 
-V8.5.4 has not completed the release gates for:
+V8.6.1 has not completed the release gates for:
 
-- dynamic capacity for the document, render, position-map and encoded-output
-  buffers, which still have fixed sizes and reject oversized input explicitly;
-- legacy code-page fallback, which was intentionally removed, so non-UTF-8
-  documents must be converted first;
-- long-running memory and handle plateau measurement;
-- code signing, ASLR and separated RX/R/RW PE sections;
-- workspace, advanced editing and AI features.
+- the V8.6 file-panel tree model and create / rename / delete / refresh
+  operations;
+- broader cross-machine verification of the new title row;
+- code signing remains out of scope for this personal open-source experiment;
+- workspace, advanced editing and AI features beyond the current slices.
 
 Keep an independent copy of important documents; the executable is unsigned.
 

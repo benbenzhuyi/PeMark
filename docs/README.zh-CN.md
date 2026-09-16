@@ -9,6 +9,7 @@
 - [清晰里程碑计划](MILESTONE_PLAN.md)
 - [跨架构功能契约 V1](CROSS_ARCH_FEATURE_CONTRACT_V1.md)
 - [跨架构基准测试规范 V1](BENCHMARK_SPEC_V1.md)
+- [V8.6.1 当前发布验证结果](V8_6_1_RELEASE_RESULTS.md)
 - [V8.5.4 稳定版发布说明](RELEASE_V8_5_4.zh-CN.md)
 - [V8.5.4 发布验证结果](V8_5_4_RELEASE_RESULTS.md)
 - [V8.5.4 独立机器验证包](V8_5_4_VERIFICATION_PACK.md)

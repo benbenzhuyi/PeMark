@@ -2,6 +2,17 @@
 
 Intermediate builds are preserved for diffing and regression archaeology; many were experimental and not release-stable.
 
+## V8.6.1
+
+Generator: `src/current/generate_markdown_editor_v8_6_1.py`
+
+V8.6.1 promotes the merged custom title row, Codex-style left/right sidebar
+switches, literal `</>` Source icon and the Fluent/MDL2 tool/window icons into
+`src/current/` and `bin/current/`. It inherits the V8.5.4 document-safety,
+dynamic-capacity and PE-hardening baseline; the V8.6 file-panel tree and file
+operations remain the next slices. Validation record:
+`docs/V8_6_1_RELEASE_RESULTS.md`.
+
 ## V7
 
 Generator: `generate_markdown_editor_v7.py`
