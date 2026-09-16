@@ -79,12 +79,10 @@ Four defects reported from hands-on use are fixed:
    enough, and nothing repainted them until a resize (hiding and reopening the
    sidebar) happened to. `apply_theme` now invalidates and updates every frame
    window explicitly, so a theme switch repaints the frame immediately.
-2. **The file panel had no scrollbar and ignored the wheel.** The file list now
-   owns a native `WS_VSCROLL` + `LBS_DISABLENOSCROLL` scrollbar, gets the same
-   `SetWindowTheme` treatment as the document, and is scrolled by the wheel
-   through the pump's hit-test (three rows per notch, clamped to
-   `max(0, count - visibleRows)`). Its reserved gutter window is retired: the
-   list now spans the sidebar width and draws its own scrollbar.
+2. **The file panel had no scrollbar and ignored the wheel.** It first gained a
+   native `WS_VSCROLL` bar; the follow-up section below replaces that with the
+   shared thin overlay so both panels match. The wheel routing (three rows per
+   notch, clamped to `max(0, count - visibleRows)`) is shared by both.
 3. **The outline scrollbar looked thicker and off-theme.** That bar was the
    gutter painting the *stale light* brush from item 1; once the frame repaints,
    the gutter carries the panel background and only the thin hover thumb shows.
@@ -110,6 +108,40 @@ transitions, file-list scrollbar theme, in-process `CoCreateInstance` +
 `GetOptions`, the opened dialog carries the shell DirectUI view, cancel keeps
 the workspace root) and the extended `tools/test_v8_6_panel.py` (native
 `WS_VSCROLL` style, wheel arithmetic, both clamps).
+
+## V8.6.1 — Sidebar looks: one thin scrollbar, menu font, tree next
+
+Hands-on review against Rabbit made two visual gaps explicit, and both are now
+closed:
+
+1. **One scrollbar implementation for both panels.** The file panel's native
+   `WS_VSCROLL` bar (17px, arrow buttons, system colour) is gone. Each panel now
+   reserves the same 17px strip and hosts its own surface of the shared
+   `DirectPEOutlineScroll` class, painted by one code path: the track takes the
+   panel background and only a **6px centred thumb** is drawn, in the theme's
+   scrollbar colour. The thumb rect is published by the panel's layout routine
+   (`scroll_layout` / `files_scroll_layout`) and used by both the painter and
+   the hit test, so the two bars cannot drift apart. Both are shown whenever the
+   list overflows (Rabbit-like) instead of appearing only on hover, and both
+   support thumb drag and track paging.
+2. **Panel titles use the menu bar font.** `Files` / `Outline` were drawn with
+   the default owner-draw font. The app now reads
+   `SystemParametersInfoW(SPI_GETNONCLIENTMETRICS)` and builds the header font
+   from `lfMenuFont`, selecting it explicitly into the paint DC, so the titles
+   match the menu bar's face and size. If the query fails it falls back to the
+   status-bar font.
+
+File-header comments in `docs/FILE_PANEL_REDESIGN.md` were updated to record the
+final decision and why the native-scrollbar detour was dropped.
+
+What is still visibly behind Rabbit is the file tree itself (expand arrows,
+per-type icons, indentation) and the outline's richer row rendering — that is
+slice 1/2 of the redesign plan, tracked in the same document.
+
+Build-time assertions keep the two bars unified: the file list may not carry
+`WS_VSCROLL`, both surfaces must come from the shared class, the paint path may
+not recompute thumb geometry, and both layouts must publish the same 6px
+centred rect plus the always-visible rule.
 
 V8.6 is scoped to "browse a directory and open files from it" while the
 application still owns a single writable document. The plan

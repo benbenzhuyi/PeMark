@@ -290,15 +290,12 @@ def main():
         _, top_dv, _, height_dv = lb_rect(divider)
         assert (height_fh, height_oh, height_dv) == (28, 28, 4), \
             (height_fh, height_oh, height_dv)
-        assert width_fh == width_f, \
-            ("the header spans the whole sidebar width",
-             width_fh, width_f)
-        assert left_f == left_o, (lb_rect(files), lb_rect(outline))
-        # V8.6.1: the file list owns a native scrollbar inside its full-width
-        # rectangle, while the outline keeps its reserved 17px gutter.
-        assert width_f == width_o + app.read32("scrollbar_w"), \
-            ("the file list owns its scrollbar, the outline reserves a gutter",
-             width_f, width_o)
+        assert width_fh == width_f + app.read32("scrollbar_w"), \
+            ("the header spans the whole sidebar width", width_fh, width_f)
+        # V8.6.1: both panels keep the same reserved gutter for their own thin
+        # overlay scrollbar, so the two lists have identical geometry.
+        assert left_f == left_o and width_f == width_o, (lb_rect(files),
+                                                        lb_rect(outline))
         assert top_f == top_fh + 28, "the file list starts under its header"
         assert top_dv == top_f + height_f, "the divider sits between the panels"
         assert top_oh == top_dv + 4, "the outline header follows the divider"
@@ -466,12 +463,20 @@ def main():
         finally:
             u32.SetCursorPos(saved_cursor.x, saved_cursor.y)
 
-        # --- File panel: native scrollbar plus wheel routing ------------------
+        # --- File panel: its own thin overlay scrollbar plus wheel routing ----
         style = u32.GetWindowLongW(files, GWL_STYLE)
-        assert style & WS_VSCROLL, \
-            ("the file list must own a native scrollbar", hex(style))
-        assert style & LBS_DISABLENOSCROLL, \
-            ("the scrollbar must stay in place when it is disabled", hex(style))
+        assert not style & WS_VSCROLL, \
+            ("the file list must not draw a native scrollbar", hex(style))
+        files_scroll = app.read64("hwnd_files_scroll")
+        assert files_scroll and files_scroll != app.read64("hwnd_outline_scroll"), \
+            "each panel owns its own scrollbar surface"
+        class_buffer = c.create_unicode_buffer(256)
+        u32.GetClassNameW(files_scroll, class_buffer, 256)
+        outline_class = c.create_unicode_buffer(256)
+        u32.GetClassNameW(app.read64("hwnd_outline_scroll"), outline_class, 256)
+        assert class_buffer.value == outline_class.value, \
+            ("both scrollbars must share one painting class",
+             class_buffer.value, outline_class.value)
 
         with tempfile.TemporaryDirectory() as directory:
             many = Path(directory) / "many"
@@ -510,6 +515,29 @@ def main():
                 ("scrolling down must stop at max_top", top_index(), rows)
             assert app.read32("files_scroll_visible_rows") == rows, \
                 app.read32("files_scroll_visible_rows")
+            # The file panel's overlay mirrors the outline one: same track height,
+            # same 6px centred thumb, always visible while the list overflows.
+            assert app.read32("files_scroll_visible") == 1, \
+                "a scrollable file list must show its scrollbar"
+            assert app.read32("files_scroll_track_h") == \
+                app.read32("files_list_h") - 8, app.read32("files_scroll_track_h")
+            track, thumb = app.read32("files_scroll_track_h"), \
+                app.read32("files_scroll_thumb_h")
+            assert 0 < thumb <= track, (thumb, track)
+            thumb_rect = c.c_uint32 * 4
+            values = thumb_rect()
+            assert k32.ReadProcessMemory(
+                app.handle, c.c_void_p(app.base + app.bsyms["files_thumb_rect"]),
+                c.byref(values), 16, None)
+            bar_w = app.read32("scrollbar_w")
+            assert (values[0], values[2]) == (3, bar_w - 3), tuple(values)
+            outline_rect = thumb_rect()
+            assert k32.ReadProcessMemory(
+                app.handle, c.c_void_p(app.base + app.bsyms["outline_thumb_rect"]),
+                c.byref(outline_rect), 16, None)
+            assert (outline_rect[2] - outline_rect[0]) == (values[2] - values[0]), \
+                ("both panels must draw the same thumb width",
+                 tuple(outline_rect), tuple(values))
 
         app.post_close()
         assert app.proc.wait(timeout=10) == 0

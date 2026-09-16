@@ -164,12 +164,14 @@ PeMark 是纯 Direct-PE 机器码生成，没有 DOM 与第三方控件，因此
 10. **双面板用两套子控件，不再复用同一个 ListBox。**
     现状是"一个 ListBox + 一个 gutter + 一个滚动面"在两个模式间轮流使用；Rabbit
     的两个面板同时可见，因此必须让文件面板拥有自己的
-    `hwnd_files`。**实现修正（2026-09-16，实机反馈）**：文件面板最终用的是
-    ListBox 自带的原生滚动条（`WS_VSCROLL | LBS_DISABLENOSCROLL` + 与文档面同款的
-    `SetWindowTheme`），滚轮由消息泵按指针命中分流——这样它和主窗口右侧的滚动条
-    同源同主题，也不需要在文件面板上再养一套 gutter + 自绘滚动面；大纲面板保留
-    现有的 `hwnd_outline` 三件套。切片 2 引入的"`panel_mode` 决定列表内容"随之
-    取消，改为"两个列表始终各自维护内容"。
+    `hwnd_files`。**实现修正（2026-09-16，第二次实机反馈）**：两个面板最终都
+    不自带 `WS_VSCROLL`，而是各自在自己的 17px 槽位里放一块同类的自绘滚动面
+    （`hwnd_outline_scroll` / `hwnd_files_scroll`，同一个窗口类、同一段绘制与命中
+    代码）：轨道刷成面板底色，只画一条 **6px 居中细 thumb**，有内容可滚就常显
+    （Rabbit 风格），滚轮由消息泵按指针命中分流。最初试过的"文件面板用原生
+    `WS_VSCROLL`"被放弃——原生滚动条是 17px 带箭头的经典样式，在深色主题下也与
+    侧栏不协调。切片 2 引入的"`panel_mode` 决定列表内容"随之取消，改为"两个列表
+    始终各自维护内容"。
 11. **面板高度用像素比例表达，不用 CSS flex。**
     侧边栏内部维护 `panel_split`（文件面板占内容高度的千分比，取值见 §5），
     `resize_children` 按它计算两个面板矩形与分界线位置：文件面板 =
@@ -200,8 +202,8 @@ PeMark 是纯 Direct-PE 机器码生成，没有 DOM 与第三方控件，因此
 | `panel_split` | 文件面板占侧边栏内容高度的千分比（默认 500，钳制到 `[80, 920]`） |
 | `files_state` / `outline_state` | 各自的三态：0 = maximized，1 = half，2 = minimized（默认 half） |
 | `files_visible` / `outline_visible` | 该面板是否参与布局（`View` 菜单的显示开关；默认都可见） |
-| `hwnd_files` | 文件面板列表；滚动条是 ListBox 自带的原生滚动条（不再需要 gutter/滚动面） |
-| `files_scroll_count/top/visible_rows` | 滚轮分流用到的顶部索引、行数与可见行数 |
+| `hwnd_files` / `hwnd_files_scroll` | 文件面板列表 + 它自己的自绘细滚动面（与大纲同款） |
+| `files_scroll_*` | 文件面板滚动状态：count/top/visible_rows/max_top/track/thumb/travel/可见性/拖动 |
 | `hwnd_files_header` / `hwnd_outline_header` | 两个 28px 自绘标题栏（新增） |
 | `hwnd_panel_divider` | 4px 分界线子窗口（新增） |
 | `files_scroll_*` | 文件面板的滚动状态（count/top/visible_rows/thumb/track/travel…），与现有 `outline_scroll_*` 同构 |
@@ -373,7 +375,7 @@ PeMark 是纯 Direct-PE 机器码生成，没有 DOM 与第三方控件，因此
 | 面板比例表达 | CSS flex 百分比 + 0.15s 过渡 | 像素千分比，无过渡动画 | 自绘窗口没有 CSS 过渡，瞬间重排更可预测 |
 | 单双击区分 | 250ms `setTimeout` | 250ms `SetTimer` 挂起单击 + `GetMessageTime` 间隔判定双击 | 语义与 Rabbit 一致；立即应用会让标题栏在双击中间移位 |
 | 保存备份 | 覆盖前 `.bak.md` | 不采用 | 已有事务化保存与 staging 保障 |
-| 滚动条 | 浏览器原生滚动条 | 文件面板用 ListBox 原生滚动条（同主窗口主题），大纲保留自绘 overlay | 两处都要和主窗口右侧的滚动条同色同宽；自绘 overlay 只在大纲上保留既有行为 |
+| 滚动条 | 浏览器原生滚动条（细、无箭头、常显） | 两个面板共用一套自绘细滚动面：6px 居中 thumb、面板底色轨道、有内容就常显 | 原生滚动条是 17px 带箭头的经典样式，深色主题下也与侧栏不协调 |
 | 选择文件夹 | Electron 的目录选择 | 通用项对话框 `IFileOpenDialog` + `FOS_PICKFOLDERS`（`SHBrowseForFolderW` 仅作回落） | 与"打开文件"的 `GetOpenFileNameW` 同属通用项对话框家族，风格一致 |
 
 ## 12.1 实机反馈带来的两条硬规则（2026-09-16）

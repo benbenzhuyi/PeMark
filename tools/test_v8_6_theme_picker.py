@@ -17,11 +17,13 @@ from ctypes import wintypes as w
 import hashlib
 import os
 import sys
+import tempfile
 import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from test_v8_5_2_destructive import App
+from test_v8_5_2_open_encoding import write_wstr
 
 ROOT = Path(__file__).resolve().parents[1]
 GEN = Path(os.environ.get(
@@ -31,6 +33,8 @@ RELEASE_EXE = ROOT / "bin/current/pemark_x64_v8_5_4.exe"
 
 CMD_DARK = 1311
 CMD_LIGHT = 1310
+CMD_OPEN_SELECTED = 1901
+CMD_WORKSPACE_PROBE = 1902
 CMD_OPEN_FOLDER = 1006
 CMD_FOLDER_COM_PROBE = 1909
 WM_COMMAND = 0x0111
@@ -76,17 +80,23 @@ def pixel(hwnd, x, y):
         u32.ReleaseDC(hwnd, hdc)
 
 
-def non_client_pixel(hwnd, x, y):
-    """Sample the window frame: the file list draws its scrollbar in the non-client area."""
-    hdc = u32.GetWindowDC(hwnd)
-    try:
-        return g32.GetPixel(hdc, x, y)
-    finally:
-        u32.ReleaseDC(hwnd, hdc)
-
-
 def brightness(colour):
     return ((colour & 0xFF) + ((colour >> 8) & 0xFF) + ((colour >> 16) & 0xFF)) / 3
+
+
+def rect_values(app, symbol):
+    values = (c.c_uint32 * 4)()
+    assert k32.ReadProcessMemory(
+        app.handle, c.c_void_p(app.base + app.bsyms[symbol]), c.byref(values),
+        16, None)
+    return tuple(values)
+
+
+def thumb_pixel(app, surface_symbol, rect_symbol):
+    """Sample the middle of that panel's thumb on its own scrollbar surface."""
+    hwnd = app.read64(surface_symbol)
+    left, top, right, bottom = rect_values(app, rect_symbol)
+    return pixel(hwnd, (left + right) // 2, (top + bottom) // 2)
 
 
 def read_wstr(app, symbol, size=1024):
@@ -139,34 +149,63 @@ def main():
         assert all((headers[0], headers[1], divider, gutter)), "frame windows"
 
         # Issue 1 + 3: every theme switch repaints the frame with the new palette.
-        file_list = app.read64("hwnd_files")
-        list_rect = w.RECT()
-        assert u32.GetWindowRect(file_list, c.byref(list_rect))
-        bar_x = list_rect.right - list_rect.left - 8
-        bar_y = mid = (list_rect.bottom - list_rect.top) // 2
-        scrollbar_samples = {}
-        for command, header, split, panel, label in (
-                (CMD_DARK, DARK_HEADER, DARK_DIVIDER, DARK_PANEL, "dark"),
-                (CMD_LIGHT, LIGHT_HEADER, LIGHT_DIVIDER, LIGHT_PANEL, "light"),
-                (CMD_DARK, DARK_HEADER, DARK_DIVIDER, DARK_PANEL, "dark again")):
-            app.post_command(command)
-            time.sleep(.5)
-            for name, hwnd in (("files header", headers[0]),
-                               ("outline header", headers[1])):
-                got = pixel(hwnd, 40, 14)
-                assert got == header, (label, name, hex(got), hex(header))
-            got = pixel(divider, 100, 2)
-            assert got == split, (label, "divider", hex(got), hex(split))
-            # The gutter paints the panel background: a stale light brush here is
-            # what read as a "too thick, wrong colour" scrollbar.
-            got = pixel(gutter, 8, 20)
-            assert got == panel, (label, "outline gutter", hex(got), hex(panel))
-            # Issue 2/3: the file list's own scrollbar follows the app theme, so it
-            # matches the document scrollbar instead of staying system-light.
-            scrollbar_samples[label] = non_client_pixel(file_list, bar_x, bar_y)
-        assert brightness(scrollbar_samples["dark"]) < brightness(
-            scrollbar_samples["light"]) - 60, scrollbar_samples
-        assert brightness(scrollbar_samples["dark again"]) < 100, scrollbar_samples
+        # Both panels must be scrollable, otherwise their thin scrollbars are
+        # hidden and there is nothing to compare.
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory) / "many"
+            workspace.mkdir()
+            for index in range(40):
+                (workspace / ("note_%02d.md" % index)).write_text(
+                    "x\n", encoding="utf-8")
+            document = Path(directory) / "long.md"
+            document.write_text(
+                "".join("# Chapter %d\n\ntext\n\n" % index
+                        for index in range(1, 60)), encoding="utf-8")
+            write_wstr(app, "temp_path", str(workspace))
+            app.post_command(CMD_WORKSPACE_PROBE)
+            wait_for(lambda: app.read32("files_scroll_visible") == 1, 5,
+                     "a 40 row file list must show its scrollbar")
+            write_wstr(app, "temp_path", str(document))
+            app.post_command(CMD_OPEN_SELECTED)
+            wait_for(lambda: app.read32("outline_scroll_visible") == 1, 5,
+                     "a long outline must show its scrollbar")
+            # Park the pointer over the document so neither thumb is "hot".
+            u32.SetCursorPos(400, 300)
+            time.sleep(.3)
+            scrollbar_samples = {}
+            for command, header, split, panel, label in (
+                    (CMD_DARK, DARK_HEADER, DARK_DIVIDER, DARK_PANEL, "dark"),
+                    (CMD_LIGHT, LIGHT_HEADER, LIGHT_DIVIDER, LIGHT_PANEL, "light"),
+                    (CMD_DARK, DARK_HEADER, DARK_DIVIDER, DARK_PANEL, "dark again")):
+                app.post_command(command)
+                time.sleep(.5)
+                for name, hwnd in (("files header", headers[0]),
+                                   ("outline header", headers[1])):
+                    got = pixel(hwnd, 40, 14)
+                    assert got == header, (label, name, hex(got), hex(header))
+                got = pixel(divider, 100, 2)
+                assert got == split, (label, "divider", hex(got), hex(split))
+                # The scrollbar strip keeps the panel background; only the thin
+                # thumb is painted on it. A stale light brush here is what read as
+                # a "too thick, wrong colour" scrollbar.
+                for name, surface in (("outline", "hwnd_outline_scroll"),
+                                      ("files", "hwnd_files_scroll")):
+                    got = pixel(app.read64(surface), 8, 2)
+                    assert got == panel, (label, name + " scrollbar strip",
+                                          hex(got), hex(panel))
+                # Both panels draw the same thin thumb, and it follows the theme.
+                files_thumb = thumb_pixel(app, "hwnd_files_scroll",
+                                          "files_thumb_rect")
+                outline_thumb = thumb_pixel(app, "hwnd_outline_scroll",
+                                            "outline_thumb_rect")
+                assert files_thumb == outline_thumb, \
+                    (label, "the two scrollbars must look identical",
+                     hex(files_thumb), hex(outline_thumb))
+                scrollbar_samples[label] = files_thumb
+            assert brightness(scrollbar_samples["dark"]) < brightness(
+                scrollbar_samples["light"]) - 60, scrollbar_samples
+            assert brightness(scrollbar_samples["dark again"]) < 100, \
+                scrollbar_samples
 
         # Issue 4, part 1: the picker object itself is a modern IFileOpenDialog.
         app.post_command(CMD_FOLDER_COM_PROBE)
