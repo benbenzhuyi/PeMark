@@ -376,6 +376,10 @@ bss_alloc('hfont_title', 8, 8)
 bss_alloc('hfont_sysbtn', 8, 8)
 bss_alloc('cap_menu_x', 4, 4)
 bss_alloc('cap_layout_w', 4, 4)
+bss_alloc('hit_pt', 8, 4)
+bss_alloc('nccalc_lparam', 8, 8)
+bss_alloc('mmi_lparam', 8, 8)
+bss_alloc('monitor_info', 40, 4)
 bss_alloc('hfont_icons', 8, 8)
 bss_alloc('hpen_caption', 8, 8)
 bss_alloc('hpen_caption_hot', 8, 8)
@@ -789,6 +793,7 @@ imports = {
         'GetCursorPos','ScreenToClient','SetCapture','ReleaseCapture','SetCursor','BeginPaint','EndPaint','SetScrollRange','SetScrollPos','ShowScrollBar','GetKeyState','GetSystemMetrics','SetTimer','KillTimer','GetMessageTime',
         'CreateAcceleratorTableW','TranslateAcceleratorW','DestroyAcceleratorTable','IsDialogMessageW','SetForegroundWindow','DrawMenuBar','DrawTextW','FillRect','GetMenuStringW','SetMenuInfo','GetWindowDC','ReleaseDC','GetMenuItemRect',
         'TrackPopupMenu','IsZoomed','TrackMouseEvent',
+        'MonitorFromWindow','GetMonitorInfoW',
         'SystemParametersInfoW','DestroyMenu',
         'OpenClipboard','EmptyClipboard','SetClipboardData','CloseClipboard'
     ],
@@ -1272,7 +1277,8 @@ em.test64('rax'); em.jcc(0x85,'icons_font_ready'); em.mov_r64_ripmem('rax',bsyms
 em.label('icons_font_ready')
 # 系统三键（最小化/最大化/关闭）用同一支 Fluent 图标字体的小一号字号：
 # MDL2 的 Chrome* 字形在字身框里接近满格，和工具栏字形放在一起会显得过大。
-em.mov_r32_imm('rcx',0xFFFFFFF3); em.xor32('rdx'); em.xor32('r8'); em.xor32('r9')
+# -11pt: Windows 自己的标题栏按钮字形就是这么小，-13 在对比系统窗口时明显偏大。
+em.mov_r32_imm('rcx',0xFFFFFFF5); em.xor32('rdx'); em.xor32('r8'); em.xor32('r9')
 em.mov_mrsp_imm32(0x20,400); em.mov_mrsp_imm32(0x28,0); em.mov_mrsp_imm32(0x30,0); em.mov_mrsp_imm32(0x38,0); em.mov_mrsp_imm32(0x40,1); em.mov_mrsp_imm32(0x48,0); em.mov_mrsp_imm32(0x50,0); em.mov_mrsp_imm32(0x58,5); em.mov_mrsp_imm32(0x60,0)
 em.lea_rip('rax',rsyms['font_icons']); em.mov_mrsp_reg64(0x68,'rax'); em.call_iat('CreateFontW'); em.mov_ripmem_r64(bsyms['hfont_sysbtn'],'rax')
 em.test64('rax'); em.jcc(0x85,'sysbtn_font_ready'); em.mov_r64_ripmem('rax',bsyms['hfont_icons']); em.mov_ripmem_r64(bsyms['hfont_sysbtn'],'rax')
@@ -5821,6 +5827,9 @@ em.cmp_r32_imm('rdx',0x0002); em.jcc(0x84,'wp_destroy')      # WM_DESTROY
 em.cmp_r32_imm('rdx',0x0006); em.jcc(0x84,'wp_activation')    # WM_ACTIVATE
 em.cmp_r32_imm('rdx',0x0085); em.jcc(0x84,'wp_ncpaint')       # WM_NCPAINT
 em.cmp_r32_imm('rdx',0x0086); em.jcc(0x84,'wp_activation')    # WM_NCACTIVATE
+em.cmp_r32_imm('rdx',0x0083); em.jcc(0x84,'wp_nccalcsize')    # WM_NCCALCSIZE
+em.cmp_r32_imm('rdx',0x0084); em.jcc(0x84,'wp_nchittest')     # WM_NCHITTEST
+em.cmp_r32_imm('rdx',0x0024); em.jcc(0x84,'wp_getminmaxinfo') # WM_GETMINMAXINFO
 em.cmp_r32_imm('rdx',0x002B); em.jcc(0x84,'wp_drawitem')     # WM_DRAWITEM (status + outline)
 em.cmp_r32_imm('rdx',0x002C); em.jcc(0x84,'wp_measureitem')  # WM_MEASUREITEM (outline row height)
 em.cmp_r32_imm('rdx',0x0091); em.jcc(0x84,'wp_uah_drawmenu') # WM_UAHDRAWMENU
@@ -5901,6 +5910,58 @@ em.xor32('rax'); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
 
 # For non-client repaints, let Windows draw the frame/menu items first, then cover
 # only the classic light menu gap/separator with our dark brush.
+# V8.6.1：主窗口只保留 WS_THICKFRAME 用于边缘缩放，但不再让非客户区占位。
+# 否则自绘标题行上方会多出一条系统边框（浅色主题下就是一条空白）。
+# 非最大化时让客户区覆盖整个窗口；最大化时按系统尺寸收缩，避免越出工作区。
+em.label('wp_nccalcsize')
+em.test64('r8'); em.jcc(0x84,'wp_nccalc_false')            # wParam == FALSE -> 默认
+em.label('wp_nccalc_zero'); em.xor32('rax'); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
+em.label('wp_nccalc_false'); em.jmp('wp_default')
+
+# WS_POPUP 窗口最大化会铺满整块屏幕（压住任务栏），所以显式把最大化几何钉在
+# 工作区上：ptMaxSize = 工作区尺寸，ptMaxPosition = 工作区相对显示器的偏移。
+em.label('wp_getminmaxinfo')
+em.mov_ripmem_r64(bsyms['mmi_lparam'],'r9')
+em.mov_ripmem_imm32(bsyms['monitor_info'],40)
+em.mov_r64_ripmem('rcx',bsyms['hwnd_main']); em.mov_r32_imm('rdx',2); em.call_iat('MonitorFromWindow')
+em.mov_r64_r64('rcx','rax'); em.lea_rip('rdx',bsyms['monitor_info']); em.call_iat('GetMonitorInfoW')
+em.test32('rax'); em.jcc(0x84,'wp_mmi_ret')
+em.lea_rip('rcx',bsyms['monitor_info']); em.mov_r64_ripmem('r9',bsyms['mmi_lparam'])
+em.mov_r32_mreg('rax','rcx',28); em.mov_r32_mreg('rdx','rcx',20); em.sub_r32_r32('rax','rdx'); em.mov_mreg_reg32('r9',8,'rax')
+em.mov_r32_mreg('rax','rcx',32); em.mov_r32_mreg('rdx','rcx',24); em.sub_r32_r32('rax','rdx'); em.mov_mreg_reg32('r9',12,'rax')
+em.mov_r32_mreg('rax','rcx',20); em.mov_r32_mreg('rdx','rcx',4); em.sub_r32_r32('rax','rdx'); em.mov_mreg_reg32('r9',16,'rax')
+em.mov_r32_mreg('rax','rcx',24); em.mov_r32_mreg('rdx','rcx',8); em.sub_r32_r32('rax','rdx'); em.mov_mreg_reg32('r9',20,'rax')
+em.label('wp_mmi_ret'); em.xor32('rax'); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
+
+# 非客户区消失后，边缘缩放要由窗口自己回答：窗口内 8px 窄带返回 HT*。
+em.label('wp_nchittest')
+em.mov_ripmem_r32(bsyms['hit_pt'],'r9')
+em.mov_r32_r32('rax','r9'); em.sar_r32_imm8('rax',16); em.mov_ripmem_r32(bsyms['hit_pt']+4,'rax')
+em.mov_r32_ripmem('rax',bsyms['hit_pt']); em.shl_r32_imm8('rax',16); em.sar_r32_imm8('rax',16); em.mov_ripmem_r32(bsyms['hit_pt'],'rax')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_main']); em.lea_rip('rdx',bsyms['hit_pt']); em.call_iat('ScreenToClient')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_main']); em.call_iat('IsZoomed'); em.test32('rax'); em.jcc(0x85,'wp_hit_client')
+em.mov_r32_ripmem('r10',bsyms['hit_pt']); em.mov_r32_ripmem('r11',bsyms['hit_pt']+4)
+em.mov_r32_ripmem('r8',bsyms['client_w']); em.mov_r32_ripmem('r9',bsyms['client_h'])
+em.cmp_r32_imm('r11',8); em.jcc(0x8D,'wp_hit_left_right')
+em.cmp_r32_imm('r10',8); em.jcc(0x8C,'wp_hit_topleft')
+em.mov_r32_r32('rax','r8'); em.sub_r32_imm8('rax',8); em.cmp_r32_r32('r10','rax'); em.jcc(0x8D,'wp_hit_topright')
+em.mov_r32_imm('rax',12); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)                      # HTTOP
+em.label('wp_hit_topleft'); em.mov_r32_imm('rax',13); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
+em.label('wp_hit_topright'); em.mov_r32_imm('rax',14); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
+em.label('wp_hit_left_right')
+em.mov_r32_r32('rax','r9'); em.sub_r32_imm8('rax',8); em.cmp_r32_r32('r11','rax'); em.jcc(0x8C,'wp_hit_sides')
+em.cmp_r32_imm('r10',8); em.jcc(0x8C,'wp_hit_bottomleft')
+em.mov_r32_r32('rax','r8'); em.sub_r32_imm8('rax',8); em.cmp_r32_r32('r10','rax'); em.jcc(0x8D,'wp_hit_bottomright')
+em.mov_r32_imm('rax',15); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)                      # HTBOTTOM
+em.label('wp_hit_bottomleft'); em.mov_r32_imm('rax',16); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
+em.label('wp_hit_bottomright'); em.mov_r32_imm('rax',17); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
+em.label('wp_hit_sides')
+em.cmp_r32_imm('r10',8); em.jcc(0x8C,'wp_hit_left')
+em.mov_r32_r32('rax','r8'); em.sub_r32_imm8('rax',8); em.cmp_r32_r32('r10','rax'); em.jcc(0x8D,'wp_hit_right')
+em.label('wp_hit_client'); em.mov_r32_imm('rax',1); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)   # HTCLIENT
+em.label('wp_hit_left'); em.mov_r32_imm('rax',10); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
+em.label('wp_hit_right'); em.mov_r32_imm('rax',11); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
+
 em.label('wp_ncpaint')
 em.call_iat('DefWindowProcW'); em.mov_ripmem_r64(bsyms['defproc_result'],'rax'); em.call_label('paint_menu_gaps'); em.mov_r64_ripmem('rax',bsyms['defproc_result']); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
 
@@ -7602,6 +7663,24 @@ assert _cap_layout_src.count("bsyms['cap_layout_w']") >= 3, \
 assert "em.mov_r64_ripmem('rdx', bsyms['hfont_title'])" in _production_source and \
        "em.mov_r64_ripmem('rdx', bsyms['hfont_sysbtn'])" in _production_source, \
     'the title must paint bold and the window buttons must use their own size'
+# 自绘标题行的非客户区纪律：WS_THICKFRAME 不能占位（否则标题行上方多一条空白），
+# 边缘缩放要自己回答命中，WS_POPUP 最大化必须被钉在工作区上。
+for _nc_routine in ('wp_nccalcsize', 'wp_nchittest', 'wp_getminmaxinfo'):
+    assert _nc_routine in em.labels, '%s must be emitted' % _nc_routine
+for _nc_route in ("em.cmp_r32_imm('rdx',0x0083); em.jcc(0x84,'wp_nccalcsize')",
+                  "em.cmp_r32_imm('rdx',0x0084); em.jcc(0x84,'wp_nchittest')",
+                  "em.cmp_r32_imm('rdx',0x0024); em.jcc(0x84,'wp_getminmaxinfo')"):
+    assert _nc_route in _production_source, 'missing non-client route: %s' % _nc_route
+_nc_src = _production_source[
+    _production_source.index("em.label('wp_nccalcsize')"):
+    _production_source.index("em.label('wp_ncpaint')")]
+assert "call_iat('MonitorFromWindow')" in _nc_src and \
+       "call_iat('GetMonitorInfoW')" in _nc_src and \
+       "mov_mreg_reg32('r9',8,'rax')" in _nc_src and \
+       "mov_mreg_reg32('r9',16,'rax')" in _nc_src, \
+    'a WS_POPUP window must clamp ptMaxSize and ptMaxPosition to the work area'
+assert "MonitorFromWindow" in imports['USER32.dll'] and \
+       "GetMonitorInfoW" in imports['USER32.dll']
 
 _output_channel = 'test' if INJECTED_BUILD else _BUILD_CHANNEL
 _output_name = (('pemark_x64_v8_6_outline_alloc_%s.exe' % ARENA_ALLOC_INJECTION_MODE)

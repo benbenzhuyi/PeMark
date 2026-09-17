@@ -11,10 +11,17 @@ V8.5.4 shipped as the first stable release; its full record is
   underlined;
 - `PeMark·码记` paints in its own bold font;
 - the minimize / maximize / close glyphs use a smaller size of the same
-  Fluent icon font, so their weight matches the tool icons;
+  Fluent icon font (-11 instead of -13), so their weight matches both the
+  tool icons and the buttons on a native Windows caption;
 - resizing the sidebar now repaints the document surfaces with
   `RDW_UPDATENOW` in addition to invalidating them, which removes the
   smearing that only Preview (RichEdit) showed; the Source EDIT was fine.
+- the window no longer keeps a non-client frame: `WM_NCCALCSIZE` collapses it
+  so the self-drawn title row starts at y=0 (a `WS_THICKFRAME` window used to
+  show a blank strip above it). Edge resizing is answered by `WM_NCHITTEST`
+  with an 8px band, and `WM_GETMINMAXINFO` clamps the maximized geometry to
+  the monitor work area, because a `WS_POPUP` window would otherwise cover
+  the taskbar.
 
 The layout change exposed a real defect: the menu measurement loop clobbered
 `r10`, so the window buttons were computed from a stale width and landed on
