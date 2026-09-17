@@ -18,6 +18,13 @@ V8.5.4 shipped as the first stable release; its full record is
   coloured pixels in a 184x280 sidebar sample, where grayscale AA would be
   near zero;
 - `WM_ERASEBKGND` now fills the client in both themes instead of only dark.
+- editor text defaults to 17px at 100% (preview `CHARFORMAT.yHeight` 255 twips,
+  was 220), matching the reference editor's text scale. Recorded for the
+  record: swapping `Microsoft YaHei UI` for `Microsoft YaHei` produced
+  byte-identical glyph pixels (the two faces share outlines), and the system
+  runs with ClearType enabled, so the remaining crispness gap is the GDI
+  ClearType versus Chromium DirectWrite rasterizer difference plus text scale,
+  not a font-family bug.
 
 Still open from the same report: per-item file/folder icons in the sidebar.
 That needs the row text to stop carrying its own indentation and arrow
