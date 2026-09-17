@@ -365,6 +365,7 @@ bss_alloc('hwnd_status', 8, 8)
 bss_alloc('hwnd_corner', 8, 8)
 bss_alloc('hfont', 8, 8)
 bss_alloc('hfont_outline', 8, 8)
+bss_alloc('hfont_outline_bold', 8, 8)
 bss_alloc('hfont_status', 8, 8)
 # V8.6.1：侧栏两个标题栏用系统菜单栏字体（NONCLIENTMETRICS.lfMenuFont），
 # 这样标题与菜单栏的字体字号完全一致，不再是自绘控件默认的老 UI 字体。
@@ -1253,9 +1254,16 @@ em.call_label('apply_zoom')
 # Give them fixed ClearType fonts so document zoom does not make them huge and
 # so the very first owner-draw paint uses deterministic glyph rasterization.
 # Outline: ~11pt/15px. Status: ~9pt/12px at 96 DPI.
-em.mov_r32_imm('rcx',0xFFFFFFF1); em.xor32('rdx'); em.xor32('r8'); em.xor32('r9')
+# V8.6.1：侧栏字号收到 ~9.75pt/13px，与参考编辑器的文件树/大纲导航同尺度。
+em.mov_r32_imm('rcx',0xFFFFFFF3); em.xor32('rdx'); em.xor32('r8'); em.xor32('r9')
 em.mov_mrsp_imm32(0x20,400); em.mov_mrsp_imm32(0x28,0); em.mov_mrsp_imm32(0x30,0); em.mov_mrsp_imm32(0x38,0); em.mov_mrsp_imm32(0x40,1); em.mov_mrsp_imm32(0x48,0); em.mov_mrsp_imm32(0x50,0); em.mov_mrsp_imm32(0x58,5); em.mov_mrsp_imm32(0x60,0)
 em.lea_rip('rax',rsyms['font_face']); em.mov_mrsp_reg64(0x68,'rax'); em.call_iat('CreateFontW'); em.mov_ripmem_r64(bsyms['hfont_outline'],'rax')
+# 大纲导航前两级用同一支字体的粗体（参考编辑器的导航项就是粗体）。
+em.mov_r32_imm('rcx',0xFFFFFFF3); em.xor32('rdx'); em.xor32('r8'); em.xor32('r9')
+em.mov_mrsp_imm32(0x20,700); em.mov_mrsp_imm32(0x28,0); em.mov_mrsp_imm32(0x30,0); em.mov_mrsp_imm32(0x38,0); em.mov_mrsp_imm32(0x40,1); em.mov_mrsp_imm32(0x48,0); em.mov_mrsp_imm32(0x50,0); em.mov_mrsp_imm32(0x58,5); em.mov_mrsp_imm32(0x60,0)
+em.lea_rip('rax',rsyms['font_face']); em.mov_mrsp_reg64(0x68,'rax'); em.call_iat('CreateFontW'); em.mov_ripmem_r64(bsyms['hfont_outline_bold'],'rax')
+em.test64('rax'); em.jcc(0x85,'outline_bold_ready'); em.mov_r64_ripmem('rax',bsyms['hfont_outline']); em.mov_ripmem_r64(bsyms['hfont_outline_bold'],'rax')
+em.label('outline_bold_ready')
 em.mov_r32_imm('rcx',0xFFFFFFF4); em.xor32('rdx'); em.xor32('r8'); em.xor32('r9')
 em.mov_mrsp_imm32(0x20,400); em.mov_mrsp_imm32(0x28,0); em.mov_mrsp_imm32(0x30,0); em.mov_mrsp_imm32(0x38,0); em.mov_mrsp_imm32(0x40,1); em.mov_mrsp_imm32(0x48,0); em.mov_mrsp_imm32(0x50,0); em.mov_mrsp_imm32(0x58,5); em.mov_mrsp_imm32(0x60,0)
 em.lea_rip('rax',rsyms['font_face']); em.mov_mrsp_reg64(0x68,'rax'); em.call_iat('CreateFontW'); em.mov_ripmem_r64(bsyms['hfont_status'],'rax')
@@ -6229,6 +6237,12 @@ em.label('wp_outline_light_file'); em.mov_r32_imm('rdx',0x00202020); em.jmp('wp_
 # level = outline_level[itemID]
 em.label('wp_outline_level_row')
 em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r32_mreg('rax','r9',8); em.add_r32_r32('rax','rax'); em.add_r32_r32('rax','rax'); em.mov_r64_ripmem('rcx',bsyms['outline_level']); em.add_r64_r64('rcx','rax'); em.mov_r32_ptr('r10','rcx')
+# V8.6.1：前两级标题用粗体，其余保持常规——与参考编辑器的导航层级一致。
+# r10 会被下面的 API 调用吃掉，所以字体选择必须在这里完成。
+em.cmp_r32_imm('r10',2); em.jcc(0x8F,'wp_outline_font_regular')
+em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r64_mreg('rcx','r9',32); em.mov_r64_ripmem('rdx',bsyms['hfont_outline_bold']); em.call_iat('SelectObject'); em.jmp('wp_outline_font_ready')
+em.label('wp_outline_font_regular'); em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r64_mreg('rcx','r9',32); em.mov_r64_ripmem('rdx',bsyms['hfont_outline']); em.call_iat('SelectObject')
+em.label('wp_outline_font_ready')
 # Select color by depth and theme.
 em.mov_r32_ripmem('rax',bsyms['theme_dark']); em.test32('rax'); em.jcc(0x84,'wp_outline_color_light')
 em.cmp_r32_imm('r10',1); em.jcc(0x84,'wp_outline_dark_h1'); em.cmp_r32_imm('r10',2); em.jcc(0x84,'wp_outline_dark_h2'); em.cmp_r32_imm('r10',3); em.jcc(0x84,'wp_outline_dark_h3'); em.mov_r32_imm('rdx',0x00AFAFAF); em.jmp('wp_outline_color_send')

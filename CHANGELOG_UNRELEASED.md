@@ -25,6 +25,10 @@ V8.5.4 shipped as the first stable release; its full record is
   runs with ClearType enabled, so the remaining crispness gap is the GDI
   ClearType versus Chromium DirectWrite rasterizer difference plus text scale,
   not a font-family bug.
+- sidebar text drops from 15px to 13px to match the reference tree scale, and
+  outline levels 1-2 paint with a weight-700 face of the same family while
+  deeper levels stay regular. Verified by reading the LOGFONT of both
+  handles: height -13 with weight 400 and 700 respectively, quality 5.
 
 Still open from the same report: per-item file/folder icons in the sidebar.
 That needs the row text to stop carrying its own indentation and arrow
