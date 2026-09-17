@@ -11,11 +11,11 @@
 | `.reloc` | `0x2C000` | 1024 | 1024 | `0x42000040` |
 | `.pdata` | `0x2D000` | 1536 | 1536 | `0x40000040` |
 
-text 实际代码 58240 字节（预算 61440），rdata 6260 字节，idata 4980 字节，BSS 虚拟 94208 字节。
+text 实际代码 58316 字节（预算 61440），rdata 6260 字节，idata 4980 字节，BSS 虚拟 94208 字节。
 
-本次构建：text 实际 58240 字节（余量 3200 字节）；BSS 符号 330 个，最终虚拟 BSS 94208 字节。
+本次构建：text 实际 58316 字节（余量 3124 字节）；BSS 符号 331 个，最终虚拟 BSS 94208 字节。
 
-SHA-256：`6b26585bb453010e358c726931d96f43cf5c4ef27cd02d1aff6101ad378698df`
+SHA-256：`5fe17a495f691747e33d3372a78f202b442ae67cf55af2414ecba4a769186b21`
 
 | Symbol | RVA | Size |
 |---|---:|---:|
@@ -281,71 +281,72 @@ SHA-256：`6b26585bb453010e358c726931d96f43cf5c4ef27cd02d1aff6101ad378698df`
 | `tree_expand_index` | `0x28298` | 4 |
 | `tree_expand_depth` | `0x2829C` | 4 |
 | `tree_expand_path` | `0x282A0` | 8 |
-| `tree_enum_pass` | `0x282A8` | 4 |
-| `rfl_item_index` | `0x282AC` | 4 |
-| `hwnd_rename` | `0x282B0` | 8 |
-| `rename_row` | `0x282B8` | 4 |
-| `rename_active` | `0x282BC` | 4 |
-| `rename_item_rect` | `0x282C0` | 16 |
-| `rename_parent` | `0x282D0` | 1024 |
-| `rename_buf` | `0x286D0` | 1024 |
-| `fo_popup_menu` | `0x28AD0` | 8 |
-| `fo_row_index` | `0x28AD8` | 4 |
-| `fo_target_dir` | `0x28ADC` | 1024 |
-| `fo_new_path` | `0x28EDC` | 1024 |
-| `fo_new_name` | `0x292DC` | 1024 |
-| `fo_prompt_buf` | `0x296DC` | 1024 |
-| `fo_client_pt` | `0x29ADC` | 8 |
-| `fo_click_pt` | `0x29AE4` | 8 |
-| `fo_click_row` | `0x29AEC` | 4 |
-| `fo_menu_pt` | `0x29AF0` | 8 |
-| `fo_base_ptr` | `0x29AF8` | 8 |
-| `fo_ext_ptr` | `0x29B00` | 8 |
-| `fo_hglobal` | `0x29B08` | 8 |
-| `fo_delete_result` | `0x29B10` | 4 |
-| `files_btn_collapse_rect` | `0x29B14` | 16 |
-| `files_btn_refresh_rect` | `0x29B24` | 16 |
-| `files_title_rect` | `0x29B34` | 16 |
-| `files_path_rect` | `0x29B44` | 16 |
-| `files_btn_hot` | `0x29B54` | 4 |
-| `files_btn_hot_next` | `0x29B58` | 4 |
-| `fo_sel_path_buf` | `0x29B5C` | 1024 |
-| `docs_path_buf` | `0x29F5C` | 1024 |
-| `init_done` | `0x2A35C` | 4 |
-| `shfileop` | `0x2A360` | 64 |
-| `fo_from_buf` | `0x2A3A0` | 1032 |
-| `panel_mode` | `0x2A7A8` | 4 |
-| `open_bypass_picker` | `0x2A7AC` | 4 |
-| `ws_path_buf` | `0x2A7B0` | 1024 |
-| `browseinfo` | `0x2ABB0` | 64 |
-| `fod_ptr` | `0x2ABF0` | 8 |
-| `fod_options` | `0x2ABF8` | 4 |
-| `fod_chosen` | `0x2ABFC` | 4 |
-| `shell_item` | `0x2AC00` | 8 |
-| `item_path` | `0x2AC08` | 8 |
-| `fod_probe_coinit` | `0x2AC10` | 4 |
-| `fod_probe_hresult` | `0x2AC14` | 4 |
-| `fod_probe_options_hresult` | `0x2AC18` | 4 |
-| `fod_probe_vtbl` | `0x2AC20` | 8 |
-| `fod_probe_entered` | `0x2AC28` | 4 |
-| `widebuf` | `0x2AC30` | 8 |
-| `wide_capacity` | `0x2AC38` | 4 |
-| `bytebuf` | `0x2AC40` | 8 |
-| `byte_capacity` | `0x2AC48` | 4 |
-| `document_revision` | `0x2AC50` | 8 |
-| `saved_revision` | `0x2AC58` | 8 |
-| `pending_destructive_action` | `0x2AC60` | 4 |
-| `save_target_is_temp` | `0x2AC64` | 4 |
-| `inject_write_call_count` | `0x2AC68` | 4 |
-| `inject_flush_call_count` | `0x2AC6C` | 4 |
-| `inject_replace_call_count` | `0x2AC70` | 4 |
-| `save_stage_path` | `0x2AC80` | 1024 |
-| `inject_create_call_count` | `0x2B080` | 4 |
-| `inject_close_call_count` | `0x2B084` | 4 |
-| `eol_state` | `0x2B088` | 4 |
-| `candidate_encoding_state` | `0x2B08C` | 4 |
-| `candidate_eol_state` | `0x2B090` | 4 |
-| `outline_srcpos` | `0x2B098` | 8 |
-| `outline_renderpos` | `0x2B0A0` | 8 |
-| `outline_level` | `0x2B0A8` | 8 |
-| `outline_capacity` | `0x2B0B0` | 4 |
+| `tree_expand_path_buf` | `0x282A8` | 1024 |
+| `tree_enum_pass` | `0x286A8` | 4 |
+| `rfl_item_index` | `0x286AC` | 4 |
+| `hwnd_rename` | `0x286B0` | 8 |
+| `rename_row` | `0x286B8` | 4 |
+| `rename_active` | `0x286BC` | 4 |
+| `rename_item_rect` | `0x286C0` | 16 |
+| `rename_parent` | `0x286D0` | 1024 |
+| `rename_buf` | `0x28AD0` | 1024 |
+| `fo_popup_menu` | `0x28ED0` | 8 |
+| `fo_row_index` | `0x28ED8` | 4 |
+| `fo_target_dir` | `0x28EDC` | 1024 |
+| `fo_new_path` | `0x292DC` | 1024 |
+| `fo_new_name` | `0x296DC` | 1024 |
+| `fo_prompt_buf` | `0x29ADC` | 1024 |
+| `fo_client_pt` | `0x29EDC` | 8 |
+| `fo_click_pt` | `0x29EE4` | 8 |
+| `fo_click_row` | `0x29EEC` | 4 |
+| `fo_menu_pt` | `0x29EF0` | 8 |
+| `fo_base_ptr` | `0x29EF8` | 8 |
+| `fo_ext_ptr` | `0x29F00` | 8 |
+| `fo_hglobal` | `0x29F08` | 8 |
+| `fo_delete_result` | `0x29F10` | 4 |
+| `files_btn_collapse_rect` | `0x29F14` | 16 |
+| `files_btn_refresh_rect` | `0x29F24` | 16 |
+| `files_title_rect` | `0x29F34` | 16 |
+| `files_path_rect` | `0x29F44` | 16 |
+| `files_btn_hot` | `0x29F54` | 4 |
+| `files_btn_hot_next` | `0x29F58` | 4 |
+| `fo_sel_path_buf` | `0x29F5C` | 1024 |
+| `docs_path_buf` | `0x2A35C` | 1024 |
+| `init_done` | `0x2A75C` | 4 |
+| `shfileop` | `0x2A760` | 64 |
+| `fo_from_buf` | `0x2A7A0` | 1032 |
+| `panel_mode` | `0x2ABA8` | 4 |
+| `open_bypass_picker` | `0x2ABAC` | 4 |
+| `ws_path_buf` | `0x2ABB0` | 1024 |
+| `browseinfo` | `0x2AFB0` | 64 |
+| `fod_ptr` | `0x2AFF0` | 8 |
+| `fod_options` | `0x2AFF8` | 4 |
+| `fod_chosen` | `0x2AFFC` | 4 |
+| `shell_item` | `0x2B000` | 8 |
+| `item_path` | `0x2B008` | 8 |
+| `fod_probe_coinit` | `0x2B010` | 4 |
+| `fod_probe_hresult` | `0x2B014` | 4 |
+| `fod_probe_options_hresult` | `0x2B018` | 4 |
+| `fod_probe_vtbl` | `0x2B020` | 8 |
+| `fod_probe_entered` | `0x2B028` | 4 |
+| `widebuf` | `0x2B030` | 8 |
+| `wide_capacity` | `0x2B038` | 4 |
+| `bytebuf` | `0x2B040` | 8 |
+| `byte_capacity` | `0x2B048` | 4 |
+| `document_revision` | `0x2B050` | 8 |
+| `saved_revision` | `0x2B058` | 8 |
+| `pending_destructive_action` | `0x2B060` | 4 |
+| `save_target_is_temp` | `0x2B064` | 4 |
+| `inject_write_call_count` | `0x2B068` | 4 |
+| `inject_flush_call_count` | `0x2B06C` | 4 |
+| `inject_replace_call_count` | `0x2B070` | 4 |
+| `save_stage_path` | `0x2B080` | 1024 |
+| `inject_create_call_count` | `0x2B480` | 4 |
+| `inject_close_call_count` | `0x2B484` | 4 |
+| `eol_state` | `0x2B488` | 4 |
+| `candidate_encoding_state` | `0x2B48C` | 4 |
+| `candidate_eol_state` | `0x2B490` | 4 |
+| `outline_srcpos` | `0x2B498` | 8 |
+| `outline_renderpos` | `0x2B4A0` | 8 |
+| `outline_level` | `0x2B4A8` | 8 |
+| `outline_capacity` | `0x2B4B0` | 4 |

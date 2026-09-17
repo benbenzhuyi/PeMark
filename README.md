@@ -37,7 +37,7 @@ Download `pemark_x64_v8_6_3.exe` from the
 Expected SHA-256:
 
 ```text
-6b26585bb453010e358c726931d96f43cf5c4ef27cd02d1aff6101ad378698df
+5fe17a495f691747e33d3372a78f202b442ae67cf55af2414ecba4a769186b21
 ```
 
 The executable is unsigned, so Windows SmartScreen or security products may

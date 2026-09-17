@@ -22,7 +22,7 @@ page checks confirming RX/R/RW/RW/R/R with no W+X page.
 
 Asset: `pemark_x64_v8_6_3.exe`
 
-SHA-256: `6b26585bb453010e358c726931d96f43cf5c4ef27cd02d1aff6101ad378698df`
+SHA-256: `5fe17a495f691747e33d3372a78f202b442ae67cf55af2414ecba4a769186b21`
 
 ---
 
@@ -46,7 +46,7 @@ RX/R/RW/RW/R/R、无 W+X 的检查。
 
 附件：`pemark_x64_v8_6_3.exe`
 
-SHA-256：`6b26585bb453010e358c726931d96f43cf5c4ef27cd02d1aff6101ad378698df`
+SHA-256：`5fe17a495f691747e33d3372a78f202b442ae67cf55af2414ecba4a769186b21`
 
 ## Known limitations / 已知限制
 

@@ -79,7 +79,7 @@ English | [简体中文](PUBLISHING_CHECKLIST.zh-CN.md)
 - [ ] Use `docs/RELEASE_V8_6_3_GITHUB.md` as the release body.
 - [ ] Attach only `bin/current/pemark_x64_v8_6_3.exe` as the release asset.
 - [ ] Verify the uploaded asset SHA-256 is
-  `6b26585bb453010e358c726931d96f43cf5c4ef27cd02d1aff6101ad378698df`.
+  `5fe17a495f691747e33d3372a78f202b442ae67cf55af2414ecba4a769186b21`.
 
 ## Repository settings
 

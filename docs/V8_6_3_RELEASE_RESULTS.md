@@ -11,11 +11,11 @@ against `src/current/generate_markdown_editor_v8_6_3.py` and
 | Version | V8.6.3 (Stable) |
 | Release date | 2026-09-18 |
 | Generator | `src/current/generate_markdown_editor_v8_6_3.py` |
-| Generator SHA-256 | `05125e2cbe92fb2b246762f2de93b7da8e748e148ff9a92ba45cbd78dfaea1c0` |
+| Generator SHA-256 | `4667c02a0ae4d50e0fbf80fff8cb915cb55b56569c6c4c2497dee95d1a1875f9` |
 | Binary | `bin/current/pemark_x64_v8_6_3.exe` |
 | Binary size | 182,784 bytes |
-| Binary SHA-256 | `6b26585bb453010e358c726931d96f43cf5c4ef27cd02d1aff6101ad378698df` |
-| Emitted text | 58,240 bytes (61,440-byte budget) |
+| Binary SHA-256 | `5fe17a495f691747e33d3372a78f202b442ae67cf55af2414ecba4a769186b21` |
+| Emitted text | 58,316 bytes (61,440-byte budget) |
 | Virtual BSS | 94,208 bytes |
 | PE virtual size | 188,416 bytes |
 
@@ -48,7 +48,7 @@ The formal window caption is `PeMark x64 V8.6.3 — Direct-PE Markdown Editor`.
 | Unwind metadata | 87 valid, ordered and resolvable `RUNTIME_FUNCTION` entries |
 | GUI smoke | 17/17 checks; 5/5 clean exits |
 | DPI and title row | PASS: GDI-scaled awareness, caption geometry/icons/commands |
-| Workspace model and projection | PASS: filtering, expansion, item data and activation |
+| Workspace model and projection | PASS: filtering, expansion, item data and activation; 20/20 repeated 130-entry rebuilds preserve revision state |
 | File operations | PASS: rename, create, Recycle Bin delete and copy path |
 | Keyboard navigation | PASS: focus, Enter activation and Backspace parent navigation |
 | Document safety | Open/encoding, 8/8 save faults, destructive transitions, revisions |

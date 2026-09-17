@@ -28,7 +28,7 @@ jobs:
       - name: Verify release hash
         shell: pwsh
         run: |
-          $expected = "6B26585BB453010E358C726931D96F43CF5C4EF27CD02D1AFF6101AD378698DF"
+          $expected = "5FE17A495F691747E33D3372A78F202B442AE67CF55AF2414ECBA4A769186B21"
           $actual = (Get-FileHash -Algorithm SHA256 bin/current/pemark_x64_v8_6_3.exe).Hash
           if ($actual -ne $expected) { throw "SHA-256 mismatch: $actual" }
       - name: Build and inspect the development channel

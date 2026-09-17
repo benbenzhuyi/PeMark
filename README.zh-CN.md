@@ -32,7 +32,7 @@ PE32+ 映像与 AMD64 机器码字节；生产版 EXE 不经过编译器、汇�
 SHA-256：
 
 ```text
-6b26585bb453010e358c726931d96f43cf5c4ef27cd02d1aff6101ad378698df
+5fe17a495f691747e33d3372a78f202b442ae67cf55af2414ecba4a769186b21
 ```
 
 当前 EXE 尚未进行数字签名，Windows SmartScreen 或安全软件可能显示警告。

@@ -73,7 +73,7 @@
 - [ ] 使用 `RELEASE_V8_6_3_GITHUB.md` 作为发布正文。
 - [ ] 只附加 `bin/current/pemark_x64_v8_6_3.exe`。
 - [ ] 确认上传附件 SHA-256 为
-  `6b26585bb453010e358c726931d96f43cf5c4ef27cd02d1aff6101ad378698df`。
+  `5fe17a495f691747e33d3372a78f202b442ae67cf55af2414ecba4a769186b21`。
 
 ## 仓库设置
 

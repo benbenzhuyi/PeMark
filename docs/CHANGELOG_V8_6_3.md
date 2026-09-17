@@ -5,6 +5,15 @@ V8.5.4 shipped as the first stable release; its full record is
 
 ## V8.6.3 — High-DPI text sharpness and window polish
 
+- release hardening: file-tree enumeration now copies the parent directory
+  path out of the dynamic row arena before inserting children. Growing the
+  arena past 64 rows could otherwise invalidate that pointer and make later
+  names accumulate in the shared path buffer, eventually corrupting document
+  revision state. The tree projection also omits full paths that exceed its
+  260-WCHAR row capacity instead of copying across row metadata; the workspace
+  model still preserves a 255-character filename. The Windows regression now
+  checks revision ownership after every probe and passed 20 repeated 130-entry
+  runs;
 - the process now selects `DPI_AWARENESS_CONTEXT_UNAWARE_GDISCALED` before
   creating any UI. On a 150% display the previous DPI-unaware process rendered
   the complete window at 96 DPI and Windows bitmap-stretched it to 144 DPI,

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """V8.6 slice 1: directory enumeration, filtering, ordering and error paths."""
 import ctypes as c
+from ctypes import wintypes as w
 import hashlib
 import os
 import shutil
@@ -30,7 +31,11 @@ FILETIME_EPOCH_DELTA = 11644473600
 # Any of these is a clear "this is not an enumerable directory" answer:
 # FILE_NOT_FOUND / PATH_NOT_FOUND / FILENAME_EXCED_RANGE / DIRECTORY / ACCESS_DENIED
 NOT_A_DIRECTORY_ERRORS = (2, 3, 5, 206, 267)
-k32 = c.windll.kernel32
+k32, u32 = c.windll.kernel32, c.windll.user32
+u32.SendMessageTimeoutW.argtypes = [w.HWND, w.UINT, w.WPARAM, w.LPARAM,
+                                    w.UINT, w.UINT, c.POINTER(c.c_size_t)]
+u32.SendMessageTimeoutW.restype = w.LPARAM
+SMTO_ABORTIFHUNG = 0x0002
 
 
 def build():
@@ -80,6 +85,16 @@ def probe(app, path):
     # projected tree and status bar instead of guessing with a fixed sleep.
     wait_for(lambda: app.read32("workspace_probe_done") == 1, 10,
              "workspace probe did not settle")
+    # The emitted command publishes the flag immediately before jumping back
+    # to msg_loop. Synchronize with the UI thread so the next probe (or
+    # WM_CLOSE) cannot race that final jump on a fast test host.
+    result = c.c_size_t()
+    assert u32.SendMessageTimeoutW(app.main, 0, 0, 0, SMTO_ABORTIFHUNG, 5000,
+                                   c.byref(result)), \
+        "workspace probe did not return to the message loop"
+    assert app.revisions() == (0, 0), \
+        ("workspace projection changed document revisions", path,
+         app.revisions())
 
 
 def read_entries(app, count):
@@ -233,6 +248,12 @@ def main():
             assert app.read32("ws_error") == 0
             assert app.read32("ws_entry_count") == 7
 
+        # Each probe above asserted that rebuilding the workspace/tree model
+        # did not corrupt the adjacent document revision state. Synchronize one
+        # final time before WM_CLOSE so this also checks a clean exit.
+        result = c.c_size_t()
+        assert u32.SendMessageTimeoutW(app.main, 0, 0, 0, SMTO_ABORTIFHUNG,
+                                       5000, c.byref(result))
         app.post_close()
         assert app.proc.wait(timeout=10) == 0
     finally:
