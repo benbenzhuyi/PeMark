@@ -132,11 +132,13 @@ wstr('menu_edit','&Edit')
 wstr('menu_markdown','&Markdown')
 wstr('menu_view','&View')
 wstr('menu_help','&Help')
-wstr('caption_file','File')
-wstr('caption_edit','Edit')
-wstr('caption_markdown','Markdown')
-wstr('caption_view','View')
-wstr('caption_help','Help')
+# 标题行菜单入口带 & 前缀：DrawTextW 会把它渲染成快捷键下划线（自绘文本不
+# 依赖系统的 Alt 提示状态，所以下划线始终可见）。
+wstr('caption_file','&File')
+wstr('caption_edit','&Edit')
+wstr('caption_markdown','&Markdown')
+wstr('caption_view','&View')
+wstr('caption_help','&Help')
 wstr('caption_title','PeMark·码记')
 wstr('caption_min','−')
 wstr('caption_max','□')
@@ -370,6 +372,10 @@ bss_alloc('hfont_panel', 8, 8)
 bss_alloc('ncm_panel', 512, 8)
 bss_alloc('hwnd_caption', 8, 8)
 bss_alloc('hfont_caption', 8, 8)
+bss_alloc('hfont_title', 8, 8)
+bss_alloc('hfont_sysbtn', 8, 8)
+bss_alloc('cap_menu_x', 4, 4)
+bss_alloc('cap_layout_w', 4, 4)
 bss_alloc('hfont_icons', 8, 8)
 bss_alloc('hpen_caption', 8, 8)
 bss_alloc('hpen_caption_hot', 8, 8)
@@ -1264,6 +1270,19 @@ em.mov_mrsp_imm32(0x20,400); em.mov_mrsp_imm32(0x28,0); em.mov_mrsp_imm32(0x30,0
 em.lea_rip('rax',rsyms['font_icons']); em.mov_mrsp_reg64(0x68,'rax'); em.call_iat('CreateFontW'); em.mov_ripmem_r64(bsyms['hfont_icons'],'rax')
 em.test64('rax'); em.jcc(0x85,'icons_font_ready'); em.mov_r64_ripmem('rax',bsyms['hfont_panel']); em.mov_ripmem_r64(bsyms['hfont_icons'],'rax')
 em.label('icons_font_ready')
+# 系统三键（最小化/最大化/关闭）用同一支 Fluent 图标字体的小一号字号：
+# MDL2 的 Chrome* 字形在字身框里接近满格，和工具栏字形放在一起会显得过大。
+em.mov_r32_imm('rcx',0xFFFFFFF3); em.xor32('rdx'); em.xor32('r8'); em.xor32('r9')
+em.mov_mrsp_imm32(0x20,400); em.mov_mrsp_imm32(0x28,0); em.mov_mrsp_imm32(0x30,0); em.mov_mrsp_imm32(0x38,0); em.mov_mrsp_imm32(0x40,1); em.mov_mrsp_imm32(0x48,0); em.mov_mrsp_imm32(0x50,0); em.mov_mrsp_imm32(0x58,5); em.mov_mrsp_imm32(0x60,0)
+em.lea_rip('rax',rsyms['font_icons']); em.mov_mrsp_reg64(0x68,'rax'); em.call_iat('CreateFontW'); em.mov_ripmem_r64(bsyms['hfont_sysbtn'],'rax')
+em.test64('rax'); em.jcc(0x85,'sysbtn_font_ready'); em.mov_r64_ripmem('rax',bsyms['hfont_icons']); em.mov_ripmem_r64(bsyms['hfont_sysbtn'],'rax')
+em.label('sysbtn_font_ready')
+# 应用名单独用粗体：标题行里它是唯一需要品牌感的文本。
+em.mov_r32_imm('rcx',0xFFFFFFF1); em.xor32('rdx'); em.xor32('r8'); em.xor32('r9')
+em.mov_mrsp_imm32(0x20,700); em.mov_mrsp_imm32(0x28,0); em.mov_mrsp_imm32(0x30,0); em.mov_mrsp_imm32(0x38,0); em.mov_mrsp_imm32(0x40,1); em.mov_mrsp_imm32(0x48,0); em.mov_mrsp_imm32(0x50,0); em.mov_mrsp_imm32(0x58,5); em.mov_mrsp_imm32(0x60,0)
+em.lea_rip('rax',rsyms['font_face']); em.mov_mrsp_reg64(0x68,'rax'); em.call_iat('CreateFontW'); em.mov_ripmem_r64(bsyms['hfont_title'],'rax')
+em.test64('rax'); em.jcc(0x85,'title_font_ready'); em.mov_r64_ripmem('rax',bsyms['hfont_caption']); em.mov_ripmem_r64(bsyms['hfont_title'],'rax')
+em.label('title_font_ready')
 em.mov_r64_r64('rcx','rsi'); em.call_iat('SetFocus')
 
 # Native Windows status bar (common-controls class).
@@ -3094,15 +3113,36 @@ em.cmp_r32_imm('r10', 760)
 em.jcc(0x8D, 'cap_layout_width_ok')
 em.mov_r32_imm('r10', 760)
 em.label('cap_layout_width_ok')
+# 有效宽度落盘：菜单测量循环会调用 DrawTextW 并吃掉 r10/r11，后面的窗口三键
+# 与工具图标都必须从这个变量重新取宽度，否则三键会被算到左侧压在菜单上。
+em.mov_ripmem_r32(bsyms['cap_layout_w'], 'r10')
 _cap_store_rect(CAP_RECT['toggle'], 6, 4, 34, 28)
 _cap_store_rect(CAP_RECT['title'], 38, 0, 150, TITLEBAR_H)
-_cap_store_rect(CAP_RECT['file'], 150, 0, 196, TITLEBAR_H)
-_cap_store_rect(CAP_RECT['edit'], 202, 0, 244, TITLEBAR_H)
-_cap_store_rect(CAP_RECT['markdown'], 250, 0, 336, TITLEBAR_H)
-_cap_store_rect(CAP_RECT['view'], 342, 0, 390, TITLEBAR_H)
-_cap_store_rect(CAP_RECT['help'], 396, 0, 442, TITLEBAR_H)
+# 菜单入口按文本实际宽度紧凑排布：DT_CALCRECT 量出文字宽度，左右各留 8px
+# 内边距，项间 8px。旧版按手写固定宽度（File 46px、Edit 42px…）排，在 100%
+# 缩放下显得又宽又散，换字体/换 DPI 时也必然对不齐。
+em.mov_ripmem_imm32(bsyms['cap_menu_x'], 146)
+for _menu_name, _menu_sym in (('file', 'caption_file'), ('edit', 'caption_edit'),
+                              ('markdown', 'caption_markdown'),
+                              ('view', 'caption_view'), ('help', 'caption_help')):
+    _menu_rect = CAP_RECT[_menu_name]
+    em.lea_rip('rcx', bsyms['caption_rects'] + _menu_rect * 16)
+    em.mov_r32_ripmem('rax', bsyms['cap_menu_x']); em.mov_mreg_reg32('rcx', 0, 'rax')
+    em.add_r32_imm8('rax', 400); em.mov_mreg_reg32('rcx', 8, 'rax')
+    em.mov_mreg_imm32('rcx', 4, 0); em.mov_mreg_imm32('rcx', 12, TITLEBAR_H)
+    em.mov_r64_ripmem('rcx', bsyms['paint_hdc']); em.lea_rip('rdx', rsyms[_menu_sym])
+    em.mov_r32_imm('r8', -1)
+    em.lea_rip('r9', bsyms['caption_rects'] + _menu_rect * 16)
+    em.mov_mrsp_imm32(0x20, 0x420); em.call_iat('DrawTextW')
+    em.lea_rip('rcx', bsyms['caption_rects'] + _menu_rect * 16)
+    em.mov_r32_mreg('rax', 'rcx', 8); em.mov_r32_mreg('rdx', 'rcx', 0)
+    em.sub_r32_r32('rax', 'rdx'); em.add_r32_imm8('rax', 16)
+    em.mov_r32_mreg('r10', 'rcx', 0); em.mov_r32_r32('r11', 'r10'); em.add_r32_r32('r11', 'rax')
+    em.mov_mreg_reg32('rcx', 8, 'r11'); em.mov_mreg_imm32('rcx', 12, TITLEBAR_H)
+    em.add_r32_imm8('r11', 8); em.mov_ripmem_r32(bsyms['cap_menu_x'], 'r11')
 # Right-aligned window buttons: close [w-46,w], max [w-92,w-46],
 # min [w-138,w-92]. They stay in the same order as a native caption.
+em.mov_r32_ripmem('r10', bsyms['cap_layout_w'])
 em.mov_r32_imm('r11', 46); em.mov_r32_r32('rax', 'r10'); em.sub_r32_r32('rax', 'r11')
 _cap_store_rect(CAP_RECT['close'], 'rax', 0, 'r10', TITLEBAR_H)
 em.mov_r32_imm('r11', 92); em.mov_r32_r32('rax', 'r10'); em.sub_r32_r32('rax', 'r11')
@@ -3114,7 +3154,7 @@ _cap_store_rect(CAP_RECT['min'], 'rax', 0, 'rdx', TITLEBAR_H)
 # Six 28px tool slots start at right - 138 - 176. Recompute the base from
 # caption_w for every slot so no volatile register is carried across stores.
 for i, name in enumerate(('save', 'find', 'viewmode', 'theme', 'gear', 'rightbar')):
-    em.mov_r32_ripmem('r9', bsyms['caption_w']); em.mov_r32_imm('r10', 314)
+    em.mov_r32_ripmem('r9', bsyms['cap_layout_w']); em.mov_r32_imm('r10', 314)
     em.sub_r32_r32('r9', 'r10'); em.add_r32_imm('r9', i * 28)
     em.mov_r32_r32('r10', 'r9'); em.add_r32_imm8('r10', 24)
     _cap_store_rect(CAP_RECT[name], 'r9', 4, 'r10', 28)
@@ -3206,6 +3246,8 @@ em.mov_r64_ripmem('rax', bsyms['hwnd_caption']); em.mov_ripmem_r64(bsyms['captio
 em.mov_r64_ripmem('rcx', bsyms['hwnd_caption'])
 em.lea_rip('rdx', bsyms['cap_client_rect']); em.call_iat('GetClientRect')
 em.mov_r32_ripmem('rax', bsyms['cap_client_rect'] + 8); em.mov_ripmem_r32(bsyms['caption_w'], 'rax')
+# 菜单项宽度依赖当前 DC 字体（DT_CALCRECT），所以先选好标题字体再排版。
+em.mov_r64_ripmem('rcx', bsyms['paint_hdc']); em.mov_r64_ripmem('rdx', bsyms['hfont_caption']); em.call_iat('SelectObject')
 em.call_label('caption_layout')
 em.mov_r64_ripmem('rcx', bsyms['paint_hdc'])
 em.mov_r64_ripmem('rdx', bsyms['hbrush_caption']); em.call_iat('SelectObject')
@@ -3224,7 +3266,10 @@ em.jcc(0x84, 'cap_paint_light_text')
 em.mov_r32_imm('rdx', 0x00E6E6E6); em.jmp('cap_paint_text_color')
 em.label('cap_paint_light_text'); em.mov_r32_imm('rdx', 0x00202020)
 em.label('cap_paint_text_color'); em.call_iat('SetTextColor')
+# 应用名用粗体，菜单与其它文本回到常规标题字体。
+em.mov_r64_ripmem('rcx', bsyms['paint_hdc']); em.mov_r64_ripmem('rdx', bsyms['hfont_title']); em.call_iat('SelectObject')
 _cap_draw_text('caption_title', 'title')
+em.mov_r64_ripmem('rcx', bsyms['paint_hdc']); em.mov_r64_ripmem('rdx', bsyms['hfont_caption']); em.call_iat('SelectObject')
 _cap_draw_text('caption_file', 'file', 0x25)
 _cap_draw_text('caption_edit', 'edit', 0x25)
 _cap_draw_text('caption_markdown', 'markdown', 0x25)
@@ -3267,6 +3312,8 @@ _cap_hover_bg('rightbar', CAP_ID['rightbar'], CAP_RECT['rightbar'])
 _cap_use_pen()
 _cap_round_rect_rel(CAP_RECT['rightbar'], 4, 5, 20, 19, 3)
 _cap_line_rel(CAP_RECT['rightbar'], 14, 5, 14, 19)
+# 系统三键换用小一号的图标字体，比例才和左侧工具图标一致。
+em.mov_r64_ripmem('rcx', bsyms['paint_hdc']); em.mov_r64_ripmem('rdx', bsyms['hfont_sysbtn']); em.call_iat('SelectObject')
 _cap_draw_glyph('min', 'icon_min', CAP_RECT['min'])
 _cap_draw_glyph('max', 'icon_max', CAP_RECT['max'])
 _cap_draw_glyph('close', 'icon_close', CAP_RECT['close'], close=True)
@@ -3506,8 +3553,10 @@ em.mov_r64_ripmem('rcx',bsyms['hwnd_preview']); em.test64('rcx'); em.jcc(0x84,'r
 # V8.6.1：拖动分隔条时文档面同时改变位置与宽度，必须显式重绘——否则 RichEdit
 # 会留下旧像素（拖动时花屏），要等下一次偶然重绘才恢复。RDW_INVALIDATE|RDW_ERASE|
 # RDW_ALLCHILDREN（不加 UPDATENOW，让连续拖动自然合并到下一帧）。
-em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.test64('rcx'); em.jcc(0x84,'resize_redraw_preview'); em.xor32('rdx'); em.xor32('r8'); em.mov_r32_imm('r9',0x0085); em.call_iat('RedrawWindow')
-em.label('resize_redraw_preview'); em.mov_r64_ripmem('rcx',bsyms['hwnd_preview']); em.test64('rcx'); em.jcc(0x84,'resize_redraw_done'); em.xor32('rdx'); em.xor32('r8'); em.mov_r32_imm('r9',0x0085); em.call_iat('RedrawWindow')
+# RDW_UPDATENOW(0x100) 也要打开：拖动侧栏宽度时 RichEdit 的重绘是异步的，
+# 只发 invalidate 会让预览面在上一次宽度的像素上留下花屏（源码 EDIT 不会）。
+em.mov_r64_ripmem('rcx',bsyms['hwnd_edit']); em.test64('rcx'); em.jcc(0x84,'resize_redraw_preview'); em.xor32('rdx'); em.xor32('r8'); em.mov_r32_imm('r9',0x0185); em.call_iat('RedrawWindow')
+em.label('resize_redraw_preview'); em.mov_r64_ripmem('rcx',bsyms['hwnd_preview']); em.test64('rcx'); em.jcc(0x84,'resize_redraw_done'); em.xor32('rdx'); em.xor32('r8'); em.mov_r32_imm('r9',0x0185); em.call_iat('RedrawWindow')
 em.label('resize_redraw_done')
 em.label('resize_ret'); em.call_label('sync_outline_scrollbar'); em.call_label('sync_files_scrollbar'); em.call_label('repaint_splitter_surface'); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
 
@@ -7400,8 +7449,10 @@ for _guard in ("em.jmp('lbd_test_splitter')",
     assert _guard in _production_source, \
         'the retired overlay must not intercept input: %s' % _guard.replace('\n', ' / ')
 # 拖动分隔条/开关侧栏都会改变文档面的位置与宽度：必须显式重绘，否则会花屏。
-assert "mov_r32_imm('r9',0x0085)" in _production_source, \
-    'resize must force the document surfaces to repaint after a geometry change'
+# 预览是 RichEdit，重绘是异步的，所以还要 RDW_UPDATENOW（0x100），否则拖动
+# 侧栏时会在上一次宽度的像素上留下残影。
+assert "mov_r32_imm('r9',0x0185)" in _production_source, \
+    'resize must repaint the document surfaces now, not just invalidate them'
 
 # (W) 快捷键方案：与 Rabbit 对齐的键位必须唯一且指向正确命令，菜单里的提示必须与
 #     加速键表一致，为后续功能预留的键位不得被占用。
@@ -7531,6 +7582,26 @@ _activate_src = _production_source[
 assert _activate_src.count("call_iat('SetFocus')") == 2 and \
        "bsyms['hwnd_files']" in _activate_src, \
     'toggling a directory or opening a file must leave the focus in the panel'
+
+# (AC) V8.6.1 界面细化：标题行布局与预览拖拽重绘的所有权断言。
+for _cap_symbol in ('hfont_title', 'hfont_sysbtn', 'cap_layout_w', 'cap_menu_x'):
+    assert _cap_symbol in bsyms, '%s must exist' % _cap_symbol
+for _cap_menu_line in ("wstr('caption_file','&File')", "wstr('caption_edit','&Edit')",
+                       "wstr('caption_markdown','&Markdown')",
+                       "wstr('caption_view','&View')", "wstr('caption_help','&Help')"):
+    assert _cap_menu_line in _production_source, \
+        'caption menu entries must carry their & accelerator: %s' % _cap_menu_line
+_cap_layout_src = _production_source[
+    _production_source.index("em.label('caption_layout')"):
+    _production_source.index("def _cap_hit_entry")]
+# 菜单排布是生成期循环：源码里每个项只写一次，运行时展开成五项。
+assert "em.mov_mrsp_imm32(0x20, 0x420)" in _cap_layout_src, \
+    'every caption menu entry must be measured with DT_CALCRECT'
+assert _cap_layout_src.count("bsyms['cap_layout_w']") >= 3, \
+    'window buttons and tool slots must reload the effective caption width'
+assert "em.mov_r64_ripmem('rdx', bsyms['hfont_title'])" in _production_source and \
+       "em.mov_r64_ripmem('rdx', bsyms['hfont_sysbtn'])" in _production_source, \
+    'the title must paint bold and the window buttons must use their own size'
 
 _output_channel = 'test' if INJECTED_BUILD else _BUILD_CHANNEL
 _output_name = (('pemark_x64_v8_6_outline_alloc_%s.exe' % ARENA_ALLOC_INJECTION_MODE)

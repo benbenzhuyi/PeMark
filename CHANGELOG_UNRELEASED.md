@@ -3,6 +3,25 @@
 V8.5.4 shipped as the first stable release; its full record is
 `docs/CHANGELOG_V8_5_4.md`.
 
+## V8.6.1 candidate — Title-row polish and preview resize repaint
+
+- the caption menu entries are laid out from their measured text width
+  (`DT_CALCRECT` + 8px padding, 8px between items) instead of hand-written
+  fixed widths, and they carry `&` accelerators so the first letter is
+  underlined;
+- `PeMark·码记` paints in its own bold font;
+- the minimize / maximize / close glyphs use a smaller size of the same
+  Fluent icon font, so their weight matches the tool icons;
+- resizing the sidebar now repaints the document surfaces with
+  `RDW_UPDATENOW` in addition to invalidating them, which removes the
+  smearing that only Preview (RichEdit) showed; the Source EDIT was fine.
+
+The layout change exposed a real defect: the menu measurement loop clobbered
+`r10`, so the window buttons were computed from a stale width and landed on
+top of the menu text. The effective caption width now lives in
+`cap_layout_w`, and a build assertion requires the buttons and the tool slots
+to reload it after the measurement loop.
+
 ## V8.6.1 candidate — Single-click activation fix
 
 Clicking a tree row did nothing unless the row was not already selected; only

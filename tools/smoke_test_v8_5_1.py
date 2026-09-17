@@ -137,6 +137,19 @@ def doc_surfaces(hwnd):
     return [(h, cls, vis) for h, cls, vis in child_windows(hwnd)
             if cls in ('edit', 'richedit50w') and h != rename]
 
+
+def wait_doc_surfaces(hwnd, timeout=5.0):
+    """Startup is asynchronous: the main window can be visible before the
+    Source EDIT and the Preview RichEdit exist. Poll until both are there
+    instead of sampling once (the generator publishes init_done for the
+    in-process test host; this external smoke test polls the same state)."""
+    deadline = time.time() + timeout
+    state = doc_surfaces(hwnd)
+    while len(state) < 2 and time.time() < deadline:
+        time.sleep(.05)
+        state = doc_surfaces(hwnd)
+    return state
+
 def listbox(hwnd):
     for h, cls, vis in child_windows(hwnd):
         if cls == 'listbox':
@@ -167,7 +180,7 @@ def main():
         return 1
 
     # --- 1. 初始 Source 态：恰好一个可见文档表面 ---
-    re_state = doc_surfaces(hwnd)
+    re_state = wait_doc_surfaces(hwnd)
     check('初始 Source 态（恰好 1 个可见文档表面）',
           len(re_state) == 2 and sum(v for _, _, v in re_state) == 1,
           f'{len(re_state)} 个文档表面, 可见 {sum(v for _, _, v in re_state)}')
