@@ -61,6 +61,12 @@ SPLIT_MIN = 80
 SPLIT_MAX = 920
 
 u32, k32, g32 = c.windll.user32, c.windll.kernel32, c.windll.gdi32
+# Pointer coordinates are virtualized according to the calling thread's DPI
+# context. Match the candidate so an 80px logical drag in this test remains an
+# 80px logical drag after Windows maps it to the 150%-scaled desktop.
+assert u32.SetProcessDpiAwarenessContext(
+    c.c_void_p(-5 & 0xFFFFFFFFFFFFFFFF)
+), "test process could not enter UNAWARE_GDISCALED"
 u32.SendMessageW.argtypes = [w.HWND, w.UINT, w.WPARAM, w.LPARAM]
 u32.SendMessageW.restype = w.LPARAM
 u32.GetDC.argtypes = [w.HWND]
@@ -252,16 +258,22 @@ def drag_cursor_until(app, x, y, expected, note, attempts=3):
     A move can be lost like a click; repeating it is harmless because the drag
     computes the split from the pointer's absolute position, not from deltas.
     """
+    usable = app.read32("content_h") - 60
+    expected_split = max(SPLIT_MIN, min(
+        SPLIT_MAX, mul_div(expected, PER_MILLE, usable)
+    ))
     for _ in range(attempts):
         move_cursor(x, y)
-        u32.PostMessageW(app.main, 0x0200, 0, 0)
         deadline = time.perf_counter() + 2
         while time.perf_counter() < deadline:
-            if app.read32("files_list_h") == expected:
+            if app.read32("files_list_h") == expected and abs(
+                    app.read32("panel_split") - expected_split) <= 1:
                 return
             time.sleep(.03)
-    raise AssertionError("%s: expected files_list_h=%d, got %d" % (
-        note, expected, app.read32("files_list_h")))
+    raise AssertionError(
+        "%s: expected files_list_h=%d/panel_split~%d, got %d/%d" % (
+            note, expected, expected_split, app.read32("files_list_h"),
+            app.read32("panel_split")))
 
 
 def main():
@@ -371,15 +383,20 @@ def main():
 
         def dump_panel_state(note):
             """Diagnostics for the interaction block: every field one assert reads."""
+            cursor = w.POINT()
+            u32.GetCursorPos(c.byref(cursor))
             print("PANEL-DUMP %s content_h=%d split=%d fh=%d oh=%d drag=%d start=%d "
-                  "drag_y=%d drag_usable=%d drag_target=%d dy=%d fs=%d os=%d pend=%d" % (
+                  "drag_y=%d drag_usable=%d drag_target=%d dy=%d fs=%d os=%d pend=%d "
+                  "main=%r files_header=%r outline_header=%r cursor=(%d,%d)" % (
                       note, app.read32("content_h"), app.read32("panel_split"),
                       app.read32("files_list_h"), app.read32("outline_list_h"),
                       app.read32("divider_drag"), app.read32("divider_drag_start"),
                       app.read32("divider_drag_y"), app.read32("divider_drag_usable"),
                       app.read32("divider_drag_target"), app.read32("divider_y"),
                       app.read32("files_state"), app.read32("outline_state"),
-                      app.read32("panel_click_pending")))
+                      app.read32("panel_click_pending"), lb_rect(app.main),
+                      lb_rect(files_header), lb_rect(outline_header),
+                      cursor.x, cursor.y))
 
         try:
             raise_window(app.main)
@@ -415,14 +432,21 @@ def main():
             assert abs(split - mul_div(before + 80, PER_MILLE, usable)) <= 1, split
 
             # Clamp: the per-mille ratio never leaves [80, 920].
-            drag_cursor_until(app, divider_x, divider_top - 4000,
-                              mul_div(usable, SPLIT_MIN, PER_MILLE),
+            minimum_height = mul_div(usable, SPLIT_MIN, PER_MILLE)
+            maximum_height = mul_div(usable, SPLIT_MAX, PER_MILLE)
+            divider_center_y = divider_top + divider_h // 2
+            drag_cursor_until(app, divider_x,
+                              divider_center_y + minimum_height - before - 40,
+                              minimum_height,
                               "dragging above the window must clamp to the minimum")
-            assert app.read32("panel_split") == SPLIT_MIN, app.read32("panel_split")
-            drag_cursor_until(app, divider_x, divider_top + 4000,
-                              mul_div(usable, SPLIT_MAX, PER_MILLE),
+            assert abs(app.read32("panel_split") - SPLIT_MIN) <= 1, \
+                app.read32("panel_split")
+            drag_cursor_until(app, divider_x,
+                              divider_center_y + maximum_height - before + 40,
+                              maximum_height,
                               "dragging below the window must clamp to the maximum")
-            assert app.read32("panel_split") == SPLIT_MAX, app.read32("panel_split")
+            assert abs(app.read32("panel_split") - SPLIT_MAX) <= 1, \
+                app.read32("panel_split")
             write_u32(app, "divider_drag", 0)
             wait_for(lambda: app.read32("divider_drag") == 0, 2,
                      "releasing the divider must end the drag")

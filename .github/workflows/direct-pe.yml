@@ -100,6 +100,11 @@ jobs:
           PEMARK_GENERATOR: ${{ github.workspace }}/src/candidate/generate_markdown_editor_v8_6.py
           PEMARK_EXE: ${{ github.workspace }}/bin/candidate/pemark_x64_v8_6_candidate.exe
         run: python tools/test_v8_6_caption.py
+      - name: Verify the high-DPI GDI scaling context
+        if: ${{ hashFiles('tools/test_v8_6_dpi.py') != '' }}
+        env:
+          PEMARK_EXE: ${{ github.workspace }}/bin/candidate/pemark_x64_v8_6_candidate.exe
+        run: python tools/test_v8_6_dpi.py
       - name: Exercise list navigation and file opening
         if: ${{ hashFiles('tools/test_v8_6_navigation.py') != '' }}
         env:

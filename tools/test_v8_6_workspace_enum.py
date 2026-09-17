@@ -63,12 +63,22 @@ def wait_for(predicate, timeout, message):
     raise AssertionError(message)
 
 
+def write_u32(app, symbol, value):
+    data, count = c.c_uint32(value), c.c_size_t()
+    assert k32.WriteProcessMemory(
+        app.handle, c.c_void_p(app.base + app.bsyms[symbol]), c.byref(data), 4,
+        c.byref(count)) and count.value == 4
+
+
 def probe(app, path):
+    write_u32(app, "workspace_probe_done", 0)
     write_wstr(app, "temp_path", path)
     app.post_command(CMD_WORKSPACE_PROBE)
-    # The probe is synchronous inside the message loop; give it a moment and
-    # then require a settled state (entries present or an error recorded).
-    time.sleep(.4)
+    # The command is synchronous once dequeued, but the test process and app
+    # process run independently. Wait for the command to finish rebuilding the
+    # projected tree and status bar instead of guessing with a fixed sleep.
+    wait_for(lambda: app.read32("workspace_probe_done") == 1, 10,
+             "workspace probe did not settle")
 
 
 def read_entries(app, count):

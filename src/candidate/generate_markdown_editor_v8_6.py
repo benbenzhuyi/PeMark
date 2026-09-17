@@ -770,6 +770,9 @@ if OPEN_TEST_BUILD:
     bss_alloc('open_decode_error_count', 4, 4)
     bss_alloc('open_read_error_count', 4, 4)
     bss_alloc('inject_read_call_count', 4, 4)
+    # 工作区枚举探针由真实消息循环执行；完成标志让测试等待整个树投影与状态栏
+    # 更新结束，禁止再用固定 sleep 猜测命令是否已经跑完。
+    bss_alloc('workspace_probe_done', 4, 4)
     # 切片 2：把 ListBox 行文本导出到一块 owner-draw 不会触碰的缓冲。
     # 进程外直接 LB_GETTEXT 既有跨进程指针封送限制，也会与绘制共用缓冲。
     bss_alloc('list_probe_index', 4, 4)
@@ -797,7 +800,7 @@ imports = {
         'CreateAcceleratorTableW','TranslateAcceleratorW','DestroyAcceleratorTable','IsDialogMessageW','SetForegroundWindow','DrawMenuBar','DrawTextW','FillRect','GetMenuStringW','SetMenuInfo','GetWindowDC','ReleaseDC','GetMenuItemRect',
         'TrackPopupMenu','IsZoomed','TrackMouseEvent',
         'MonitorFromWindow','GetMonitorInfoW',
-        'SystemParametersInfoW','DestroyMenu',
+        'SystemParametersInfoW','DestroyMenu','SetProcessDpiAwarenessContext',
         'OpenClipboard','EmptyClipboard','SetClipboardData','CloseClipboard'
     ],
     'COMDLG32.dll': ['GetOpenFileNameW','GetSaveFileNameW','FindTextW','ReplaceTextW'],
@@ -1061,6 +1064,15 @@ em=E()
 em.label('entry_first_run')
 # stack alignment + ample shadow/stack-arg area
 em.emit(0x48,0x81,0xEC,u32(0x88))  # sub rsp, 0x88
+
+# V8.6.1: keep the existing 96-DPI layout coordinate system while asking
+# Windows to rerasterize GDI text/primitives at the monitor DPI.  The former
+# DPI_UNAWARE path rendered the entire window at 96 DPI and bitmap-stretched it
+# to 150%, which blurred RichEdit, owner-draw sidebars, menus and caption icons.
+# This call must be the first DPI-sensitive USER32 operation in the process.
+em.mov_r32_imm('rcx',0xFFFFFFFB)
+em.movsxd_r64_r32('rcx','rcx')  # DPI_AWARENESS_CONTEXT_UNAWARE_GDISCALED (-5)
+em.call_iat('SetProcessDpiAwarenessContext')
 
 # Register a REAL top-level window class.  V2 used the predefined STATIC class
 # as the main window; STATIC's system wndproc is not an application frame wndproc,
@@ -1453,9 +1465,10 @@ em.mov_r32_ripmem('r10',bsyms['cursor_pt'])
 em.mov_r32_ripmem('r11',bsyms['cursor_pt']+4)
 em.mov_r32_ripmem('rax',bsyms['files_list_y']); em.cmp_r32_r32('r11','rax'); em.jcc(0x8C,'lbd_after_frame')
 em.mov_r32_ripmem('rax',bsyms['files_list_y']); em.mov_r32_ripmem('r9',bsyms['files_list_h']); em.add_r32_r32('rax','r9')
-em.cmp_r32_r32('r11','rax'); em.jcc(0x8D,'lbd_after_frame')
+em.cmp_r32_r32('r11','rax'); em.jcc(0x8D,'lbd_frame_after_files_list')
 em.jmp('lbd_files_row_click')
 # y >= content_y+28 falls through to the divider/list hit-test below.
+em.label('lbd_frame_after_files_list')
 em.mov_r32_ripmem('rax',bsyms['divider_y']); em.cmp_r32_r32('r11','rax'); em.jcc(0x8C,'lbd_after_frame')
 # 分界线是 4px 窄带 [divider_y, divider_y+4)；再往下就是大纲标题栏。
 em.add_r32_imm8('rax',4); em.cmp_r32_r32('r11','rax'); em.jcc(0x8D,'lbd_frame_outline_header')
@@ -5093,7 +5106,8 @@ em.add_r64_imm8('rsp',0x28); em.emit(0x41,0x5F); em.emit(0x41,0x5E); em.emit(0x4
 # and leave the entries in BSS for the Windows harness to read back.
 if OPEN_TEST_BUILD:
     em.label('cmd_workspace_probe')
-    em.lea_rip('rcx',bsyms['temp_path']); em.call_label('workspace_set_root'); em.jmp('msg_loop')
+    em.lea_rip('rcx',bsyms['temp_path']); em.call_label('workspace_set_root')
+    em.mov_ripmem_imm32(bsyms['workspace_probe_done'],1); em.jmp('msg_loop')
     # V8.6.1 探针（命令 1909）：只跑 CoCreateInstance(FileOpenDialog) 的创建与释放，
     # 把 HRESULT、接口指针和 GetOptions 结果留在 BSS。不弹任何 UI，因此可以直接进 CI：
     # 它同时守住"命令处理器必须用 16 的倍数栈帧"这条（帧不对这里会拿到失败 HRESULT）。
@@ -7726,6 +7740,22 @@ assert "call_iat('MonitorFromWindow')" in _nc_src and \
     'a WS_POPUP window must clamp ptMaxSize and ptMaxPosition to the work area'
 assert "MonitorFromWindow" in imports['USER32.dll'] and \
        "GetMonitorInfoW" in imports['USER32.dll']
+
+# (AD) V8.6.1 high-DPI text sharpness: GDI-scaled awareness must be installed
+# before any window or other DPI-sensitive USER32 work.  This preserves the
+# existing logical layout while preventing Windows from stretching a 96-DPI
+# bitmap of the whole application on a high-DPI display.
+_dpi_setup = ("em.mov_r32_imm('rcx',0xFFFFFFFB)\n"
+              "em.movsxd_r64_r32('rcx','rcx')  # "
+              "DPI_AWARENESS_CONTEXT_UNAWARE_GDISCALED (-5)\n"
+              "em.call_iat('SetProcessDpiAwarenessContext')")
+assert 'SetProcessDpiAwarenessContext' in imports['USER32.dll'], \
+    'the candidate must import the GDI-scaled DPI awareness API'
+assert _dpi_setup in _production_source, \
+    'the entry point must select DPI_AWARENESS_CONTEXT_UNAWARE_GDISCALED'
+assert _production_source.index(_dpi_setup) < _production_source.index(
+    "em.xor32('rcx'); em.call_iat('GetModuleHandleW')"), \
+    'DPI awareness must be established before DPI-sensitive USER32 work'
 
 _output_channel = 'test' if INJECTED_BUILD else _BUILD_CHANNEL
 _output_name = (('pemark_x64_v8_6_outline_alloc_%s.exe' % ARENA_ALLOC_INJECTION_MODE)

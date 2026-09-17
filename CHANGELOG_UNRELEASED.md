@@ -5,6 +5,15 @@ V8.5.4 shipped as the first stable release; its full record is
 
 ## V8.6.1 candidate — Window edges and sidebar text sharpness
 
+- the process now selects `DPI_AWARENESS_CONTEXT_UNAWARE_GDISCALED` before
+  creating any UI. On a 150% display the previous DPI-unaware process rendered
+  the complete window at 96 DPI and Windows bitmap-stretched it to 144 DPI,
+  softening RichEdit text, sidebars, menus and the custom caption together.
+  GDI-scaled awareness preserves the existing 96-DPI layout coordinates while
+  requesting monitor-DPI rasterization for GDI text and primitives;
+- file-row mouse activation no longer swallows clicks below the file list;
+  divider and Outline-header hit testing now continues normally, restoring
+  Outline header single/double-click panel switching;
 - `WM_NCPAINT` and `WM_NCACTIVATE` are no longer forwarded to
   `DefWindowProc` while the title row is self-drawn. Switching windows or
   opening the Find dialog made Windows repaint a default non-client frame,
@@ -22,9 +31,9 @@ V8.5.4 shipped as the first stable release; its full record is
   was 220), matching the reference editor's text scale. Recorded for the
   record: swapping `Microsoft YaHei UI` for `Microsoft YaHei` produced
   byte-identical glyph pixels (the two faces share outlines), and the system
-  runs with ClearType enabled, so the remaining crispness gap is the GDI
-  ClearType versus Chromium DirectWrite rasterizer difference plus text scale,
-  not a font-family bug.
+  runs with ClearType enabled. The later renderer POC showed that the remaining
+  whole-window crispness gap came primarily from DPI virtualization rather than
+  the font family or RichEdit itself.
 - sidebar text drops from 15px to 13px to match the reference tree scale, and
   outline levels 1-2 paint with a weight-700 face of the same family while
   deeper levels stay regular. Verified by reading the LOGFONT of both
