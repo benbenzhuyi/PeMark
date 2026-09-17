@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""V8.6.1 step 2/3: the custom title row and its placeholder icons.
+"""V8.6.3 custom title row, version label and placeholder icons.
 
 This is a deterministic Windows test of the real candidate process:
 
@@ -37,6 +37,8 @@ u32.GetWindowRect.argtypes = [w.HWND, c.POINTER(w.RECT)]
 u32.GetWindowRect.restype = w.BOOL
 u32.GetWindowLongW.argtypes = [w.HWND, c.c_int]
 u32.GetWindowLongW.restype = c.c_long
+u32.GetWindowTextW.argtypes = [w.HWND, w.LPWSTR, c.c_int]
+u32.GetWindowTextW.restype = c.c_int
 u32.SendMessageW.argtypes = [w.HWND, w.UINT, w.WPARAM, w.LPARAM]
 u32.SendMessageW.restype = w.LPARAM
 
@@ -108,6 +110,9 @@ def main():
     app = App(ns, Path(ns["out"]))
     try:
         main_hwnd = app.main
+        title = c.create_unicode_buffer(160)
+        assert u32.GetWindowTextW(main_hwnd, title, len(title))
+        assert "V8.6.3 Candidate" in title.value, title.value
         caption = app.read64("hwnd_caption")
         assert caption and u32.IsWindowVisible(caption), \
             "the custom caption child must exist and be visible"
@@ -180,8 +185,9 @@ def main():
 
         app.post_close()
         assert app.proc.wait(timeout=5) == 0
-        print("PASS custom caption: 32px row, 6 tool icons, inert right-sidebar "
-              "placeholder with hover, live left switch")
+        print("PASS custom caption: V8.6.3 Candidate title, 32px row, 6 tool "
+              "icons, inert right-sidebar placeholder with hover, live left "
+              "switch")
     finally:
         app.close_handle()
 

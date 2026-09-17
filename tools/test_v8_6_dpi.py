@@ -1,4 +1,4 @@
-"""Windows runtime regression for the V8.6.1 GDI-scaled DPI context."""
+"""Windows runtime regression for the V8.6.3 GDI-scaled DPI context."""
 
 from __future__ import annotations
 

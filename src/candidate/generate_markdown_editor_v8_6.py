@@ -113,7 +113,7 @@ wstr('class_caption','DirectPE_Caption')
 # 发布通道：src/current 产出正式二进制与正式标题，src/candidate 保留 Candidate 标记。
 _BUILD_CHANNEL = os.path.basename(os.path.dirname(os.path.abspath(__file__)))
 _RELEASE_CHANNEL = _BUILD_CHANNEL == 'current'
-_VERSION_LABEL = 'V8.6.1' if _RELEASE_CHANNEL else 'V8.6.1 Candidate'
+_VERSION_LABEL = 'V8.6.3' if _RELEASE_CHANNEL else 'V8.6.3 Candidate'
 if ARENA_ALLOC_INJECTION_MODE != 'release':
     _window_title = ('PeMark x64 V8.6 ARENA-ALLOC TEST [%s]' %
                      ARENA_ALLOC_INJECTION_MODE)
@@ -1065,7 +1065,7 @@ em.label('entry_first_run')
 # stack alignment + ample shadow/stack-arg area
 em.emit(0x48,0x81,0xEC,u32(0x88))  # sub rsp, 0x88
 
-# V8.6.1: keep the existing 96-DPI layout coordinate system while asking
+# V8.6.3: keep the existing 96-DPI layout coordinate system while asking
 # Windows to rerasterize GDI text/primitives at the monitor DPI.  The former
 # DPI_UNAWARE path rendered the entire window at 96 DPI and bitmap-stretched it
 # to 150%, which blurred RichEdit, owner-draw sidebars, menus and caption icons.
@@ -7741,7 +7741,7 @@ assert "call_iat('MonitorFromWindow')" in _nc_src and \
 assert "MonitorFromWindow" in imports['USER32.dll'] and \
        "GetMonitorInfoW" in imports['USER32.dll']
 
-# (AD) V8.6.1 high-DPI text sharpness: GDI-scaled awareness must be installed
+# (AD) V8.6.3 high-DPI text sharpness: GDI-scaled awareness must be installed
 # before any window or other DPI-sensitive USER32 work.  This preserves the
 # existing logical layout while preventing Windows from stretching a 96-DPI
 # bitmap of the whole application on a high-DPI display.
@@ -7775,7 +7775,7 @@ _output_name = (('pemark_x64_v8_6_outline_alloc_%s.exe' % ARENA_ALLOC_INJECTION_
                 'pemark_x64_v8_6_open_transaction_test.exe' if OPEN_TEST_BUILD
                 else ('pemark_x64_v8_6_write_%s.exe' % WRITE_INJECTION_MODE
                       if INJECTED_BUILD else
-                      'pemark_x64_v8_6_1.exe' if _RELEASE_CHANNEL else
+                      'pemark_x64_v8_6_3.exe' if _RELEASE_CHANNEL else
                       'pemark_x64_v8_6_candidate.exe'))
 _output_override = os.environ.get('PEMARK_OUTPUT_NAME')
 if _output_override:

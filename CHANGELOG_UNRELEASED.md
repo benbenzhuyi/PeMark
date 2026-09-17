@@ -3,7 +3,7 @@
 V8.5.4 shipped as the first stable release; its full record is
 `docs/CHANGELOG_V8_5_4.md`.
 
-## V8.6.1 candidate — Window edges and sidebar text sharpness
+## V8.6.3 candidate — High-DPI text sharpness and window polish
 
 - the process now selects `DPI_AWARENESS_CONTEXT_UNAWARE_GDISCALED` before
   creating any UI. On a 150% display the previous DPI-unaware process rendered
