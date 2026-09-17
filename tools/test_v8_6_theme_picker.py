@@ -88,7 +88,8 @@ def build():
           "OPEN_TEST_BUILD": True}
     exec(compile(source, str(GEN), "exec"), ns)
     out = Path(ns["out"])
-    assert out.name == "pemark_x64_v8_6_open_transaction_test.exe", out.name
+    version_tag = GEN.stem.replace("generate_markdown_editor_", "")
+    assert out.name == f"pemark_x64_{version_tag}_open_transaction_test.exe", out.name
     return ns, out
 
 

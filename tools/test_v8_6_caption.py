@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """V8.6.3 custom title row, version label and placeholder icons.
 
-This is a deterministic Windows test of the real candidate process:
+This is a deterministic Windows test of the real candidate or release process:
 
 * the main window has no native caption, but still has a thick frame;
 * one 32px DirectPE_Caption child spans the full client width;
@@ -112,7 +112,9 @@ def main():
         main_hwnd = app.main
         title = c.create_unicode_buffer(160)
         assert u32.GetWindowTextW(main_hwnd, title, len(title))
-        assert "V8.6.3 Candidate" in title.value, title.value
+        expected_label = ("V8.6.3" if GEN.parent.name == "current"
+                          else "V8.6.3 Candidate")
+        assert expected_label in title.value, title.value
         caption = app.read64("hwnd_caption")
         assert caption and u32.IsWindowVisible(caption), \
             "the custom caption child must exist and be visible"
@@ -185,9 +187,9 @@ def main():
 
         app.post_close()
         assert app.proc.wait(timeout=5) == 0
-        print("PASS custom caption: V8.6.3 Candidate title, 32px row, 6 tool "
+        print("PASS custom caption: %s title, 32px row, 6 tool "
               "icons, inert right-sidebar placeholder with hover, live left "
-              "switch")
+              "switch" % expected_label)
     finally:
         app.close_handle()
 

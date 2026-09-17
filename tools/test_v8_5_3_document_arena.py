@@ -177,12 +177,14 @@ def first_commit_failure_keeps_reservation(release_hash):
     ns, exe = build("document_fail_first")
     app = App(ns, exe)
     try:
-        wait_for(lambda: app.read32("inject_document_alloc_call_count") >= 1, 5,
-                 "startup document commit was not requested")
-        # The policy bound is reserved before the commit, so the pointer exists
-        # while no capacity is published.
+        wait_for(lambda: app.read32("inject_document_alloc_call_count") >= 2, 5,
+                 "startup document commit retry was not observed")
+        # The policy bound is reserved before the first deliberately failed
+        # commit. Startup now retries immediately; that retry must publish one
+        # coherent committed block inside the same reservation.
+        assert app.read32("inject_document_alloc_call_count") == 2
         assert app.read64("document_model") != 0
-        assert app.read32("document_capacity") == 0
+        assert app.read32("document_capacity") >= COMMIT_CHUNK
         assert app.proc.poll() is None
         open_selected(app, SMALL)
         assert app.read32("document_capacity") >= COMMIT_CHUNK
@@ -192,8 +194,8 @@ def first_commit_failure_keeps_reservation(release_hash):
     finally:
         app.close_handle()
     assert hashlib.sha256(RELEASE_EXE.read_bytes()).hexdigest() == release_hash
-    print("PASS failed first commit keeps the reservation unused and retries on "
-          "the next Open")
+    print("PASS failed first document commit keeps its reservation and retries "
+          "safely")
 
 
 def main():

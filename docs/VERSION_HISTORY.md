@@ -2,15 +2,26 @@
 
 Intermediate builds are preserved for diffing and regression archaeology; many were experimental and not release-stable.
 
+## V8.6.3
+
+Generator: `src/current/generate_markdown_editor_v8_6_3.py`
+
+V8.6.3 completes the V8.6 desktop workspace: a custom title/menu row, Fluent
+tool and file-tree glyphs, an expandable workspace tree, keyboard and mouse
+activation, inline/context-menu file operations, large-document Preview
+settling fixes, and GDI-scaled DPI awareness for sharp text on scaled displays.
+It retains the V8.5.4 transactional document, dynamic-capacity and six-section
+W^X/ASLR baseline. Validation record: `docs/V8_6_3_RELEASE_RESULTS.md`.
+
 ## V8.6.1
 
 Generator: `src/current/generate_markdown_editor_v8_6_1.py`
 
-V8.6.1 promotes the merged custom title row, Codex-style left/right sidebar
+V8.6.1 promoted the merged custom title row, Codex-style left/right sidebar
 switches, literal `</>` Source icon and the Fluent/MDL2 tool/window icons into
 `src/current/` and `bin/current/`. It inherits the V8.5.4 document-safety,
-dynamic-capacity and PE-hardening baseline; the V8.6 file-panel tree and file
-operations remain the next slices. Validation record:
+dynamic-capacity and PE-hardening baseline. The file-panel tree and file
+operations were completed later in V8.6.3. Validation record:
 `docs/V8_6_1_RELEASE_RESULTS.md`.
 
 ## V7

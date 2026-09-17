@@ -8,6 +8,7 @@ English | [简体中文](PUBLISHING_CHECKLIST.zh-CN.md)
 - [x] Promote V8.5.2 to `src/current/` and `bin/current/`.
 - [x] Promote V8.5.3 to `src/current/` and `bin/current/`.
 - [x] Promote V8.5.4 to `src/current/` and `bin/current/`.
+- [x] Promote V8.6.3 to `src/current/` and `bin/current/`.
 - [x] Make generator paths project-relative.
 - [x] Add public README, security policy and contribution guide.
 - [x] Add Git attributes, ignore rules, issue template and Windows CI.
@@ -67,6 +68,18 @@ English | [简体中文](PUBLISHING_CHECKLIST.zh-CN.md)
 - [x] Attach only `bin/current/pemark_x64_v8_5_4.exe` as the release asset.
 - [x] Verify the uploaded asset SHA-256 is
   `aa8de9cda9ed90a2cf66a3a93e021dc91cc192073078a90c53fa9669f478c5cc`.
+
+## V8.6.3 Stable release
+
+- [x] Rerun the release gates on the formal channel and record them in
+  `docs/V8_6_3_RELEASE_RESULTS.md`.
+- [ ] Create annotated tag `v8.6.3`.
+- [ ] Create a GitHub release named `PeMark V8.6.3` without marking it a
+  pre-release.
+- [ ] Use `docs/RELEASE_V8_6_3_GITHUB.md` as the release body.
+- [ ] Attach only `bin/current/pemark_x64_v8_6_3.exe` as the release asset.
+- [ ] Verify the uploaded asset SHA-256 is
+  `6b26585bb453010e358c726931d96f43cf5c4ef27cd02d1aff6101ad378698df`.
 
 ## Repository settings
 

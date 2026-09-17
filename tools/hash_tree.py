@@ -8,7 +8,7 @@ excluded_files={'SHA256SUMS.txt','Thumbs.db','Desktop.ini'}
 
 for p in sorted(x for x in root.rglob('*') if x.is_file()):
     rel=p.relative_to(root)
-    if rel.parts[:2] == ('bin', 'test'):
+    if rel.parts[:2] in {('bin', 'test'), ('bin', 'verify_scratch')}:
         continue
     if any(part in excluded_dirs for part in rel.parts):
         continue

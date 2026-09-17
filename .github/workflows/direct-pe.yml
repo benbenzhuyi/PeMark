@@ -22,14 +22,14 @@ jobs:
       - name: Deterministic Direct-PE build
         run: python tools/build_current.py
       - name: Execute emitted-machine-code regressions
-        run: python tools/test_v8_5_1.py src/current/generate_markdown_editor_v8_6_1.py
+        run: python tools/test_v8_5_1.py src/current/generate_markdown_editor_v8_6_3.py
       - name: Inspect generated PE
-        run: python tools/inspect_pe.py bin/current/pemark_x64_v8_6_1.exe
+        run: python tools/inspect_pe.py bin/current/pemark_x64_v8_6_3.exe
       - name: Verify release hash
         shell: pwsh
         run: |
-          $expected = "ABD79DE90999A70F3B5328C63CB73109EA0A38CAC85C5ED59F197CAB397AC4BC"
-          $actual = (Get-FileHash -Algorithm SHA256 bin/current/pemark_x64_v8_6_1.exe).Hash
+          $expected = "6B26585BB453010E358C726931D96F43CF5C4EF27CD02D1AFF6101AD378698DF"
+          $actual = (Get-FileHash -Algorithm SHA256 bin/current/pemark_x64_v8_6_3.exe).Hash
           if ($actual -ne $expected) { throw "SHA-256 mismatch: $actual" }
       - name: Build and inspect the development channel
         if: ${{ hashFiles('src/candidate/generate_markdown_editor_v8_6.py') != '' }}

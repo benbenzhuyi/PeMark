@@ -8,6 +8,7 @@
 - [x] 将 V8.5.2 提升至 `src/current/` 和 `bin/current/`。
 - [x] 将 V8.5.3 提升至 `src/current/` 和 `bin/current/`。
 - [x] 将 V8.5.4 提升至 `src/current/` 和 `bin/current/`。
+- [x] 将 V8.6.3 提升至 `src/current/` 和 `bin/current/`。
 - [x] 将生成器路径改为项目相对路径。
 - [x] 添加 MIT License。
 - [x] 添加中英文 README、安全策略、贡献指南和发布说明。
@@ -63,6 +64,16 @@
 - [x] 只附加 `bin/current/pemark_x64_v8_5_4.exe`。
 - [x] 确认附件 SHA-256 为
   `aa8de9cda9ed90a2cf66a3a93e021dc91cc192073078a90c53fa9669f478c5cc`。
+
+## V8.6.3 稳定版
+
+- [x] 在正式通道重跑发布门禁，并记录于 `V8_6_3_RELEASE_RESULTS.md`。
+- [ ] 创建带说明的 `v8.6.3` 标签。
+- [ ] 创建名为 `PeMark V8.6.3` 的 GitHub Release，且不勾选 pre-release。
+- [ ] 使用 `RELEASE_V8_6_3_GITHUB.md` 作为发布正文。
+- [ ] 只附加 `bin/current/pemark_x64_v8_6_3.exe`。
+- [ ] 确认上传附件 SHA-256 为
+  `6b26585bb453010e358c726931d96f43cf5c4ef27cd02d1aff6101ad378698df`。
 
 ## 仓库设置
 

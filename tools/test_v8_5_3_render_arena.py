@@ -145,15 +145,19 @@ def growth_failure_preserves_document(release_hash):
           "and the previous arena")
 
 
-def first_failure_publishes_nothing(release_hash):
+def first_failure_retries_safely(release_hash):
     ns, exe = build("render_fail_first")
     app = App(ns, exe)
     try:
-        wait_for(app, lambda: app.read32("inject_render_alloc_call_count") >= 1, 5,
-                 "startup render arena was not requested")
-        assert app.read32("render_arena_capacity") == 0
-        assert app.read64("render_srcmap") == 0
-        assert app.read64("previewbuf") == 0
+        wait_for(app, lambda: app.read32("inject_render_alloc_call_count") >= 2, 5,
+                 "startup render arena retry was not observed")
+        # Startup now refreshes Preview twice. The first injected failure must
+        # leave no stale publication, and the second call must publish one
+        # coherent arena.
+        assert app.read32("inject_render_alloc_call_count") == 2
+        assert app.read32("render_arena_capacity") >= 4096
+        assert app.read64("render_srcmap") != 0
+        assert app.read64("previewbuf") != 0
         assert app.proc.poll() is None
         open_selected(app, SMALL)
         assert app.read32("render_arena_capacity") >= 4096
@@ -164,15 +168,15 @@ def first_failure_publishes_nothing(release_hash):
     finally:
         app.close_handle()
     assert hashlib.sha256(RELEASE_EXE.read_bytes()).hexdigest() == release_hash
-    print("PASS failed first render allocation publishes no arena and retries "
-          "on the next Open")
+    print("PASS failed first render allocation is retried safely without a "
+          "stale arena")
 
 
 def main():
     release_hash = hashlib.sha256(RELEASE_EXE.read_bytes()).hexdigest()
     geometry_and_mapping(release_hash)
     growth_failure_preserves_document(release_hash)
-    first_failure_publishes_nothing(release_hash)
+    first_failure_retries_safely(release_hash)
     return 0
 
 

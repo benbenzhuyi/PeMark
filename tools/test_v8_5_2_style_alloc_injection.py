@@ -131,16 +131,17 @@ def immediate_failure_stays_safe(release_hash):
     try:
         deadline = time.perf_counter() + 3
         while (time.perf_counter() < deadline and
-               app.read32("inject_style_alloc_call_count") == 0):
+               app.read32("inject_style_alloc_call_count") < 2):
             time.sleep(.03)
-        assert app.read32("inject_style_alloc_call_count") == 1
-        # The startup refresh could not reserve: no arena may be published and
-        # no span may be recorded through a stale pointer.
-        assert app.read32("style_capacity") == 0
-        assert app.read64("style_start") == 0
+        # Startup now performs a second refresh after the deliberately failed
+        # first allocation. The retry must publish one valid arena rather than
+        # leaving a stale/partial pointer from the failed call.
+        assert app.read32("inject_style_alloc_call_count") == 2
+        assert app.read32("style_capacity") >= 4096
+        assert app.read64("style_start") != 0
         assert app.read32("style_count") == 0
         assert app.proc.poll() is None
-        # A later Open retries the allocation and must succeed normally.
+        # A later Open must continue to use the recovered arena normally.
         write_wstr(app, "temp_path", SMALL)
         app.post_command(CMD_OPEN_SELECTED)
         wait_path(app, SMALL)
@@ -152,8 +153,8 @@ def immediate_failure_stays_safe(release_hash):
     finally:
         app.close_handle()
     assert hashlib.sha256(EXE.read_bytes()).hexdigest() == release_hash
-    print("PASS failed first style allocation publishes no arena and stays "
-          "alive; release unchanged")
+    print("PASS failed first style allocation is retried safely without a "
+          "stale arena; release unchanged")
 
 
 def main():
