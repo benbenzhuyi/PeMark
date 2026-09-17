@@ -469,8 +469,16 @@ PeMark 是纯 Direct-PE 机器码生成，没有 DOM 与第三方控件，因此
 7. **内联缓冲要取地址，不能按值读。**（2026-09-17）
    `tree_root_path` 是 BSS 里的 UTF-16 缓冲；标题栏路径缩略曾经用
    `mov r64, [tree_root_path]` 把字符串头 8 字节当成 `LPCWSTR` 交给 `DrawTextW`，
-   首次重绘即在 user32 内 `0xC0000005`。凡是把内联缓冲交给 API，一律用
+  首次重绘即在 user32 内 `0xC0000005`。凡是把内联缓冲交给 API，一律用
    `lea_rip` 传地址；构建期断言锁定这一处。
+8. **单击激活由消息泵按坐标命中，不能挂在 `LBN_SELCHANGE` 上。**（2026-09-17）
+   原来的判定是"选中变化通知 + `GetKeyState(VK_LBUTTON)` 有按下位"，它有两个
+   缺陷：点已经选中的行不产生选中变化通知，于是永远不触发；某些输入状态下
+   `GetKeyState` 也拿不到按下位。结果是"鼠标点不动，只有回车有效"。现在
+   `lbd_files_row_click` 在泵里用 `LB_ITEMFROMPOINT` 命中行、`LB_SETCURSEL`
+   选中、`SetFocus` 后走与双击/回车相同的 `ws_open_or_enter`；未命中任何行则
+   `jmp dispatch` 把消息交还默认处理。`wp_command` 只保留 `LBN_DBLCLK`
+   （内联重命名）。构建期断言禁止该区间再出现 `GetKeyState`。
 
 ## 12. 已确认的决策（2026-09-16）
 

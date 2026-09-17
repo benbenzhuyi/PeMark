@@ -3,6 +3,25 @@
 V8.5.4 shipped as the first stable release; its full record is
 `docs/CHANGELOG_V8_5_4.md`.
 
+## V8.6.1 candidate — Single-click activation fix
+
+Clicking a tree row did nothing unless the row was not already selected; only
+`Enter` worked. The old check was "`LBN_SELCHANGE` plus
+`GetKeyState(VK_LBUTTON)`", which never fires for a click on the already
+selected row and cannot see the button-down bit in every input state.
+
+The pump now hit-tests the file list itself: `LB_ITEMFROMPOINT` finds the row
+under the pointer, `LB_SETCURSEL` selects it, the list takes the focus, and the
+click runs the same `ws_open_or_enter` path as `Enter` and double-click
+(directories toggle, files go through the Open transaction). A click that hits
+no row falls through to `DispatchMessage`. `wp_command` keeps only
+`LBN_DBLCLK`, which enters inline rename; a build assertion rejects
+`GetKeyState` in that range.
+
+Evidence: `tools/test_v8_6_mouse_activate.py` uses the real pointer to expand a
+directory, collapse it again while it is already selected, open a file through
+the Open transaction and confirm the focus stays in the panel.
+
 ## V8.6.1 candidate — Keyboard flow and selection persistence (slice 5)
 
 The tree is now drivable from the keyboard, and a rebuild no longer drops the

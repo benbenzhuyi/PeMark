@@ -11,11 +11,11 @@
 | `.reloc` | `0x2C000` | 1024 | 1024 | `0x42000040` |
 | `.pdata` | `0x2D000` | 1536 | 1536 | `0x40000040` |
 
-text 实际代码 56047 字节（预算 61440），rdata 6068 字节，idata 4862 字节，BSS 虚拟 94208 字节。
+text 实际代码 56256 字节（预算 61440），rdata 6068 字节，idata 4862 字节，BSS 虚拟 94208 字节。
 
-本次构建：text 实际 56047 字节（余量 5393 字节）；BSS 符号 313 个，最终虚拟 BSS 94208 字节。
+本次构建：text 实际 56256 字节（余量 5184 字节）；BSS 符号 315 个，最终虚拟 BSS 94208 字节。
 
-SHA-256：`c1a995f797c34e457579537c70d7964e2ee05d4cff8794772572377011463820`
+SHA-256：`ec2cc6691e04f7c1ddf5932c57a6d40930634349fa5bbe252d0204387852a776`
 
 | Symbol | RVA | Size |
 |---|---:|---:|
@@ -281,24 +281,26 @@ SHA-256：`c1a995f797c34e457579537c70d7964e2ee05d4cff8794772572377011463820`
 | `fo_new_name` | `0x2925C` | 1024 |
 | `fo_prompt_buf` | `0x2965C` | 1024 |
 | `fo_client_pt` | `0x29A5C` | 8 |
-| `fo_menu_pt` | `0x29A64` | 8 |
-| `fo_base_ptr` | `0x29A70` | 8 |
-| `fo_ext_ptr` | `0x29A78` | 8 |
-| `fo_hglobal` | `0x29A80` | 8 |
-| `fo_delete_result` | `0x29A88` | 4 |
-| `files_btn_collapse_rect` | `0x29A8C` | 16 |
-| `files_btn_refresh_rect` | `0x29A9C` | 16 |
-| `files_title_rect` | `0x29AAC` | 16 |
-| `files_path_rect` | `0x29ABC` | 16 |
-| `files_btn_hot` | `0x29ACC` | 4 |
-| `files_btn_hot_next` | `0x29AD0` | 4 |
-| `fo_sel_path_buf` | `0x29AD4` | 1024 |
-| `docs_path_buf` | `0x29ED4` | 1024 |
-| `init_done` | `0x2A2D4` | 4 |
-| `shfileop` | `0x2A2D8` | 64 |
-| `fo_from_buf` | `0x2A318` | 1032 |
-| `panel_mode` | `0x2A720` | 4 |
-| `open_bypass_picker` | `0x2A724` | 4 |
+| `fo_click_pt` | `0x29A64` | 8 |
+| `fo_click_row` | `0x29A6C` | 4 |
+| `fo_menu_pt` | `0x29A70` | 8 |
+| `fo_base_ptr` | `0x29A78` | 8 |
+| `fo_ext_ptr` | `0x29A80` | 8 |
+| `fo_hglobal` | `0x29A88` | 8 |
+| `fo_delete_result` | `0x29A90` | 4 |
+| `files_btn_collapse_rect` | `0x29A94` | 16 |
+| `files_btn_refresh_rect` | `0x29AA4` | 16 |
+| `files_title_rect` | `0x29AB4` | 16 |
+| `files_path_rect` | `0x29AC4` | 16 |
+| `files_btn_hot` | `0x29AD4` | 4 |
+| `files_btn_hot_next` | `0x29AD8` | 4 |
+| `fo_sel_path_buf` | `0x29ADC` | 1024 |
+| `docs_path_buf` | `0x29EDC` | 1024 |
+| `init_done` | `0x2A2DC` | 4 |
+| `shfileop` | `0x2A2E0` | 64 |
+| `fo_from_buf` | `0x2A320` | 1032 |
+| `panel_mode` | `0x2A728` | 4 |
+| `open_bypass_picker` | `0x2A72C` | 4 |
 | `ws_path_buf` | `0x2A730` | 1024 |
 | `browseinfo` | `0x2AB30` | 64 |
 | `fod_ptr` | `0x2AB70` | 8 |

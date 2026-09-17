@@ -671,6 +671,8 @@ bss_alloc('fo_new_path', 512*2, 2)
 bss_alloc('fo_new_name', 512*2, 2)
 bss_alloc('fo_prompt_buf', 512*2, 2)
 bss_alloc('fo_client_pt', 8, 4)
+bss_alloc('fo_click_pt', 8, 4)
+bss_alloc('fo_click_row', 4, 4)
 bss_alloc('fo_menu_pt', 8, 4)
 bss_alloc('fo_base_ptr', 8, 8)
 bss_alloc('fo_ext_ptr', 8, 8)
@@ -1410,6 +1412,14 @@ em.mov_r32_ripmem('r10',bsyms['cursor_pt']); em.mov_r32_ripmem('r11',bsyms['outl
 em.mov_r32_ripmem('r11',bsyms['cursor_pt']+4)
 em.mov_r32_ripmem('rax',bsyms['content_y']); em.cmp_r32_r32('r11','rax'); em.jcc(0x8C,'lbd_after_frame')
 em.add_r32_imm8('rax',28); em.cmp_r32_r32('r11','rax'); em.jcc(0x8C,'lbd_frame_files_header')
+# V8.6.1 修复：文件列表区域的左键单击在这里直接激活命中的行。单击不再依赖
+# ListBox 的选中变化通知，所以"点已经选中的行"同样能打开或展开。
+em.mov_r32_ripmem('r10',bsyms['cursor_pt'])
+em.mov_r32_ripmem('r11',bsyms['cursor_pt']+4)
+em.mov_r32_ripmem('rax',bsyms['files_list_y']); em.cmp_r32_r32('r11','rax'); em.jcc(0x8C,'lbd_after_frame')
+em.mov_r32_ripmem('rax',bsyms['files_list_y']); em.mov_r32_ripmem('r9',bsyms['files_list_h']); em.add_r32_r32('rax','r9')
+em.cmp_r32_r32('r11','rax'); em.jcc(0x8D,'lbd_after_frame')
+em.jmp('lbd_files_row_click')
 # y >= content_y+28 falls through to the divider/list hit-test below.
 em.mov_r32_ripmem('rax',bsyms['divider_y']); em.cmp_r32_r32('r11','rax'); em.jcc(0x8C,'lbd_after_frame')
 # 分界线是 4px 窄带 [divider_y, divider_y+4)；再往下就是大纲标题栏。
@@ -4496,6 +4506,28 @@ em.label('ttp_remove_last'); em.mov_r32_ripmem('rax',bsyms['tree_expanded_count'
 em.label('ttp_apply'); em.call_label('file_panel_refresh_keep_selection')
 em.add_r64_imm8('rsp',0x28); em.emit(0x5F); em.emit(0x5E); em.emit(0x41,0x5F); em.emit(0x41,0x5E); em.emit(0x41,0x5D); em.emit(0x41,0x5C); em.emit(0xC3)
 
+# V8.6.1 修复：文件列表的单击激活。
+# 消息泵按坐标命中行（LB_ITEMFROMPOINT），命中就选中它、把焦点交给列表，然后
+# 走与双击/回车相同的 ws_open_or_enter（目录展开/折叠、文件走 Open 事务）。
+# 未命中任何行时把这次左键交给默认处理，列表照常滚动/清选中。
+em.label('lbd_files_row_click')
+em.mov_r32_ripmem('rax',bsyms['cursor_pt']); em.mov_ripmem_r32(bsyms['fo_click_pt'],'rax')
+em.mov_r32_ripmem('rax',bsyms['cursor_pt']+4); em.mov_r32_ripmem('r11',bsyms['files_list_y']); em.sub_r32_r32('rax','r11')
+em.mov_ripmem_r32(bsyms['fo_click_pt']+4,'rax')
+em.mov_r32_ripmem('r9',bsyms['fo_click_pt']+4); em.shl_r32_imm8('r9',16)
+em.mov_r32_ripmem('rax',bsyms['fo_click_pt']); em.and_r32_imm('rax',0xFFFF); em.add_r32_r32('r9','rax')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.test64('rcx'); em.jcc(0x84,'lbd_files_click_pass')
+em.mov_r32_imm('rdx',0x01A9); em.xor32('r8'); em.call_iat('SendMessageW')
+em.mov_r32_r32('r11','rax'); em.shr_r32_imm8('r11',16); em.test32('r11'); em.jcc(0x85,'lbd_files_click_pass')
+em.and_r32_imm('rax',0xFFFF); em.mov_ripmem_r32(bsyms['fo_click_row'],'rax')
+em.mov_r32_ripmem('r10',bsyms['fo_click_row']); em.mov_r32_ripmem('r11',bsyms['tree_row_count'])
+em.cmp_r32_r32('r10','r11'); em.jcc(0x83,'lbd_files_click_pass')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.mov_r32_imm('rdx',0x0186); em.mov_r32_r32('r8','r10')
+em.xor32('r9'); em.call_iat('SendMessageW')
+em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.call_iat('SetFocus')
+em.call_label('ws_open_or_enter'); em.jmp('msg_loop')
+em.label('lbd_files_click_pass'); em.jmp('dispatch')
+
 # Floating inline rename editor: place the hidden EDIT over the selected row.
 # ---------------- V8.6 切片 3b：文件面板右键菜单与文件操作 ----------------
 # rax = 文件列表当前选中的树行指针；没有选中或越界时返回 0。
@@ -5795,11 +5827,11 @@ em.mov_r64_ripmem('rax',bsyms['hwnd_outline']); em.cmp_r64_r64('r9','rax'); em.j
 em.mov_r32_r32('r10','r8'); em.shr_r32_imm8('r10',16); em.cmp_r32_imm('r10',1); em.jcc(0x85,'wp_child_return')
 em.mov_r32_imm('rdx',0x8005); em.xor32('r8'); em.xor32('r9'); em.call_iat('PostMessageW'); em.jmp('wp_child_return')
 em.label('wp_cmd_files_child')
-em.mov_r32_r32('r10','r8'); em.shr_r32_imm8('r10',16); em.cmp_r32_imm('r10',1); em.jcc(0x85,'wp_cmd_files_dbl')
-# LBN_SELCHANGE + left button down = Rabbit's single-click open/toggle.
-em.mov_r32_imm('rcx',1); em.call_iat('GetKeyState'); em.and_r32_imm('rax',0x8000); em.test32('rax'); em.jcc(0x84,'wp_child_return')
-em.jmp('wp_cmd_files_activate')
-em.label('wp_cmd_files_dbl'); em.cmp_r32_imm('r10',2); em.jcc(0x85,'wp_child_return')
+# V8.6.1 修复：单击由消息泵按坐标命中直接激活（lbd_files_row_click）。
+# 原来的 "LBN_SELCHANGE + GetKeyState(VK_LBUTTON)" 判定有两个缺陷：点击已经
+# 选中的行不会产生选中变化通知，因而永远不触发；而且在某些输入状态下
+# GetKeyState 拿不到按下位。这里只保留双击 = 内联重命名。
+em.mov_r32_r32('r10','r8'); em.shr_r32_imm8('r10',16); em.cmp_r32_imm('r10',2); em.jcc(0x85,'wp_child_return')
 em.mov_r32_imm('rdx',0x8008); em.xor32('r8'); em.xor32('r9'); em.call_iat('PostMessageW'); em.jmp('wp_child_return')
 em.label('wp_cmd_files_activate')
 em.label('wp_cmd_outline_activate'); em.mov_r32_imm('rdx',0x8007); em.xor32('r8'); em.xor32('r9'); em.call_iat('PostMessageW'); em.jmp('wp_child_return')
@@ -7179,8 +7211,23 @@ assert "mov_ripmem_imm32(bsyms['open_bypass_picker'],0)" in _production_source, 
 _nav_list_src = _production_source[
     _production_source.index("em.label('wp_cmd_outline_check')"):
     _production_source.index("em.label('wp_cmd_other_child')")]
-assert "cmp_r32_imm('r10',2)" in _nav_list_src and "0x8007" in _nav_list_src, \
-    'LBN_DBLCLK must be routed to the activation event, not the selection event'
+# V8.6.1 修复：文件面板只保留 LBN_DBLCLK（内联重命名）；单击由消息泵按坐标
+# 命中直接激活，不再依赖 "选中变化 + GetKeyState"（点击已选中的行没有通知）。
+assert "cmp_r32_imm('r10',2)" in _nav_list_src and "0x8008" in _nav_list_src, \
+    'only LBN_DBLCLK may reach the file panel, and it enters inline rename'
+assert "call_iat('GetKeyState')" not in _nav_list_src, \
+    'single-click activation must not depend on LBN_SELCHANGE + GetKeyState'
+assert "0x8007" in _nav_list_src, 'the outline list keeps its selection event'
+_mouse_click_src = _production_source[
+    _production_source.index("em.label('lbd_files_row_click')"):
+    _production_source.index("em.label('lbd_files_click_pass')")]
+assert "0x01A9" in _mouse_click_src and "0x0186" in _mouse_click_src and \
+       "call_label('ws_open_or_enter')" in _mouse_click_src and \
+       "call_iat('SetFocus')" in _mouse_click_src, \
+    'a real click must hit the row, select it, focus the list and activate it'
+assert "em.jmp('lbd_files_row_click')" in _production_source and \
+       "em.label('lbd_files_click_pass'); em.jmp('dispatch')" in _production_source, \
+    'the pump must route list clicks to the hit test and hand misses to DispatchMessage'
 _nav_pump_src = _production_source[
     _production_source.index("em.label('msg_loop')"):
     _production_source.index("em.label('mousemove_event')")]
