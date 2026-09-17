@@ -73,12 +73,12 @@ English | [简体中文](PUBLISHING_CHECKLIST.zh-CN.md)
 
 - [x] Rerun the release gates on the formal channel and record them in
   `docs/V8_6_3_RELEASE_RESULTS.md`.
-- [ ] Create annotated tag `v8.6.3`.
-- [ ] Create a GitHub release named `PeMark V8.6.3` without marking it a
+- [x] Create annotated tag `v8.6.3`.
+- [x] Create a GitHub release named `PeMark V8.6.3` without marking it a
   pre-release.
-- [ ] Use `docs/RELEASE_V8_6_3_GITHUB.md` as the release body.
-- [ ] Attach only `bin/current/pemark_x64_v8_6_3.exe` as the release asset.
-- [ ] Verify the uploaded asset SHA-256 is
+- [x] Use `docs/RELEASE_V8_6_3_GITHUB.md` as the release body.
+- [x] Attach only `bin/current/pemark_x64_v8_6_3.exe` as the release asset.
+- [x] Verify the uploaded asset SHA-256 is
   `5fe17a495f691747e33d3372a78f202b442ae67cf55af2414ecba4a769186b21`.
 
 ## Repository settings

@@ -60,6 +60,24 @@ the release host's Codex shell. Their message-level coverage passed, and the
 maintainer completed the corresponding single-click, splitter, title-button and
 large-document interactions manually before approving this release.
 
+## Publication
+
+| Item | Value |
+|---|---|
+| Release commit | `7fb4443ea868268d650f27c8533e1e2144069f63` |
+| Annotated tag | `v8.6.3` |
+| GitHub release | https://github.com/benbenzhuyi/PeMark/releases/tag/v8.6.3 |
+| Attached asset | `pemark_x64_v8_6_3.exe` (182,784 bytes) |
+| Asset SHA-256 (upload record) | `5fe17a495f691747e33d3372a78f202b442ae67cf55af2414ecba4a769186b21` |
+| Asset SHA-256 (re-downloaded) | `5fe17a495f691747e33d3372a78f202b442ae67cf55af2414ecba4a769186b21` |
+| CI, `main` push run [35283788365](https://github.com/benbenzhuyi/PeMark/actions/runs/35283788365) | success |
+| CI, `v8.6.3` tag push run [35284010496](https://github.com/benbenzhuyi/PeMark/actions/runs/35284010496) | success |
+
+The `v8.6.3` tag was first cut at `f197b21`, before the file-tree path
+ownership fix recorded above existed. Because no GitHub release had been
+published against it, the tag was moved to the validated `7fb4443` commit and
+force pushed before the release was created.
+
 ## Reproducing the core record
 
 ```powershell
