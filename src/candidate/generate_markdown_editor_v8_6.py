@@ -382,6 +382,7 @@ bss_alloc('nccalc_lparam', 8, 8)
 bss_alloc('mmi_lparam', 8, 8)
 bss_alloc('monitor_info', 40, 4)
 bss_alloc('outline_row_bg', 4, 4)
+bss_alloc('outline_depth', 4, 4)
 bss_alloc('hfont_icons', 8, 8)
 bss_alloc('hpen_caption', 8, 8)
 bss_alloc('hpen_caption_hot', 8, 8)
@@ -6202,6 +6203,8 @@ em.mov_r64_mreg('rcx','r9',32); em.mov_r64_r64('rdx','r9'); em.add_r64_imm8('rdx
 em.label('wp_outline_fill_sel_light'); em.mov_r64_ripmem('r8',bsyms['hbrush_edit']); em.call_iat('FillRect'); em.jmp('wp_outline_text')
 em.label('wp_outline_fill_normal'); em.mov_r64_mreg('rcx','r9',32); em.mov_r64_r64('rdx','r9'); em.add_r64_imm8('rdx',40); em.mov_r64_ripmem('r8',bsyms['hbrush_outline']); em.call_iat('FillRect')
 em.label('wp_outline_text')
+# 默认层级 0 = 常规字体；只有真正的大纲行会在下面写入自己的层级。
+em.mov_ripmem_imm32(bsyms['outline_depth'],0)
 # 文本改用不透明背景模式：ClearType 只在 OPAQUE 下启用完整的子像素抗锯齿，
 # TRANSPARENT 会退化成灰阶边缘——这就是侧栏/列表文字看起来比 Chromium 渲染
 # 发糊的原因。BkColor 取自本行刚刚填充的同一套主题色，所以不会出现色块。
@@ -6237,12 +6240,8 @@ em.label('wp_outline_light_file'); em.mov_r32_imm('rdx',0x00202020); em.jmp('wp_
 # level = outline_level[itemID]
 em.label('wp_outline_level_row')
 em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r32_mreg('rax','r9',8); em.add_r32_r32('rax','rax'); em.add_r32_r32('rax','rax'); em.mov_r64_ripmem('rcx',bsyms['outline_level']); em.add_r64_r64('rcx','rax'); em.mov_r32_ptr('r10','rcx')
-# V8.6.1：前两级标题用粗体，其余保持常规——与参考编辑器的导航层级一致。
-# r10 会被下面的 API 调用吃掉，所以字体选择必须在这里完成。
-em.cmp_r32_imm('r10',2); em.jcc(0x8F,'wp_outline_font_regular')
-em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r64_mreg('rcx','r9',32); em.mov_r64_ripmem('rdx',bsyms['hfont_outline_bold']); em.call_iat('SelectObject'); em.jmp('wp_outline_font_ready')
-em.label('wp_outline_font_regular'); em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r64_mreg('rcx','r9',32); em.mov_r64_ripmem('rdx',bsyms['hfont_outline']); em.call_iat('SelectObject')
-em.label('wp_outline_font_ready')
+# 层级先落盘：下面的颜色选择要在若干 API 调用之间使用它，而 r10 会被吃掉。
+em.mov_ripmem_r32(bsyms['outline_depth'],'r10')
 # Select color by depth and theme.
 em.mov_r32_ripmem('rax',bsyms['theme_dark']); em.test32('rax'); em.jcc(0x84,'wp_outline_color_light')
 em.cmp_r32_imm('r10',1); em.jcc(0x84,'wp_outline_dark_h1'); em.cmp_r32_imm('r10',2); em.jcc(0x84,'wp_outline_dark_h2'); em.cmp_r32_imm('r10',3); em.jcc(0x84,'wp_outline_dark_h3'); em.mov_r32_imm('rdx',0x00AFAFAF); em.jmp('wp_outline_color_send')
@@ -6256,6 +6255,14 @@ em.label('wp_outline_light_h3'); em.mov_r32_imm('rdx',0x008C9E12)
 em.label('wp_outline_color_send'); em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r64_mreg('rcx','r9',32); em.call_iat('SetTextColor')
 em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r64_mreg('rcx','r9',32); em.mov_r32_imm('rdx',2); em.call_iat('SetBkMode')
 em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r64_mreg('rcx','r9',32); em.mov_r32_ripmem('rdx',bsyms['outline_row_bg']); em.call_iat('SetBkColor')
+# V8.6.1：前两级标题用粗体，其余（含文件面板第 0 级）保持常规——与参考编辑器
+# 的导航层级一致。位置必须在颜色选择之后：这里的 SelectObject 会破坏 r10/r11。
+# 层级 0 是文件面板，1-2 才是"粗体"的两级标题，3 级以上回到常规。
+em.mov_r32_ripmem('r10',bsyms['outline_depth']); em.test32('r10'); em.jcc(0x84,'wp_outline_font_regular')
+em.cmp_r32_imm('r10',2); em.jcc(0x8F,'wp_outline_font_regular')
+em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r64_mreg('rcx','r9',32); em.mov_r64_ripmem('rdx',bsyms['hfont_outline_bold']); em.call_iat('SelectObject'); em.jmp('wp_outline_font_ready')
+em.label('wp_outline_font_regular'); em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r64_mreg('rcx','r9',32); em.mov_r64_ripmem('rdx',bsyms['hfont_outline']); em.call_iat('SelectObject')
+em.label('wp_outline_font_ready')
 # draw_rect is already clipped to the permanent scrollbar-safe content area;
 # add only the 8px left text inset before DrawTextW.
 em.lea_rip('rcx',bsyms['draw_rect']); em.mov_r32_mreg('rax','rcx',0); em.add_r32_imm8('rax',8); em.mov_ptr_r32('rcx','rax')

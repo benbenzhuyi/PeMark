@@ -11,11 +11,11 @@
 | `.reloc` | `0x2C000` | 1024 | 1024 | `0x42000040` |
 | `.pdata` | `0x2D000` | 1536 | 1536 | `0x40000040` |
 
-text 实际代码 57844 字节（预算 61440），rdata 6076 字节，idata 4932 字节，BSS 虚拟 94208 字节。
+text 实际代码 57877 字节（预算 61440），rdata 6076 字节，idata 4932 字节，BSS 虚拟 94208 字节。
 
-本次构建：text 实际 57844 字节（余量 3596 字节）；BSS 符号 325 个，最终虚拟 BSS 94208 字节。
+本次构建：text 实际 57877 字节（余量 3563 字节）；BSS 符号 326 个，最终虚拟 BSS 94208 字节。
 
-SHA-256：`e29b30e55fb6c708d1e794511ae765b1dc6f948ad2ba657e14ed77de87b6ea56`
+SHA-256：`1fb640dc8f03934ec5e54e2419b8ba6f3b59d6a5b009b17872d46cd98009772c`
 
 | Symbol | RVA | Size |
 |---|---:|---:|
@@ -55,6 +55,7 @@ SHA-256：`e29b30e55fb6c708d1e794511ae765b1dc6f948ad2ba657e14ed77de87b6ea56`
 | `mmi_lparam` | `0x15BA8` | 8 |
 | `monitor_info` | `0x15BB0` | 40 |
 | `outline_row_bg` | `0x15BD8` | 4 |
+| `outline_depth` | `0x15BDC` | 4 |
 | `hfont_icons` | `0x15BE0` | 8 |
 | `hpen_caption` | `0x15BE8` | 8 |
 | `hpen_caption_hot` | `0x15BF0` | 8 |

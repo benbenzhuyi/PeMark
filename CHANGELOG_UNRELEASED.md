@@ -29,6 +29,13 @@ V8.5.4 shipped as the first stable release; its full record is
   outline levels 1-2 paint with a weight-700 face of the same family while
   deeper levels stay regular. Verified by reading the LOGFONT of both
   handles: height -13 with weight 400 and 700 respectively, quality 5.
+- fix: the outline lost its per-level colours. The bold-face switch added in
+  the previous commit called `SelectObject` before the colour was chosen, and
+  that call clobbers `r10`, which held the heading depth - so every row fell
+  into the "other level" grey branch. The depth now lives in `outline_depth`,
+  level 0 (the file panel) keeps the regular face, and the bold switch runs
+  after the colour is selected. Verified per row in dark mode: H1
+  74,163,240 / H2 67,200,244 / H3 56,211,190 / H2 67,200,244.
 
 Still open from the same report: per-item file/folder icons in the sidebar.
 That needs the row text to stop carrying its own indentation and arrow
