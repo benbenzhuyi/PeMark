@@ -3,6 +3,27 @@
 V8.5.4 shipped as the first stable release; its full record is
 `docs/CHANGELOG_V8_5_4.md`.
 
+## V8.6.1 candidate — Window edges and sidebar text sharpness
+
+- `WM_NCPAINT` and `WM_NCACTIVATE` are no longer forwarded to
+  `DefWindowProc` while the title row is self-drawn. Switching windows or
+  opening the Find dialog made Windows repaint a default non-client frame,
+  which showed up as a light outline around the dark window. Verified by
+  sending both messages and re-reading the edge pixels: they stay at the
+  window surface colour;
+- sidebar rows paint their text with `SetBkMode(OPAQUE)` plus a `SetBkColor`
+  taken from the row's own fill. ClearType degrades to grayscale edges under
+  a transparent background, which is why the tree text looked softer than a
+  Chromium-rendered reference. Measured after the fix: 3171 subpixel
+  coloured pixels in a 184x280 sidebar sample, where grayscale AA would be
+  near zero;
+- `WM_ERASEBKGND` now fills the client in both themes instead of only dark.
+
+Still open from the same report: per-item file/folder icons in the sidebar.
+That needs the row text to stop carrying its own indentation and arrow
+(`tree_display_name`) so the painter can place an icon between them, i.e. a
+segmented row painter; it is tracked as its own change.
+
 ## V8.6.1 candidate — Title-row polish and preview resize repaint
 
 - the caption menu entries are laid out from their measured text width

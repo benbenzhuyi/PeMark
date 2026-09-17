@@ -380,6 +380,7 @@ bss_alloc('hit_pt', 8, 4)
 bss_alloc('nccalc_lparam', 8, 8)
 bss_alloc('mmi_lparam', 8, 8)
 bss_alloc('monitor_info', 40, 4)
+bss_alloc('outline_row_bg', 4, 4)
 bss_alloc('hfont_icons', 8, 8)
 bss_alloc('hpen_caption', 8, 8)
 bss_alloc('hpen_caption_hot', 8, 8)
@@ -5963,13 +5964,22 @@ em.label('wp_hit_left'); em.mov_r32_imm('rax',10); em.add_r64_imm8('rsp',0x38); 
 em.label('wp_hit_right'); em.mov_r32_imm('rax',11); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
 
 em.label('wp_ncpaint')
-em.call_iat('DefWindowProcW'); em.mov_ripmem_r64(bsyms['defproc_result'],'rax'); em.call_label('paint_menu_gaps'); em.mov_r64_ripmem('rax',bsyms['defproc_result']); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
+if CUSTOM_CAPTION:
+    # 自绘标题行没有非客户区。切换窗口/弹出查找对话框时系统仍会发 WM_NCPAINT，
+    # 交给 DefWindowProc 会按默认非客户区画出一条描边（深色窗口边缘的浅线）。
+    em.xor32('rax'); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
+else:
+    em.call_iat('DefWindowProcW'); em.mov_ripmem_r64(bsyms['defproc_result'],'rax'); em.call_label('paint_menu_gaps'); em.mov_r64_ripmem('rax',bsyms['defproc_result']); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
 
 # Let Windows perform its normal activate/non-client handling first, then force
 # every themed child to repaint. This prevents stale black backing pixels from
 # remaining when another app becomes the foreground window.
 em.label('wp_activation')
-em.call_iat('DefWindowProcW'); em.mov_ripmem_r64(bsyms['defproc_result'],'rax'); em.call_label('paint_menu_gaps')
+if CUSTOM_CAPTION:
+    # 同上：WM_NCACTIVATE 也不许走默认非客户区绘制，否则激活/失活时会描边。
+    em.mov_ripmem_imm32(bsyms['defproc_result'],1)
+else:
+    em.call_iat('DefWindowProcW'); em.mov_ripmem_r64(bsyms['defproc_result'],'rax'); em.call_label('paint_menu_gaps')
 for child in ('hwnd_edit','hwnd_preview','hwnd_outline','hwnd_status'):
     em.mov_r64_ripmem('rcx',bsyms[child]); em.test64('rcx'); em.jcc(0x84,f'wp_act_skip_{child}'); em.xor32('rdx'); em.mov_r32_imm('r8',1); em.call_iat('InvalidateRect'); em.mov_r64_ripmem('rcx',bsyms[child]); em.call_iat('UpdateWindow'); em.label(f'wp_act_skip_{child}')
 em.mov_r64_ripmem('rax',bsyms['defproc_result']); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
@@ -6184,6 +6194,19 @@ em.mov_r64_mreg('rcx','r9',32); em.mov_r64_r64('rdx','r9'); em.add_r64_imm8('rdx
 em.label('wp_outline_fill_sel_light'); em.mov_r64_ripmem('r8',bsyms['hbrush_edit']); em.call_iat('FillRect'); em.jmp('wp_outline_text')
 em.label('wp_outline_fill_normal'); em.mov_r64_mreg('rcx','r9',32); em.mov_r64_r64('rdx','r9'); em.add_r64_imm8('rdx',40); em.mov_r64_ripmem('r8',bsyms['hbrush_outline']); em.call_iat('FillRect')
 em.label('wp_outline_text')
+# 文本改用不透明背景模式：ClearType 只在 OPAQUE 下启用完整的子像素抗锯齿，
+# TRANSPARENT 会退化成灰阶边缘——这就是侧栏/列表文字看起来比 Chromium 渲染
+# 发糊的原因。BkColor 取自本行刚刚填充的同一套主题色，所以不会出现色块。
+em.mov_r64_ripmem('r9',bsyms['drawitem_ptr'])
+em.mov_r32_mreg('rax','r9',16); em.and_r32_imm('rax',1); em.test32('rax'); em.jcc(0x84,'outline_bg_normal')
+em.mov_r32_ripmem('rax',bsyms['theme_dark']); em.test32('rax'); em.jcc(0x84,'outline_bg_sel_light')
+em.mov_ripmem_imm32(bsyms['outline_row_bg'],0x001A1A1A); em.jmp('outline_bg_ready')
+em.label('outline_bg_sel_light'); em.mov_ripmem_imm32(bsyms['outline_row_bg'],0x00FFFFFF); em.jmp('outline_bg_ready')
+em.label('outline_bg_normal')
+em.mov_r32_ripmem('rax',bsyms['theme_dark']); em.test32('rax'); em.jcc(0x84,'outline_bg_normal_light')
+em.mov_ripmem_imm32(bsyms['outline_row_bg'],0x001F1F1F); em.jmp('outline_bg_ready')
+em.label('outline_bg_normal_light'); em.mov_ripmem_imm32(bsyms['outline_row_bg'],0x00F3F3F3)
+em.label('outline_bg_ready')
 # Fetch item text from the ListBox this row belongs to (ID decides).
 em.call_label('wp_row_hwnd'); em.mov_r64_r64('rcx','rax')
 em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r32_mreg('r10','r9',8); em.mov_r32_imm('rdx',0x0189); em.mov_r32_r32('r8','r10'); em.lea_rip('r9',bsyms['outline_titlebuf']); em.call_iat('SendMessageW')
@@ -6216,7 +6239,9 @@ em.label('wp_outline_color_light'); em.cmp_r32_imm('r10',1); em.jcc(0x84,'wp_out
 em.label('wp_outline_light_h1'); em.mov_r32_imm('rdx',0x00C06515); em.jmp('wp_outline_color_send')
 em.label('wp_outline_light_h2'); em.mov_r32_imm('rdx',0x00D78F0B); em.jmp('wp_outline_color_send')
 em.label('wp_outline_light_h3'); em.mov_r32_imm('rdx',0x008C9E12)
-em.label('wp_outline_color_send'); em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r64_mreg('rcx','r9',32); em.call_iat('SetTextColor'); em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r64_mreg('rcx','r9',32); em.mov_r32_imm('rdx',1); em.call_iat('SetBkMode')
+em.label('wp_outline_color_send'); em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r64_mreg('rcx','r9',32); em.call_iat('SetTextColor')
+em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r64_mreg('rcx','r9',32); em.mov_r32_imm('rdx',2); em.call_iat('SetBkMode')
+em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r64_mreg('rcx','r9',32); em.mov_r32_ripmem('rdx',bsyms['outline_row_bg']); em.call_iat('SetBkColor')
 # draw_rect is already clipped to the permanent scrollbar-safe content area;
 # add only the 8px left text inset before DrawTextW.
 em.lea_rip('rcx',bsyms['draw_rect']); em.mov_r32_mreg('rax','rcx',0); em.add_r32_imm8('rax',8); em.mov_ptr_r32('rcx','rax')
@@ -6259,7 +6284,6 @@ em.mov_r32_imm('rax',1); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
 
 # Paint exposed main-client gaps (including the bottom-right status corner) with the theme surface.
 em.label('wp_erasebkgnd')
-em.mov_r32_ripmem('rax',bsyms['theme_dark']); em.test32('rax'); em.jcc(0x84,'wp_default')
 # WM_ERASEBKGND supplies the HDC in wParam (r8), not lParam.
 em.mov_ripmem_r64(bsyms['paint_hdc'],'r8'); em.mov_r64_r64('rcx','r8'); em.lea_rip('rdx',bsyms['draw_rect']); em.call_iat('GetClipBox'); em.mov_r64_ripmem('rcx',bsyms['paint_hdc']); em.lea_rip('rdx',bsyms['draw_rect']); em.mov_r64_ripmem('r8',bsyms['hbrush_edit']); em.call_iat('FillRect'); em.mov_r32_imm('rax',1); em.add_r64_imm8('rsp',0x38); em.emit(0xC3)
 
