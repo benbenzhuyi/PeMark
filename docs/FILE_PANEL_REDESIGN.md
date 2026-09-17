@@ -335,15 +335,17 @@ PeMark 是纯 Direct-PE 机器码生成，没有 DOM 与第三方控件，因此
 - 按行 flags 绘制缩进、箭头、目录后缀与类型色；箭头区与行区命中分流；
 - 验收：像素证据显示缩进行位移正确、箭头字形随展开状态变化；点击箭头区只切换
   展开（不改变根），点击行其他区域行为符合表格；滚动条几何与行数同步。
-  - 已完成：文件列表现在是 `tree_rows` 的投影，行文本由
-    `tree_display_name` 生成（缩进、`▸/▾`、末级名称、目录反斜杠）；每个
-    ListBox 项通过 `LB_SETITEMDATA` 保存树行索引；owner-draw 从
-    `DRAWITEMSTRUCT.itemData` 取行并读取 `TREE_OFF_FLAGS`。目录激活切换展开
-    集合并重建投影，文件激活复用现有 Open 事务。枚举改为目录优先的两遍
-    `FindFirstFileW`，保持旧的目录排序契约。
-  - 证据：`tools/test_v8_6_tree_ui.py` 使用真实进程验证投影、itemData、目录展开
-    和文件打开；`tools/test_v8_6_panel.py` 与 `test_v8_6_navigation.py` 已更新为
-    新的树行文本契约。
+  - 已完成：文件列表现在是 `tree_rows` 的投影，ListBox 只保存末级文件名；每个
+    ListBox 项通过 `LB_SETITEMDATA` 保存树行索引。owner-draw 从
+    `DRAWITEMSTRUCT.itemData` 取行并读取 depth/flags，把每行分段绘制为
+    `16px * depth` 缩进、展开箭头槽、Windows Segoe MDL2 文件夹/打开文件夹/
+    文档图标和正文。图标使用单独的 13px 字体，与 13px Microsoft YaHei UI
+    正文对齐；内联重命名与辅助文本不再包含缩进、箭头或目录反斜杠。目录激活
+    切换展开集合并重建投影，文件激活复用现有 Open 事务。枚举仍是目录优先的
+    两遍 `FindFirstFileW`，保持旧的目录排序契约。
+  - 证据：`tools/test_v8_6_tree_ui.py` 使用真实进程验证纯文件名、itemData、箭头/
+    文件夹/文档图标的像素墨迹、目录展开和文件打开；`tools/test_v8_6_panel.py`
+    与 `test_v8_6_navigation.py` 使用新的纯行文本契约。
 
 ### 切片 3：文件操作（重命名 / 新建 / 删除 / 复制路径）
 
@@ -429,7 +431,7 @@ PeMark 是纯 Direct-PE 机器码生成，没有 DOM 与第三方控件，因此
 | 项 | Rabbit | PeMark | 理由 |
 | --- | --- | --- | --- |
 | 删除 | 永久删除 | 回收站 | PeMark 文档安全原则更强 |
-| 图标 | emoji | 箭头 + 类型色 | 面板字体不保证 emoji 显示 |
+| 图标 | emoji | 箭头 + Segoe MDL2 文件/文件夹图标 + 类型色 | 使用 Windows 系统图标字体，避免 emoji 字体和手绘线框不一致 |
 | 文件过滤 | 显示全部非隐藏项 | 只显示 `.md` / `.markdown` / `.txt` | 用户决策：只列出可打开的文本 |
 | 打开方式 | 单击打开 + 双击重命名 | 同 Rabbit | 用户决策 |
 | 面板比例表达 | CSS flex 百分比 + 0.15s 过渡 | 像素千分比，无过渡动画 | 自绘窗口没有 CSS 过渡，瞬间重排更可预测 |

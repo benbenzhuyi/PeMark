@@ -155,7 +155,7 @@ def main():
 
             probe(app, root, 3)
             wait_for(lambda: lb_count(app, lb) == 3, 4, "file panel")
-            assert rows(app, lb, 3)[0] == "▸ sub\\", rows(app, lb, 3)
+            assert rows(app, lb, 3)[0] == "sub", rows(app, lb, 3)
             assert ws_path(app) == str(root)
             painted = status_path_pixels(app)
             assert painted > 50, \
@@ -164,7 +164,7 @@ def main():
             # --- expand a directory through the activation path --------------
             post_double_click(app, lb, 0)
             wait_for(lambda: lb_count(app, lb) == 4, 5, "sub-directory expansion")
-            assert rows(app, lb, 4)[1] == "  inner.md", rows(app, lb, 4)
+            assert rows(app, lb, 4)[1] == "inner.md", rows(app, lb, 4)
             assert ws_path(app) == str(root)
             post_double_click(app, lb, 0)
             wait_for(lambda: lb_count(app, lb) == 3, 5, "sub-directory collapse")

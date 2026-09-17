@@ -185,6 +185,9 @@ wstr('panel_files','Files')
 wstr('panel_outline','Outline')
 wstr('tree_arrow_closed','▸')
 wstr('tree_arrow_open','▾')
+wstr('tree_icon_folder','\uf12b')       # Segoe MDL2 Assets: FolderHorizontal
+wstr('tree_icon_folder_open','\ued25')  # Segoe MDL2 Assets: OpenFolderHorizontal
+wstr('tree_icon_document','\ue8a5')     # Segoe MDL2 Assets: Document
 wstr('m_light','&Light')
 wstr('m_dark','&Dark\tCtrl+Alt+T')
 wstr('m_about','&About\tF1')
@@ -383,7 +386,11 @@ bss_alloc('mmi_lparam', 8, 8)
 bss_alloc('monitor_info', 40, 4)
 bss_alloc('outline_row_bg', 4, 4)
 bss_alloc('outline_depth', 4, 4)
+bss_alloc('tree_draw_flags', 4, 4)
+bss_alloc('tree_draw_depth', 4, 4)
+bss_alloc('tree_draw_right', 4, 4)
 bss_alloc('hfont_icons', 8, 8)
+bss_alloc('hfont_tree_icons', 8, 8)
 bss_alloc('hpen_caption', 8, 8)
 bss_alloc('hpen_caption_hot', 8, 8)
 bss_alloc('hbrush_caption', 8, 8)
@@ -1297,6 +1304,13 @@ em.mov_mrsp_imm32(0x20,400); em.mov_mrsp_imm32(0x28,0); em.mov_mrsp_imm32(0x30,0
 em.lea_rip('rax',rsyms['font_icons']); em.mov_mrsp_reg64(0x68,'rax'); em.call_iat('CreateFontW'); em.mov_ripmem_r64(bsyms['hfont_icons'],'rax')
 em.test64('rax'); em.jcc(0x85,'icons_font_ready'); em.mov_r64_ripmem('rax',bsyms['hfont_panel']); em.mov_ripmem_r64(bsyms['hfont_icons'],'rax')
 em.label('icons_font_ready')
+# 文件树需要与 13px 侧栏正文同尺度的 Fluent 图标，不能复用标题栏的
+# 18px 工具图标字体，否则文件夹字形会压过文件名并挤满 30px 行高。
+em.mov_r32_imm('rcx',0xFFFFFFF3); em.xor32('rdx'); em.xor32('r8'); em.xor32('r9')
+em.mov_mrsp_imm32(0x20,400); em.mov_mrsp_imm32(0x28,0); em.mov_mrsp_imm32(0x30,0); em.mov_mrsp_imm32(0x38,0); em.mov_mrsp_imm32(0x40,1); em.mov_mrsp_imm32(0x48,0); em.mov_mrsp_imm32(0x50,0); em.mov_mrsp_imm32(0x58,5); em.mov_mrsp_imm32(0x60,0)
+em.lea_rip('rax',rsyms['font_icons']); em.mov_mrsp_reg64(0x68,'rax'); em.call_iat('CreateFontW'); em.mov_ripmem_r64(bsyms['hfont_tree_icons'],'rax')
+em.test64('rax'); em.jcc(0x85,'tree_icons_font_ready'); em.mov_r64_ripmem('rax',bsyms['hfont_icons']); em.mov_ripmem_r64(bsyms['hfont_tree_icons'],'rax')
+em.label('tree_icons_font_ready')
 # 系统三键（最小化/最大化/关闭）用同一支 Fluent 图标字体的小一号字号：
 # MDL2 的 Chrome* 字形在字身框里接近满格，和工具栏字形放在一起会显得过大。
 # -11pt: Windows 自己的标题栏按钮字形就是这么小，-13 在对比系统窗口时明显偏大。
@@ -4172,45 +4186,6 @@ em.add_r64_r64('rax','rcx')
 em.mov_r64_ripmem('rcx',bsyms['tree_rows']); em.add_r64_r64('rax','rcx')
 em.emit(0xC3)
 
-# rcx = tree row, rdx = destination: emit indentation, the directory arrow and
-# the last path component. Leaf; only volatile registers are touched.
-em.label('tree_display_name')
-em.mov_r64_r64('r10','rcx')
-em.mov_r32_mreg('r11','r10',TREE_OFF_FLAGS)
-em.mov_r32_mreg('r9','r10',TREE_OFF_DEPTH)
-em.test32('r9'); em.jcc(0x89,'tdn_depth_ok'); em.xor32('r9')
-em.label('tdn_depth_ok')
-em.xor32('r8')
-# depth * 2 spaces
-em.mov_r32_r32('rax','r9'); em.add_r32_r32('rax','rax')
-em.label('tdn_space')
-em.test32('rax'); em.jcc(0x84,'tdn_arrow')
-em.mov_word_index2_imm16('rdx','r8',0x20); em.add_r32_imm8('r8',1); em.sub_r32_imm8('rax',1); em.jmp('tdn_space')
-em.label('tdn_arrow')
-em.mov_r32_r32('rax','r11'); em.and_r32_imm('rax',TREE_FLAG_DIR); em.test32('rax'); em.jcc(0x84,'tdn_scan')
-em.mov_r32_r32('rax','r11'); em.and_r32_imm('rax',TREE_FLAG_EXPANDED); em.test32('rax'); em.jcc(0x84,'tdn_arrow_closed')
-em.mov_r32_imm('rax',0x25BE); em.jmp('tdn_arrow_write')  # ▾ expanded
-em.label('tdn_arrow_closed'); em.mov_r32_imm('rax',0x25B8)  # ▸ collapsed
-em.label('tdn_arrow_write'); em.mov_word_index2_reg('rdx','r8','rax'); em.add_r32_imm8('r8',1)
-em.mov_word_index2_imm16('rdx','r8',0x20); em.add_r32_imm8('r8',1)
-# find the last separator
-em.label('tdn_scan')
-em.xor32('r9'); em.xor32('rcx')
-em.label('tdn_scan_loop')
-em.movzx_r32_word_index2('rax','r10','r9'); em.test32('rax'); em.jcc(0x84,'tdn_copy_start')
-em.cmp_r32_imm('rax',0x5C); em.jcc(0x85,'tdn_scan_next')
-em.mov_r32_r32('rcx','r9'); em.add_r32_imm8('rcx',1)
-em.label('tdn_scan_next'); em.add_r32_imm8('r9',1); em.cmp_r32_imm('r9',TREE_PATH_UNITS); em.jcc(0x82,'tdn_scan_loop')
-em.label('tdn_copy_start')
-em.mov_r32_r32('r9','rcx'); em.xor32('rax')
-em.label('tdn_copy')
-em.movzx_r32_word_index2('r11','r10','r9'); em.test32('r11'); em.jcc(0x84,'tdn_copy_done')
-em.mov_word_index2_reg('rdx','r8','r11'); em.add_r32_imm8('r8',1); em.add_r32_imm8('r9',1); em.jmp('tdn_copy')
-em.label('tdn_copy_done')
-em.mov_r32_mreg('rax','r10',TREE_OFF_FLAGS); em.test32('rax'); em.jcc(0x84,'tdn_terminate')
-em.mov_word_index2_imm16('rdx','r8',0x5C); em.add_r32_imm8('r8',1)
-em.label('tdn_terminate'); em.mov_word_index2_zero('rdx','r8'); em.emit(0xC3)
-
 # rcx = tree row, rdx = destination: copy only the final path component.
 em.label('tree_copy_leaf_name')
 em.mov_r64_r64('r10','rcx'); em.xor32('r8'); em.xor32('r9')
@@ -4932,10 +4907,9 @@ em.call_label('rebuild_file_list'); em.call_label('update_status'); em.jmp('rc_r
 em.label('rc_cancel'); em.call_label('rename_cancel')
 em.label('rc_ret'); em.add_r64_imm8('rsp',0x38); em.emit(0x41,0x5F); em.emit(0x41,0x5E); em.emit(0x41,0x5D); em.emit(0x41,0x5C); em.emit(0xC3)
 
-# V8.6 切片 2：用 workspace 条目重建 ListBox（文件模式）。复用同一个控件、
-# 同一套滚动条几何、同一套主题刷子：布局、命中测试、滚轮、hover 与
-# sync_outline_scrollbar 都不需要第二套实现。目录行追加反斜杠，配合
-# owner-draw 的颜色分支提供不依赖新资源的行类型区分。
+# V8.6 切片 2：用 workspace 条目重建 ListBox（文件模式）。ListBox 只保存纯
+# 文件名；缩进、展开箭头和 Fluent 类型图标全部由 owner-draw 分段绘制。这样
+# 内联重命名、辅助文本和鼠标命中都不再混入视觉前缀。
 em.label('rebuild_file_list')
 em.emit(0x41,0x54); em.emit(0x41,0x55); em.emit(0x41,0x56); em.emit(0x41,0x57); em.emit(0x48,0x83,0xEC,0x28)
 em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.test64('rcx'); em.jcc(0x84,'rfl_ret')
@@ -4950,7 +4924,7 @@ em.xor32('r12')
 em.label('rfl_loop')
 em.cmp_r32_r32('r12','r13'); em.jcc(0x83,'rfl_done')
 em.mov_r32_r32('rdx','r12'); em.call_label('tree_row_ptr')
-em.mov_r64_r64('rcx','rax'); em.lea_rip('rdx',bsyms['outline_titlebuf']); em.call_label('tree_display_name')
+em.mov_r64_r64('rcx','rax'); em.lea_rip('rdx',bsyms['outline_titlebuf']); em.call_label('tree_copy_leaf_name')
 em.mov_r64_ripmem('rcx',bsyms['hwnd_files']); em.mov_r32_imm('rdx',0x0180); em.xor32('r8'); em.lea_rip('r9',bsyms['outline_titlebuf']); em.call_iat('SendMessageW')
 em.cmp_r32_imm('rax',0xFFFFFFFF); em.jcc(0x84,'rfl_done')
 em.mov_ripmem_r32(bsyms['rfl_item_index'],'rax')
@@ -6243,6 +6217,8 @@ em.label('wp_file_row_branch')
 em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r64_mreg('r10','r9',56)
 em.mov_r32_r32('rdx','r10'); em.call_label('tree_row_ptr'); em.mov_r64_r64('r15','rax')
 em.mov_r32_mreg('r10','r15',TREE_OFF_FLAGS)
+em.mov_ripmem_r32(bsyms['tree_draw_flags'],'r10')
+em.mov_r32_mreg('rax','r15',TREE_OFF_DEPTH); em.mov_ripmem_r32(bsyms['tree_draw_depth'],'rax')
 em.mov_r32_ripmem('rax',bsyms['theme_dark']); em.test32('rax'); em.jcc(0x84,'wp_outline_file_light')
 em.test32('r10'); em.jcc(0x84,'wp_outline_dark_file')
 em.mov_r32_imm('rdx',0x00F4C843); em.jmp('wp_outline_color_send')
@@ -6277,9 +6253,42 @@ em.cmp_r32_imm('r10',2); em.jcc(0x8F,'wp_outline_font_regular')
 em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r64_mreg('rcx','r9',32); em.mov_r64_ripmem('rdx',bsyms['hfont_outline_bold']); em.call_iat('SelectObject'); em.jmp('wp_outline_font_ready')
 em.label('wp_outline_font_regular'); em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r64_mreg('rcx','r9',32); em.mov_r64_ripmem('rdx',bsyms['hfont_outline']); em.call_iat('SelectObject')
 em.label('wp_outline_font_ready')
+# 文件树行使用分段布局：[每级 16px 缩进][12px 箭头][20px Fluent 图标]
+# [文件名]。图标字体只负责图标，正文仍用清晰的 Microsoft YaHei UI。
+em.mov_r32_ripmem('rax',bsyms['outline_depth']); em.test32('rax'); em.jcc(0x84,'wp_file_row_draw')
 # draw_rect is already clipped to the permanent scrollbar-safe content area;
 # add only the 8px left text inset before DrawTextW.
 em.lea_rip('rcx',bsyms['draw_rect']); em.mov_r32_mreg('rax','rcx',0); em.add_r32_imm8('rax',8); em.mov_ptr_r32('rcx','rax')
+em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r64_mreg('rcx','r9',32); em.lea_rip('rdx',bsyms['outline_titlebuf']); em.mov_r32_imm('r8',0xFFFFFFFF); em.lea_rip('r9',bsyms['draw_rect']); em.mov_mrsp_imm32(0x20,0x0824); em.call_iat('DrawTextW')
+em.jmp('wp_draw_outline_done')
+
+em.label('wp_file_row_draw')
+# Preserve the clipped right edge, then calculate the depth-relative row origin.
+em.lea_rip('rcx',bsyms['draw_rect']); em.mov_r32_mreg('rax','rcx',8); em.mov_ripmem_r32(bsyms['tree_draw_right'],'rax')
+em.mov_r32_mreg('rax','rcx',0); em.add_r32_imm8('rax',8)
+em.mov_r32_ripmem('r10',bsyms['tree_draw_depth']); em.test32('r10'); em.jcc(0x89,'wp_file_depth_ok'); em.xor32('r10')
+em.label('wp_file_depth_ok'); em.shl_r32_imm8('r10',4); em.add_r32_r32('rax','r10'); em.mov_ptr_r32('rcx','rax')
+# Directory disclosure arrow occupies the first 12px. Files keep the same empty slot so
+# their type icons align with directory icons at the same depth.
+em.mov_r32_r32('r10','rax'); em.add_r32_imm8('r10',12); em.mov_mreg_reg32('rcx',8,'r10')
+em.mov_r32_ripmem('r10',bsyms['tree_draw_flags']); em.mov_r32_r32('rax','r10'); em.and_r32_imm('rax',TREE_FLAG_DIR); em.test32('rax'); em.jcc(0x84,'wp_file_icon_rect')
+em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r64_mreg('rcx','r9',32); em.mov_r64_ripmem('rdx',bsyms['hfont_outline']); em.call_iat('SelectObject')
+em.mov_r32_ripmem('rax',bsyms['tree_draw_flags']); em.and_r32_imm('rax',TREE_FLAG_EXPANDED); em.test32('rax'); em.jcc(0x84,'wp_file_arrow_closed')
+em.lea_rip('rdx',rsyms['tree_arrow_open']); em.jmp('wp_file_arrow_draw')
+em.label('wp_file_arrow_closed'); em.lea_rip('rdx',rsyms['tree_arrow_closed'])
+em.label('wp_file_arrow_draw'); em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r64_mreg('rcx','r9',32); em.mov_r32_imm('r8',1); em.lea_rip('r9',bsyms['draw_rect']); em.mov_mrsp_imm32(0x20,0x0824); em.call_iat('DrawTextW')
+# The icon cell follows the arrow slot and is centered in 20px.
+em.label('wp_file_icon_rect'); em.lea_rip('rcx',bsyms['draw_rect']); em.mov_r32_mreg('rax','rcx',0); em.add_r32_imm8('rax',12); em.mov_ptr_r32('rcx','rax'); em.add_r32_imm8('rax',20); em.mov_mreg_reg32('rcx',8,'rax')
+em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r64_mreg('rcx','r9',32); em.mov_r64_ripmem('rdx',bsyms['hfont_tree_icons']); em.call_iat('SelectObject')
+em.mov_r32_ripmem('r10',bsyms['tree_draw_flags']); em.mov_r32_r32('rax','r10'); em.and_r32_imm('rax',TREE_FLAG_DIR); em.test32('rax'); em.jcc(0x84,'wp_file_icon_document')
+em.mov_r32_r32('rax','r10'); em.and_r32_imm('rax',TREE_FLAG_EXPANDED); em.test32('rax'); em.jcc(0x84,'wp_file_icon_folder')
+em.lea_rip('rdx',rsyms['tree_icon_folder_open']); em.jmp('wp_file_icon_draw')
+em.label('wp_file_icon_folder'); em.lea_rip('rdx',rsyms['tree_icon_folder']); em.jmp('wp_file_icon_draw')
+em.label('wp_file_icon_document'); em.lea_rip('rdx',rsyms['tree_icon_document'])
+em.label('wp_file_icon_draw'); em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r64_mreg('rcx','r9',32); em.mov_r32_imm('r8',1); em.lea_rip('r9',bsyms['draw_rect']); em.mov_mrsp_imm32(0x20,0x0825); em.call_iat('DrawTextW')
+# Restore the text font and consume all remaining width after a 4px gap.
+em.lea_rip('rcx',bsyms['draw_rect']); em.mov_r32_mreg('rax','rcx',8); em.add_r32_imm8('rax',4); em.mov_ptr_r32('rcx','rax'); em.mov_r32_ripmem('rax',bsyms['tree_draw_right']); em.mov_mreg_reg32('rcx',8,'rax')
+em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r64_mreg('rcx','r9',32); em.mov_r64_ripmem('rdx',bsyms['hfont_outline']); em.call_iat('SelectObject')
 em.mov_r64_ripmem('r9',bsyms['drawitem_ptr']); em.mov_r64_mreg('rcx','r9',32); em.lea_rip('rdx',bsyms['outline_titlebuf']); em.mov_r32_imm('r8',0xFFFFFFFF); em.lea_rip('r9',bsyms['draw_rect']); em.mov_mrsp_imm32(0x20,0x0824); em.call_iat('DrawTextW')
 em.label('wp_draw_outline_done')
 # Restore the caller's HDC clip/state if this row established a scrollbar-safe clip.
@@ -7320,10 +7329,22 @@ assert "TREE_OFF_FLAGS" in _panel_draw_src and "bsyms['outline_level']" not in _
 _panel_list_src = _production_source[
     _production_source.index("em.label('rebuild_file_list')"):
     _production_source.index("em.label('set_panel_mode')")]
-assert "call_label('tree_display_name')" in _panel_list_src and \
+assert "call_label('tree_copy_leaf_name')" in _panel_list_src and \
+       "call_label('tree_display_name')" not in _panel_list_src and \
        "bsyms['hwnd_files']" in _panel_list_src and \
        "call_label('sync_outline_scrollbar')" in _panel_list_src, \
-    'rebuild_file_list must own the row text and fill its own ListBox'
+    'rebuild_file_list must publish pure leaf names into its own ListBox'
+_tree_row_draw_src = _production_source[
+    _production_source.index("em.label('wp_file_row_draw')"):
+    _production_source.index("em.label('wp_draw_outline_done')")]
+for _tree_icon_sym in ('tree_icon_folder', 'tree_icon_folder_open',
+                       'tree_icon_document'):
+    assert "rsyms['%s']" % _tree_icon_sym in _tree_row_draw_src, \
+        'segmented tree painter must draw %s' % _tree_icon_sym
+assert "bsyms['hfont_tree_icons']" in _tree_row_draw_src and \
+       "bsyms['tree_draw_depth']" in _tree_row_draw_src and \
+       "shl_r32_imm8('r10',4)" in _tree_row_draw_src, \
+    'tree painter must use its 13px Fluent icon font and 16px depth indentation'
 _panel_switch_src = _production_source[
     _production_source.index("em.label('set_panel_mode')"):
     _production_source.index("em.label('refresh_panel_list')")]

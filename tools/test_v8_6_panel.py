@@ -336,7 +336,7 @@ def main():
                      "workspace enumeration")
             wait_for(lambda: lb_count(app, files) == 3, 4,
                      "the file panel must list the workspace entries")
-            assert [lb_text(app, i) for i in range(3)] == ["▸ docs\\", "a.md", "b.txt"], \
+            assert [lb_text(app, i) for i in range(3)] == ["docs", "a.md", "b.txt"], \
                 [lb_text(app, i) for i in range(3)]
             assert lb_count(app, outline) == 0, \
                 "workspace entries must not leak into the outline panel"

@@ -45,11 +45,15 @@ V8.5.4 shipped as the first stable release; its full record is
   level 0 (the file panel) keeps the regular face, and the bold switch runs
   after the colour is selected. Verified per row in dark mode: H1
   74,163,240 / H2 67,200,244 / H3 56,211,190 / H2 67,200,244.
-
-Still open from the same report: per-item file/folder icons in the sidebar.
-That needs the row text to stop carrying its own indentation and arrow
-(`tree_display_name`) so the painter can place an icon between them, i.e. a
-segmented row painter; it is tracked as its own change.
+- file-tree rows now store the pure leaf name and use a segmented owner-draw
+  layout: 16px per depth level, a disclosure-arrow slot, a Fluent
+  closed/open-folder or document glyph, then the filename. The glyphs come
+  from Windows' Segoe MDL2 Assets font and inherit the row's theme colour;
+  a dedicated 13px icon font keeps them aligned with the 13px YaHei UI text
+  instead of reusing the larger title-toolbar font. Inline rename and
+  accessibility text therefore receive the real filename without visual
+  prefixes. `tools/test_v8_6_tree_ui.py` verifies pure ListBox text, glyph ink,
+  expansion and file activation in the real process.
 
 ## V8.6.1 candidate — Title-row polish and preview resize repaint
 
