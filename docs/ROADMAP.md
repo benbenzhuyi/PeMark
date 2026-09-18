@@ -1,5 +1,12 @@
 # Roadmap from V8.4.23 to V8.5+
 
+[简体中文](ROADMAP.zh-CN.md) | English
+
+> Historical planning record. The milestones below shipped as V8.5.2 (document
+> safety), V8.5.3 (dynamic capacity) and V8.5.4 (PE hardening), and the product
+> line then moved on to the V8.6 workspace. Current scope, gates and priorities
+> are defined by `MILESTONE_PLAN.md`.
+
 ## V8.4.24 — Stabilization / Handoff Candidate
 
 No new user features.

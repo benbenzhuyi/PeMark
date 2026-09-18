@@ -23,8 +23,8 @@ from test_v8_6_panel import build, wait_for
 ROOT = Path(__file__).resolve().parents[1]
 GEN = Path(os.environ.get(
     "PEMARK_GENERATOR",
-    ROOT / "src/candidate/generate_markdown_editor_v8_6.py"))
-RELEASE_EXE = ROOT / "bin/current/pemark_x64_v8_5_4.exe"
+    ROOT / "src/current/generate_markdown_editor_v8_6_4.py"))
+RELEASE_EXE = ROOT / "bin/current/pemark_x64_v8_6_4.exe"
 
 FVIRTKEY, FSHIFT, FCONTROL, FALT = 0x01, 0x04, 0x08, 0x10
 CTRL, CTRL_SHIFT, CTRL_ALT = FVIRTKEY | FCONTROL, \
@@ -43,6 +43,7 @@ EXPECTED = [
     ((CTRL_SHIFT, 0x4F), 1006, "m_openfolder"),
     ((CTRL, 0x57), 1007, "m_close"),
     ((CTRL, 0x42), 1307, "m_outline"),
+    ((CTRL, 0x4A), 1315, "m_right_sidebar"),
     ((CTRL_ALT, 0x53), 1305, "m_status"),
     ((CTRL_SHIFT, 0x50), 1306, None),
     ((CTRL_ALT, 0x4B), 1406, "m_md_codeblock"),
@@ -52,8 +53,10 @@ EXPECTED = [
 
 # Keys Rabbit already owns; PeMark must leave them free until the matching
 # feature lands, otherwise the later feature cannot take them without a break.
+# Ctrl+J used to sit here: V8.6.4 took it for the reserved right sidebar
+# entry, so it moved into EXPECTED above.
 RESERVED = [(CTRL, 0x4B), (CTRL_SHIFT, 0x4B), (CTRL, 0x4C), (CTRL_SHIFT, 0x4C),
-            (CTRL, 0x4A), (CTRL, 0x44), (FALT, 0x4C)]
+            (CTRL, 0x44), (FALT, 0x4C)]
 
 
 def accel_table(app, ns):
@@ -83,7 +86,7 @@ def image_wstring(app, ns, symbol, limit=128):
 
 def main():
     release_hash = hashlib.sha256(RELEASE_EXE.read_bytes()).hexdigest()
-    ns, exe = build()
+    ns, exe = build(GEN)
     app = App(ns, exe)
     try:
         table = accel_table(app, ns)
@@ -130,6 +133,7 @@ def hint_for(symbol):
         "m_openfolder": "Ctrl+Shift+O",
         "m_close": "Ctrl+W",
         "m_outline": "Ctrl+B",
+        "m_right_sidebar": "Ctrl+J",
         "m_status": "Ctrl+Alt+S",
         "m_md_codeblock": "Ctrl+Alt+K",
         "m_md_link": "Ctrl+Alt+L",

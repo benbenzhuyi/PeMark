@@ -325,17 +325,20 @@ commit 与 working set 是期望结果，不是硬性验收条件。
      打开文件全流程；
    - 已完成：每个面板 28px 标题栏与 half/minimized/maximized 三态、4px 可拖动
      分界线；自定义标题行同时接收左栏开关、菜单入口与六个工具图标。
-   - 待完成：滚动条按 hover 面板轮流服务、`View → Files/Outline Panel` 改为
-     显隐开关。
+   - 待完成：滚动条按 hover 面板轮流服务。
+   - 已完成（V8.6.4）：`View → Files/Outline Panel` 改为互斥最大化开关——
+     勾选 = 该面板 maximized 且另一面板 minimized，再点已勾选项恢复
+     half/half；`sync_panel_menu` 按同一规则同步勾选，与标题栏三态一致。
 
-1. **菜单与快捷键集成（进行中）**
+1. **菜单与快捷键集成（已完成，V8.6.4）**
    - `File → Open Folder…`、`View → Files / Outline` 切换
    - 最近文件（内存内，最多 10 条）列在 File 菜单底部
    - 验收：菜单勾选状态与面板一致；最近文件项能正确打开
-   - 进度：`File → Open Folder…`（`SHBrowseForFolderW` + `ILFree`）与
-     `View → Files Panel / Outline Panel`（共用 `set_panel_mode`，
-     `sync_panel_menu` 保持互斥勾选）已完成，切片 2/3 的机制因此在正式构建里
-     可达；剩余部分是 File 菜单底部的内存内最近文件列表。
+   - 完成：`File → Open Folder…`（`SHBrowseForFolderW` + `ILFree`）与
+     `View → Files Panel / Outline Panel`（互斥最大化开关，驱动与标题栏
+     共用的 `files_state`/`outline_state` 三态机）已完成；File 菜单底部
+     的内存内最近文件列表（容量 10，去重移到头部，复用 Open 事务）已完成；
+     `View → Right Sidebar`（`Ctrl+J`）作为 V9 AI 右侧栏预留位已加入。
 2. **文件面板重设计（替代原"slices 2–4 已完成"的后续）**
    - 按 [FILE_PANEL_REDESIGN.md](FILE_PANEL_REDESIGN.md) 的切片 0–5 执行：
      左边栏双面板骨架（两套列表与滚动条、标题栏三态、可拖动分界线）→ 树模型与

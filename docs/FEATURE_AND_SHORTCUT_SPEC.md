@@ -4,8 +4,13 @@
 
 - New — Ctrl+N
 - Open — Ctrl+O
+- Open Folder — Ctrl+Shift+O
+- Refresh Tree — (menu only)
+- Collapse All — (menu only)
 - Save — Ctrl+S
 - Save As — Ctrl+Alt+S
+- Close — Ctrl+W
+- Recent Files (up to 10, in-memory) — (menu only, commands 1316–1325)
 - Exit — Alt+F4
 
 ## Edit
@@ -36,9 +41,12 @@
 - Zoom Out — Ctrl+- / Ctrl+mouse-wheel down
 - Reset Zoom — Ctrl+0
 - Word Wrap — Ctrl+Shift+W
-- Status Bar — Ctrl+Shift+S
+- Status Bar — Ctrl+Alt+S
 - Source/Preview toggle — Ctrl+Shift+P
-- Outline show/hide — Ctrl+B
+- Left Sidebar — Ctrl+B
+- Right Sidebar (reserved for V9 AI sidebar) — Ctrl+J
+- Files Panel (exclusive maximize toggle) — (menu only)
+- Outline Panel (exclusive maximize toggle) — (menu only)
 - Light/Dark toggle — Ctrl+Alt+T
 
 ## Status bar

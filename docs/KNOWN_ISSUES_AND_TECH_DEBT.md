@@ -1,5 +1,14 @@
 # Known Issues and Technical Debt
 
+[简体中文](KNOWN_ISSUES_AND_TECH_DEBT.zh-CN.md) | English
+
+> Historical V8.4.23 snapshot. Both P0 items were resolved by the V8.4.24
+> stabilization line. The P1 architecture debts were closed by V8.5.1–V8.5.4
+> (unified Markdown scan, ViewController ownership, dynamic arenas, six-section
+> PE with ASLR), and the P2 testing debt by the Windows GUI regression tooling
+> under `tools/`. Current release gates and limitations live in
+> `V8_6_3_RELEASE_RESULTS.md` and the root `manifest.json`.
+
 ## P0 — active functional defects in V8.4.23
 
 ### P0-001 Preview Outline navigation can map every item to document end

@@ -89,13 +89,14 @@ g32.BitBlt.argtypes = [w.HDC, c.c_int, c.c_int, c.c_int, c.c_int, w.HDC,
 g32.BitBlt.restype = w.BOOL
 
 
-def build():
-    source = GEN.read_text(encoding="utf-8")
-    ns = {"__file__": str(GEN), "__name__": "__pemark_panel_test__",
+def build(gen_path=None):
+    gen = Path(gen_path) if gen_path else GEN
+    source = gen.read_text(encoding="utf-8")
+    ns = {"__file__": str(gen), "__name__": "__pemark_panel_test__",
           "OPEN_TEST_BUILD": True}
-    exec(compile(source, str(GEN), "exec"), ns)
+    exec(compile(source, str(gen), "exec"), ns)
     out = Path(ns["out"])
-    version_tag = GEN.stem.replace("generate_markdown_editor_", "")
+    version_tag = gen.stem.replace("generate_markdown_editor_", "")
     assert out.name == f"pemark_x64_{version_tag}_open_transaction_test.exe", out.name
     return ns, out
 

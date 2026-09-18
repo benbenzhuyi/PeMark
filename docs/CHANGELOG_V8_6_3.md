@@ -439,10 +439,17 @@ hit test compared the pointer's *client* coordinates against the overlay's
 *local* thumb rectangle, so every press looked like a track click. Native
 scrollbars remove the whole class of problem.
 
-Retired but not yet deleted: the overlay routines (`scroll_layout`,
-`sync_*_scrollbar`, `*_scroll_drag_move`, `update_*_hover`, `scrollproc`) and
-their BSS fields are now unreachable dead code. Their deletion is the immediate
-follow-up cleanup; the wheel scratch fields (`files_scroll_*`) are still live.
+Native vs custom, precisely: the **scrolling** behaviour (thumb drag, arrow
+clicks, wheel) is owned by the native `WS_VSCROLL` bar, so the user no longer
+depends on the custom hit-test. The custom overlay surface (`*_scroll` windows)
+and its state fields (`scroll_layout`, `sync_*_scrollbar`, `*_scroll_drag_move`,
+`update_*_hover`, `scrollproc`, `files_scroll_*`, `outline_scroll_*`) are still
+created, sized, painted and exercised in V8.6.x: the overlay still draws a
+visible thumb, tracks hover, and `sync_*_scrollbar` keeps the native thumb in
+step with `LB_SETTOPINDEX`. It is therefore an **active fallback / visual layer**,
+not yet dead code. Removing the overlay surface and letting the native bar be the
+only visual scrollbar is the follow-up cleanup; until then the two layers are
+kept in sync by `sync_*_scrollbar`.
 
 Evidence: `tools/test_v8_6_panel.py` asserts both lists report
 `WS_VSCROLL|LBS_DISABLENOSCROLL`, that both span the sidebar width, and that the

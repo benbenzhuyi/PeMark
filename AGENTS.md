@@ -53,12 +53,19 @@ historical evidence unless a current document explicitly adopts their finding.
 14. **Gate by level.** Apply commit-level, milestone-level or release-level
     verification as defined in `docs/DEVELOPMENT_MANUAL_V8_5_PLUS.md` 5.1. Do not
     apply release-level process to every change.
+15. **Causal isolation before system-level hypotheses.** When a regression
+    appears, first check the most recent diff and perform a minimal A/B
+    short-circuit to isolate the cause. Do not expand to PE loader, TLS,
+    BSS, DPI, or USER32 initialization hypotheses without a falsifiable,
+    evidence-based concrete hypothesis. A 20-line bad code block does not
+    require a 131K-context debugging expedition.
 
 ## Change discipline
 
 - Prefer bounded refactors over patch chains.
 - Make one subsystem the owner of each state.
 - Keep a `CHANGELOG_UNRELEASED.md` while working.
+- Every new project document ships in both English and Simplified Chinese editions (`.md` plus `.zh-CN.md`), cross-linked at the top. English is the working language: update the English original first, then mirror the change in the Chinese edition.
 - If changing PE layout, regenerate `docs/PE_MEMORY_MAP.md` and run `tools/inspect_pe.py`.
 - If changing imports, update `docs/WIN32_API_SURFACE.md`.
 - If changing shortcuts/menu commands, update `docs/FEATURE_AND_SHORTCUT_SPEC.md`.

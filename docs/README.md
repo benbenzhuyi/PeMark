@@ -39,9 +39,14 @@ English | [简体中文](README.zh-CN.md)
 - [Publishing checklist](PUBLISHING_CHECKLIST.md)
 
 Public-facing overview, release, security, contribution, licensing and
-publishing documents have English and Simplified Chinese editions. Detailed
-engineering records retain their original language because exact identifiers,
-offsets, evidence and historical wording are part of the technical record.
+publishing documents have English and Simplified Chinese editions. The
+takeover documents (`CODEX_START_HERE`, `DEVELOPMENT_MANUAL`,
+`HANDOFF_CHECKLIST`, `ROADMAP`, `KNOWN_ISSUES_AND_TECH_DEBT`,
+`CHANGELOG_UNRELEASED`) also carry Simplified Chinese editions; English is
+the working language, so update the English original first and mirror it in
+Chinese. Other detailed engineering records retain their original language
+because exact identifiers, offsets, evidence and historical wording are part
+of the technical record.
 
 ## Historical material
 

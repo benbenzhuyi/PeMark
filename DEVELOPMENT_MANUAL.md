@@ -1,5 +1,10 @@
 # Development Manual — Pure Binary Native Windows Development
 
+[简体中文](DEVELOPMENT_MANUAL.zh-CN.md) | English
+
+> Historical V8.4-era manual. Current daily-workflow policy is
+> `docs/DEVELOPMENT_MANUAL_V8_5_PLUS.md`.
+
 ## Purpose
 
 This manual is the practical day-to-day guide for continuing PeMark, the
