@@ -2,6 +2,22 @@
 
 Intermediate builds are preserved for diffing and regression archaeology; many were experimental and not release-stable.
 
+## V8.6.5
+
+Release date: 2026-09-19 (stable release)
+
+Generator: `src/current/generate_markdown_editor_v8_6_5.py`
+Binary: `bin/current/pemark_x64_v8_6_5.exe`
+Binary SHA-256: `a038974bcd61c6a2720af5fb40ef7ad0c5c12c3745d801b8ef06e119b3b679e9`
+
+V8.6.5 fixes main-window border contrast. The root cause was `WM_NCCALCSIZE`
+letting the client area cover the entire window so DWM did not paint a border,
+combined with `DWMWA_BORDER_COLOR` set to the window background color. The fix
+insets the client area by 1px on all four edges and uses a dark `#3C3C3C` /
+light `#B0B0B0` border color measured per-pixel from the Windows Explorer
+frame; `wp_ncpaint` no longer GDI-draws the four sides. Validation record:
+`docs/V8_6_5_RELEASE_RESULTS.md`.
+
 ## V8.6.3
 
 Generator: `src/current/generate_markdown_editor_v8_6_3.py`

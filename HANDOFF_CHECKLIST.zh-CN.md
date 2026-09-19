@@ -2,7 +2,7 @@
 
 [English](HANDOFF_CHECKLIST.md) | 简体中文
 
-> V8.4.23 历史交接检查清单。当前 V8.6.3 工作流请使用
+> V8.4.23 历史交接检查清单。当前 V8.6.5 工作流请使用
 > `CODEX_START_HERE.md`。
 
 ## 包完整性

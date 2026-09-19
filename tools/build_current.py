@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Build V8.6.3 twice and require a deterministic release binary."""
+"""Build V8.6.5 twice and require a deterministic release binary."""
 from pathlib import Path
 import hashlib
 import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-GENERATOR = ROOT / "src/current/generate_markdown_editor_v8_6_3.py"
-BINARY = ROOT / "bin/current/pemark_x64_v8_6_3.exe"
-EXPECTED = "5fe17a495f691747e33d3372a78f202b442ae67cf55af2414ecba4a769186b21"
+GENERATOR = ROOT / "src/current/generate_markdown_editor_v8_6_5.py"
+BINARY = ROOT / "bin/current/pemark_x64_v8_6_5.exe"
+EXPECTED = "a038974bcd61c6a2720af5fb40ef7ad0c5c12c3745d801b8ef06e119b3b679e9"
 
 
 def sha256(path):

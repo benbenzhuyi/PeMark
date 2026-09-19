@@ -2,7 +2,9 @@
 
 [简体中文](CHANGELOG_UNRELEASED.zh-CN.md) | English
 
-V8.6.3 shipped on 2026-09-18. Its full record is
+V8.6.5 shipped on 2026-09-19; its release record is
+`docs/V8_6_5_RELEASE_RESULTS.md` and its GitHub release body is
+`docs/RELEASE_V8_6_5_GITHUB.md`. V8.6.3 shipped on 2026-09-18, recorded in
 `docs/CHANGELOG_V8_6_3.md`.
 
 ## Takeover audit (2026-09-18)
@@ -115,3 +117,68 @@ New imports: `GetMenuItemCount`, `RemoveMenu`.
 2. `cmd_right_sidebar` used `jcc(0x84)` (JE) instead of `0x85` (JNE) on the
    `test32` of `right_sidebar_visible`, so the toggle left the flag at zero.
    Fixed.
+
+## Window frame separation (shipped in V8.6.5, 2026-09-19)
+
+Release record: `docs/V8_6_5_RELEASE_RESULTS.md`; GitHub release body:
+`docs/RELEASE_V8_6_5_GITHUB.md`.
+
+Generator `src/current/generate_markdown_editor_v8_6_5.py`; binary
+`bin/current/pemark_x64_v8_6_5.exe`; build hash
+`a038974bcd61c6a2720af5fb40ef7ad0c5c12c3745d801b8ef06e119b3b679e9`
+(text 59658 of the 61440 budget).
+
+### Root cause established by measurement, not by colour guessing
+
+Neither theme showed a window outline. The following are measured on the live
+window (Windows 11 build 26200, 150% scaling), not inferred:
+
+- injecting magenta through `DWMWA_BORDER_COLOR` (34) repainted the outermost
+  two physical pixels of the window within one frame, and the colour survived
+  resizes. DWM therefore owns the window frame and composites it above any GDI
+  drawing placed in those pixels;
+- under the V8.6.4 `WM_NCCALCSIZE` behaviour (client area equal to the whole
+  window) DWM painted no frame at all — so the old `wp_ncpaint` `FillRect` code
+  had no visible surface of its own, independently of being covered by the
+  child controls that fill the client area;
+- `DwmGetWindowAttribute(34)` returns `E_INVALIDARG` on this window, while
+  `DwmSetWindowAttribute(34)` returns `S_OK` and takes effect immediately: the
+  border colour is write-only here.
+
+The frame was invisible for two independent reasons: the client area covered
+the whole window, leaving DWM no frame strip to paint; and
+`DWMWA_BORDER_COLOR` was set to the background itself (`#1A1A1A` on `#202020` in
+dark, pure white on the light backdrop).
+
+### Fix
+
+- `wp_nccalcsize` now insets the returned client rectangle by 1px on all four
+  sides, restoring the 1px non-client strip DWM requires before it draws the
+  frame. Children are positioned relative to the client area, so each one moves
+  inward by 1px automatically and no layout code changed;
+- `DWMWA_BORDER_COLOR` follows the theme: `#3C3C3C` dark and `#B0B0B0` light.
+  The dark value comes from a pixel measurement of a Windows Explorer
+  screenshot — an Explorer dark frame reads `#3C3C3C` on the same `#202020`
+  surface and is 2 physical pixels thick at 150% scaling — so PeMark matches
+  Explorer in both brightness and thickness instead of the first, visibly
+  brighter `#555555`. The light branch had to split its colour write so
+  attribute 34 no longer shares the white value used by 35/36;
+- `wp_ncpaint` no longer paints the four edges with GDI. That path cannot win
+  against DWM, and keeping both produced four differently coloured edges.
+
+### Verification
+
+- build-time assertions pin both preconditions: the four `rgrc[0]` inset writes
+  must exist, `wp_ncpaint` must contain neither `FillRect` nor `GetWindowDC`,
+  and both border colours must be present while `0x001A1A1A` and `0xFFFFFFFF`
+  must not be used as attribute 34;
+- pixel measurement of the running window: all four edges read a uniform
+  `#B0B0B0` in light mode and `#3C3C3C` in dark mode — the same two physical
+  pixels Explorer uses — and a live Light/Dark switch changes all four edges
+  within one frame.
+
+### Known follow-up
+
+`hbrush_border` is no longer referenced by any drawing path now that DWM owns
+the frame. It was left in place to keep this change small; removing it touches
+the theme teardown chain and belongs in its own slice.

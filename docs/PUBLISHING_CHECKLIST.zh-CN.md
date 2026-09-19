@@ -75,6 +75,16 @@
 - [x] 确认上传附件 SHA-256 为
   `5fe17a495f691747e33d3372a78f202b442ae67cf55af2414ecba4a769186b21`。
 
+## V8.6.5 稳定版
+
+- [x] 在正式通道重跑发布门禁，并记录于 `V8_6_5_RELEASE_RESULTS.md`。
+- [ ] 创建带说明的 `v8.6.5` 标签。
+- [ ] 创建名为 `PeMark V8.6.5` 的 GitHub Release，且不勾选 pre-release。
+- [ ] 使用 `RELEASE_V8_6_5_GITHUB.md` 作为发布正文。
+- [ ] 只附加 `bin/current/pemark_x64_v8_6_5.exe`。
+- [ ] 确认上传附件 SHA-256 为
+  `a038974bcd61c6a2720af5fb40ef7ad0c5c12c3745d801b8ef06e119b3b679e9`。
+
 ## 仓库设置
 
 - [x] 默认分支设为 `main`。
