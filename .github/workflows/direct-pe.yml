@@ -46,6 +46,17 @@ jobs:
           Write-Host "expected: $expected"
           Write-Host "actual  : $actual"
           if ($actual -ne $expected) { throw "SHA-256 mismatch for $($manifest.current_binary)" }
+      # Current-channel paths for the V8.6 behaviour suites below. They used to
+      # point at src/candidate/, which is an old V8.6 snapshot that predates the
+      # Ctrl+J right-sidebar reservation (1315) and the other V8.6.4 additions,
+      # so those suites failed while the release build itself was correct.
+      - name: Resolve the current release paths from manifest.json
+        shell: pwsh
+        run: |
+          $manifest = Get-Content manifest.json -Raw | ConvertFrom-Json
+          "PEMARK_GENERATOR=$($env:GITHUB_WORKSPACE)/$($manifest.current_generator)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "PEMARK_EXE=$($env:GITHUB_WORKSPACE)/$($manifest.current_binary)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "PEMARK_TREE_EXE=$($env:GITHUB_WORKSPACE)/$($manifest.current_binary)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
       - name: Build and inspect the development channel
         if: ${{ hashFiles('src/candidate/generate_markdown_editor_v8_6.py') != '' }}
         run: |
@@ -87,48 +98,25 @@ jobs:
           python tools/test_v8_5_4_unwind.py
       - name: Exercise workspace enumeration
         if: ${{ hashFiles('tools/test_v8_6_workspace_enum.py') != '' }}
-        env:
-          PEMARK_GENERATOR: ${{ github.workspace }}/src/candidate/generate_markdown_editor_v8_6.py
-          PEMARK_EXE: ${{ github.workspace }}/bin/candidate/pemark_x64_v8_6_candidate.exe
         run: python tools/test_v8_6_workspace_enum.py
       - name: Exercise the file-tree model
         if: ${{ hashFiles('tools/test_v8_6_tree_model.py') != '' }}
-        env:
-          PEMARK_GENERATOR: ${{ github.workspace }}/src/candidate/generate_markdown_editor_v8_6.py
-          PEMARK_TREE_EXE: ${{ github.workspace }}/bin/candidate/pemark_x64_v8_6_candidate.exe
         run: python tools/test_v8_6_tree_model.py
       - name: Exercise the file-tree projection and activation
         if: ${{ hashFiles('tools/test_v8_6_tree_ui.py') != '' }}
-        env:
-          PEMARK_GENERATOR: ${{ github.workspace }}/src/candidate/generate_markdown_editor_v8_6.py
-          PEMARK_TREE_EXE: ${{ github.workspace }}/bin/candidate/pemark_x64_v8_6_candidate.exe
         run: python tools/test_v8_6_tree_ui.py
       - name: Exercise sidebar panel modes
         if: ${{ hashFiles('tools/test_v8_6_panel.py') != '' }}
-        env:
-          PEMARK_GENERATOR: ${{ github.workspace }}/src/candidate/generate_markdown_editor_v8_6.py
-          PEMARK_EXE: ${{ github.workspace }}/bin/candidate/pemark_x64_v8_6_candidate.exe
         run: python tools/test_v8_6_panel.py
       - name: Exercise the custom title row and icons
         if: ${{ hashFiles('tools/test_v8_6_caption.py') != '' }}
-        env:
-          PEMARK_GENERATOR: ${{ github.workspace }}/src/candidate/generate_markdown_editor_v8_6.py
-          PEMARK_EXE: ${{ github.workspace }}/bin/candidate/pemark_x64_v8_6_candidate.exe
         run: python tools/test_v8_6_caption.py
       - name: Verify the high-DPI GDI scaling context
         if: ${{ hashFiles('tools/test_v8_6_dpi.py') != '' }}
-        env:
-          PEMARK_EXE: ${{ github.workspace }}/bin/candidate/pemark_x64_v8_6_candidate.exe
         run: python tools/test_v8_6_dpi.py
       - name: Exercise list navigation and file opening
         if: ${{ hashFiles('tools/test_v8_6_navigation.py') != '' }}
-        env:
-          PEMARK_GENERATOR: ${{ github.workspace }}/src/candidate/generate_markdown_editor_v8_6.py
-          PEMARK_EXE: ${{ github.workspace }}/bin/candidate/pemark_x64_v8_6_candidate.exe
         run: python tools/test_v8_6_navigation.py
       - name: Exercise the keymap
         if: ${{ hashFiles('tools/test_v8_6_keymap.py') != '' }}
-        env:
-          PEMARK_GENERATOR: ${{ github.workspace }}/src/candidate/generate_markdown_editor_v8_6.py
-          PEMARK_EXE: ${{ github.workspace }}/bin/candidate/pemark_x64_v8_6_candidate.exe
         run: python tools/test_v8_6_keymap.py

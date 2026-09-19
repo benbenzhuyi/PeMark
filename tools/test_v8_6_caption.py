@@ -17,6 +17,7 @@ import ctypes as c
 from ctypes import wintypes as w
 import os
 import sys
+import json
 import time
 from pathlib import Path
 
@@ -27,6 +28,11 @@ ROOT = Path(__file__).resolve().parents[1]
 GEN = Path(os.environ.get(
     "PEMARK_GENERATOR",
     ROOT / "src/candidate/generate_markdown_editor_v8_6.py"))
+# The expected version label comes from manifest.json. Hard-coding it here made
+# this test fail on every release after V8.6.3 even though the title row itself
+# was correct.
+SNAPSHOT = json.loads((ROOT / "manifest.json").read_text(encoding="utf-8"))[
+    "current_snapshot"]
 
 u32, k32 = c.windll.user32, c.windll.kernel32
 u32.IsWindowVisible.argtypes = [w.HWND]
@@ -112,8 +118,8 @@ def main():
         main_hwnd = app.main
         title = c.create_unicode_buffer(160)
         assert u32.GetWindowTextW(main_hwnd, title, len(title))
-        expected_label = ("V8.6.3" if GEN.parent.name == "current"
-                          else "V8.6.3 Candidate")
+        expected_label = (SNAPSHOT if GEN.parent.name == "current"
+                          else SNAPSHOT + " Candidate")
         assert expected_label in title.value, title.value
         caption = app.read64("hwnd_caption")
         assert caption and u32.IsWindowVisible(caption), \
