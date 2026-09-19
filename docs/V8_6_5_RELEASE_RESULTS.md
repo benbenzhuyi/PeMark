@@ -70,6 +70,12 @@
   expected version label from `current_snapshot` instead of a hard-coded V8.6.3
   string. The `Direct-PE validation` workflow is green on this release — the
   first successful run of that workflow since V8.6.3.
+- The published `README.md` still advertised V8.6.3 after the first push of this
+  release: download link, expected hash, build and verify commands, validation
+  link and the repository-layout version line. It is updated together with
+  `README.zh-CN.md`, `docs/README.md`, `docs/README.zh-CN.md` and
+  `docs/WIN32_API_SURFACE.md`, and the publishing checklist now names the public
+  entry points as a required release step.
 
 ## Not covered by this build
 

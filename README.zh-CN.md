@@ -8,9 +8,9 @@ PeMark · 码记是一个原生 Windows x64 Markdown 编辑器。Python 直接�
 PE32+ 映像与 AMD64 机器码字节；生产版 EXE 不经过编译器、汇编器、链接器、
 托管编译器、解释器打包器或内嵌 Python 运行时。
 
-> **V8.6.3** 是当前稳定版。它保留 V8.5.4 的文档安全、动态容量与 PE 权限
-> 分离基线，并完成 V8.6 桌面工作区、自定义标题行、大文档预览滚动修复和
-> 高 DPI 字体清晰度优化。
+> **V8.6.5** 是当前稳定版。它保留 V8.5.4 的文档安全、动态容量与 PE 权限
+> 分离基线，并在已完成的 V8.6 桌面工作区、自定义标题行、文件树和高 DPI
+> 字体清晰度基础上，新增了在明暗两种主题下都清晰可见的窗口边框。
 
 ## 主要功能
 
@@ -26,13 +26,13 @@ PE32+ 映像与 AMD64 机器码字节；生产版 EXE 不经过编译器、汇�
 
 ## 下载与校验
 
-从 [PeMark V8.6.3 正式版](https://github.com/benbenzhuyi/PeMark/releases/tag/v8.6.3)
-下载 `pemark_x64_v8_6_3.exe`。
+从 [PeMark V8.6.5 正式版](https://github.com/benbenzhuyi/PeMark/releases/tag/v8.6.5)
+下载 `pemark_x64_v8_6_5.exe`。
 
 SHA-256：
 
 ```text
-5fe17a495f691747e33d3372a78f202b442ae67cf55af2414ecba4a769186b21
+a038974bcd61c6a2720af5fb40ef7ad0c5c12c3745d801b8ef06e119b3b679e9
 ```
 
 当前 EXE 尚未进行数字签名，Windows SmartScreen 或安全软件可能显示警告。
@@ -52,19 +52,19 @@ SHA-256：
 
 ```powershell
 python -m pip install -r requirements-dev.txt
-python .\src\current\generate_markdown_editor_v8_6_3.py
+python .\src\current\generate_markdown_editor_v8_6_5.py
 ```
 
-输出文件为 `bin/current/pemark_x64_v8_6_3.exe`。
+输出文件为 `bin/current/pemark_x64_v8_6_5.exe`。
 
 ## 验证
 
 ```powershell
 python .\tools\build_current.py
-python .\tools\test_v8_5_1.py .\src\current\generate_markdown_editor_v8_6_3.py
-python .\tools\inspect_pe.py .\bin\current\pemark_x64_v8_6_3.exe
-python .\tools\smoke_test_v8_5_1.py .\bin\current\pemark_x64_v8_6_3.exe
-Get-FileHash -Algorithm SHA256 .\bin\current\pemark_x64_v8_6_3.exe
+python .\tools\test_v8_5_1.py .\src\current\generate_markdown_editor_v8_6_5.py
+python .\tools\inspect_pe.py .\bin\current\pemark_x64_v8_6_5.exe
+python .\tools\smoke_test_v8_5_1.py .\bin\current\pemark_x64_v8_6_5.exe
+Get-FileHash -Algorithm SHA256 .\bin\current\pemark_x64_v8_6_5.exe
 ```
 
 GUI 冒烟测试必须在可交互的 Windows 桌面会话中运行。
@@ -78,7 +78,7 @@ GUI 冒烟测试必须在可交互的 Windows 桌面会话中运行。
 - 工作区文件树、文件操作、键盘导航、自定义标题行、主题和 DPI 模式的真实进程测试；
 - 六节权限为 RX/R/RW/RW/R/R，不存在 W+X 页面。
 
-详细证据见 [V8.6.3 发布验证结果](docs/V8_6_3_RELEASE_RESULTS.md) 和
+详细证据见 [V8.6.5 发布验证结果](docs/V8_6_5_RELEASE_RESULTS.md) 和
 [中文文档索引](docs/README.zh-CN.md)。
 
 ## 已知限制

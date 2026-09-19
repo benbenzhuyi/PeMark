@@ -9,6 +9,8 @@
 - [清晰里程碑计划](MILESTONE_PLAN.md)
 - [跨架构功能契约 V1](CROSS_ARCH_FEATURE_CONTRACT_V1.md)
 - [跨架构基准测试规范 V1](BENCHMARK_SPEC_V1.md)
+- [V8.6.5 稳定版发布验证结果](V8_6_5_RELEASE_RESULTS.md)
+- [V8.6.5 GitHub 发布说明](RELEASE_V8_6_5_GITHUB.md)
 - [V8.6.3 稳定版发布验证结果](V8_6_3_RELEASE_RESULTS.md)
 - [V8.6.3 GitHub 发布说明](RELEASE_V8_6_3_GITHUB.md)
 - [V8.6.3 变更记录](CHANGELOG_V8_6_3.md)
@@ -45,4 +47,4 @@
 ## 历史资料
 
 标题中明确标注 V8.4.23 或更早版本的文档作为历史证据保留，不覆盖当前
-V8.6.3 基线。
+V8.6.5 基线。

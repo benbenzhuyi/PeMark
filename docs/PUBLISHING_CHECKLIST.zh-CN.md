@@ -78,12 +78,17 @@
 ## V8.6.5 稳定版
 
 - [x] 在正式通道重跑发布门禁，并记录于 `V8_6_5_RELEASE_RESULTS.md`。
-- [ ] 创建带说明的 `v8.6.5` 标签。
-- [ ] 创建名为 `PeMark V8.6.5` 的 GitHub Release，且不勾选 pre-release。
-- [ ] 使用 `RELEASE_V8_6_5_GITHUB.md` 作为发布正文。
-- [ ] 只附加 `bin/current/pemark_x64_v8_6_5.exe`。
-- [ ] 确认上传附件 SHA-256 为
+- [x] 创建带说明的 `v8.6.5` 标签。
+- [x] 创建名为 `PeMark V8.6.5` 的 GitHub Release，且不勾选 pre-release。
+- [x] 使用 `RELEASE_V8_6_5_GITHUB.md` 作为发布正文。
+- [x] 只附加 `bin/current/pemark_x64_v8_6_5.exe`。
+- [x] 确认上传附件 SHA-256 为
   `a038974bcd61c6a2720af5fb40ef7ad0c5c12c3745d801b8ef06e119b3b679e9`。
+- [x] 确认发布提交上的 `Direct-PE validation` workflow 通过。该 workflow 现已
+  改为从 `manifest.json` 读取发布路径与期望摘要，不再硬编码。
+- [x] 更新对外入口文档——`README.md`、`README.zh-CN.md`、`docs/README.md`、
+  `docs/README.zh-CN.md`、`docs/WIN32_API_SURFACE.md`——的版本号、下载链接、
+  哈希与构建/校验命令。漏掉这一步会让已发布的 README 仍在宣传上一版。
 
 ## 仓库设置
 

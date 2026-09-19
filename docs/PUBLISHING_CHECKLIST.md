@@ -85,13 +85,20 @@ English | [简体中文](PUBLISHING_CHECKLIST.zh-CN.md)
 
 - [x] Rerun the release gates on the formal channel and record them in
   `docs/V8_6_5_RELEASE_RESULTS.md`.
-- [ ] Create annotated tag `v8.6.5`.
-- [ ] Create a GitHub release named `PeMark V8.6.5` without marking it a
+- [x] Create annotated tag `v8.6.5`.
+- [x] Create a GitHub release named `PeMark V8.6.5` without marking it a
   pre-release.
-- [ ] Use `docs/RELEASE_V8_6_5_GITHUB.md` as the release body.
-- [ ] Attach only `bin/current/pemark_x64_v8_6_5.exe` as the release asset.
-- [ ] Verify the uploaded asset SHA-256 is
+- [x] Use `docs/RELEASE_V8_6_5_GITHUB.md` as the release body.
+- [x] Attach only `bin/current/pemark_x64_v8_6_5.exe` as the release asset.
+- [x] Verify the uploaded asset SHA-256 is
   `a038974bcd61c6a2720af5fb40ef7ad0c5c12c3745d801b8ef06e119b3b679e9`.
+- [x] Confirm the `Direct-PE validation` workflow passes on the release commit.
+  It now takes the release paths and the expected digest from `manifest.json`
+  instead of hard-coding them.
+- [x] Update the public entry points — `README.md`, `README.zh-CN.md`,
+  `docs/README.md`, `docs/README.zh-CN.md`, `docs/WIN32_API_SURFACE.md` — with
+  the new version, download link, hash and build/verify commands. Missing this
+  step left the published README advertising the previous release.
 
 ## Repository settings
 

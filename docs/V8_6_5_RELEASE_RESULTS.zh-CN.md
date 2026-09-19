@@ -62,6 +62,11 @@
   `PEMARK_GENERATOR` / `PEMARK_EXE` / `PEMARK_TREE_EXE`；`test_v8_6_caption.py`
   的期望版本标签也改为读取 `current_snapshot`，不再硬编码 V8.6.3。本次发布的
   `Direct-PE validation` workflow 已通过——这是该 workflow 自 V8.6.3 以来首次成功。
+- 本次发布首次推送后，已上线的 `README.md` 仍在宣传 V8.6.3：下载链接、预期
+  哈希、构建与校验命令、验证结果链接以及仓库结构里的版本行都是旧的。现已连同
+  `README.zh-CN.md`、`docs/README.md`、`docs/README.zh-CN.md` 与
+  `docs/WIN32_API_SURFACE.md` 一并更新，发布清单也已把"对外入口文档"列为发版的
+  必需步骤。
 
 ## 本次构建未覆盖的范围
 

@@ -9,10 +9,11 @@ directly from Python as a PE32+ image and AMD64 machine-code bytes. The
 production executable uses no compiler, assembler, linker, managed compiler,
 interpreter packager, or embedded Python runtime.
 
-> **V8.6.3** is the current stable release. It retains the V8.5.4 document
-> safety, dynamic-capacity and permission-separated PE baseline, and completes
-> the V8.6 desktop workspace, custom title row, large-document Preview fixes and
-> high-DPI text rendering work.
+> **V8.6.5** is the current stable release. It retains the V8.5.4 document
+> safety, dynamic-capacity and permission-separated PE baseline, and adds a
+> window frame that stays visible in both themes, on top of the completed V8.6
+> desktop workspace, custom title row, file tree and high-DPI text rendering
+> work.
 
 ## Highlights
 
@@ -31,13 +32,13 @@ interpreter packager, or embedded Python runtime.
 
 ## Download
 
-Download `pemark_x64_v8_6_3.exe` from the
-[PeMark V8.6.3 release](https://github.com/benbenzhuyi/PeMark/releases/tag/v8.6.3).
+Download `pemark_x64_v8_6_5.exe` from the
+[PeMark V8.6.5 release](https://github.com/benbenzhuyi/PeMark/releases/tag/v8.6.5).
 
 Expected SHA-256:
 
 ```text
-5fe17a495f691747e33d3372a78f202b442ae67cf55af2414ecba4a769186b21
+a038974bcd61c6a2720af5fb40ef7ad0c5c12c3745d801b8ef06e119b3b679e9
 ```
 
 The executable is unsigned, so Windows SmartScreen or security products may
@@ -64,20 +65,20 @@ python -m pip install -r requirements-dev.txt
 From the repository root:
 
 ```powershell
-python .\src\current\generate_markdown_editor_v8_6_3.py
+python .\src\current\generate_markdown_editor_v8_6_5.py
 ```
 
-The generator writes `bin/current/pemark_x64_v8_6_3.exe` without invoking a
+The generator writes `bin/current/pemark_x64_v8_6_5.exe` without invoking a
 native compiler, assembler or linker.
 
 ## Verify
 
 ```powershell
 python .\tools\build_current.py
-python .\tools\test_v8_5_1.py .\src\current\generate_markdown_editor_v8_6_3.py
-python .\tools\inspect_pe.py .\bin\current\pemark_x64_v8_6_3.exe
-python .\tools\smoke_test_v8_5_1.py .\bin\current\pemark_x64_v8_6_3.exe
-Get-FileHash -Algorithm SHA256 .\bin\current\pemark_x64_v8_6_3.exe
+python .\tools\test_v8_5_1.py .\src\current\generate_markdown_editor_v8_6_5.py
+python .\tools\inspect_pe.py .\bin\current\pemark_x64_v8_6_5.exe
+python .\tools\smoke_test_v8_5_1.py .\bin\current\pemark_x64_v8_6_5.exe
+Get-FileHash -Algorithm SHA256 .\bin\current\pemark_x64_v8_6_5.exe
 ```
 
 The smoke test controls the real GUI and must run in an interactive Windows
@@ -93,13 +94,13 @@ Release evidence includes:
   navigation, custom caption, themes and DPI mode;
 - six PE sections with RX/R/RW/RW/R/R permissions and no W+X page.
 
-See the [V8.6.3 validation results](docs/V8_6_3_RELEASE_RESULTS.md) and the
+See the [V8.6.5 validation results](docs/V8_6_5_RELEASE_RESULTS.md) and the
 [documentation index](docs/README.md).
 
 ## Repository layout
 
 ```text
-src/current/        current V8.6.3 Direct-PE generator
+src/current/        current V8.6.5 Direct-PE generator
 bin/current/        matching generated executable
 src/candidate/      active development channel
 src/stabilization/  retained stabilization candidates
