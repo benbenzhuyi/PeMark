@@ -21,16 +21,31 @@ jobs:
         run: python -m pip install -r requirements-dev.txt
       - name: Deterministic Direct-PE build
         run: python tools/build_current.py
+      # The release paths and the expected digest come from manifest.json only.
+      # They used to be hard-coded here, and neither V8.6.4 nor V8.6.5 updated
+      # them, so the release hash check failed on every published tag while the
+      # build itself was fine.
       - name: Execute emitted-machine-code regressions
-        run: python tools/test_v8_5_1.py src/current/generate_markdown_editor_v8_6_3.py
-      - name: Inspect generated PE
-        run: python tools/inspect_pe.py bin/current/pemark_x64_v8_6_3.exe
-      - name: Verify release hash
         shell: pwsh
         run: |
-          $expected = "5FE17A495F691747E33D3372A78F202B442AE67CF55AF2414ECBA4A769186B21"
-          $actual = (Get-FileHash -Algorithm SHA256 bin/current/pemark_x64_v8_6_3.exe).Hash
-          if ($actual -ne $expected) { throw "SHA-256 mismatch: $actual" }
+          $generator = (Get-Content manifest.json -Raw | ConvertFrom-Json).current_generator
+          Write-Host "generator: $generator"
+          python tools/test_v8_5_1.py $generator
+      - name: Inspect generated PE
+        shell: pwsh
+        run: |
+          $binary = (Get-Content manifest.json -Raw | ConvertFrom-Json).current_binary
+          Write-Host "binary: $binary"
+          python tools/inspect_pe.py $binary
+      - name: Verify release hash against manifest
+        shell: pwsh
+        run: |
+          $manifest = Get-Content manifest.json -Raw | ConvertFrom-Json
+          $actual = (Get-FileHash -Algorithm SHA256 $manifest.current_binary).Hash
+          $expected = $manifest.current_exe_sha256.ToUpper()
+          Write-Host "expected: $expected"
+          Write-Host "actual  : $actual"
+          if ($actual -ne $expected) { throw "SHA-256 mismatch for $($manifest.current_binary)" }
       - name: Build and inspect the development channel
         if: ${{ hashFiles('src/candidate/generate_markdown_editor_v8_6.py') != '' }}
         run: |

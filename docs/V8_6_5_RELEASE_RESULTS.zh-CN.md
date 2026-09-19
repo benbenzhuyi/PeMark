@@ -50,6 +50,11 @@
   参数仍指向 `bin/current/pemark_x64_v8_5_1.exe`，而 `CODEX_START_HERE.md` 原先
   让 Agent **不带参数**运行它——那会在声称检查当前构建的同时实际验证 V8.5.1 的
   二进制。首会话命令现已改为显式传参。
+- `.github/workflows/direct-pe.yml` 把 V8.6.3 的生成器路径、二进制路径与期望摘要
+  全部写死。V8.6.4 与 V8.6.5 两次发布都没有更新它们，导致 "Verify release hash"
+  步骤在每次已发布的推送上都抛出 `SHA-256 mismatch`，而构建本身是正确的。
+  该 workflow 现已改为从 `manifest.json` 读取生成器、二进制与期望摘要——而
+  `manifest.json` 按定义就是每次发版必更的文件。
 
 ## 本次构建未覆盖的范围
 

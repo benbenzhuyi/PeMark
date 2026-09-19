@@ -55,6 +55,12 @@
   `CODEX_START_HERE.md` previously told agents to run it *without* arguments —
   which would have validated a V8.5.1 binary while claiming to check the
   current build. The first-session command now passes the path explicitly.
+- `.github/workflows/direct-pe.yml` hard-coded the V8.6.3 generator path, binary
+  path and expected digest. Neither the V8.6.4 nor the V8.6.5 release updated
+  them, so the "Verify release hash" step threw `SHA-256 mismatch` on every
+  published push while the build itself was correct. The workflow now reads the
+  generator, binary and expected digest from `manifest.json`, which every
+  release updates by definition.
 
 ## Not covered by this build
 
