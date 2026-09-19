@@ -61,6 +61,15 @@
   published push while the build itself was correct. The workflow now reads the
   generator, binary and expected digest from `manifest.json`, which every
   release updates by definition.
+- The V8.6 behaviour suites in CI ran against `src/candidate/`, an old V8.6
+  snapshot that predates the `Ctrl+J` right-sidebar reservation (1315), so
+  `test_v8_6_keymap.py` failed with `accelerator 09/004A must map to 1315, got
+  None` on every push since V8.6.4 while the release build was correct. Those
+  suites now take `PEMARK_GENERATOR` / `PEMARK_EXE` / `PEMARK_TREE_EXE` from the
+  current channel named in `manifest.json`, and `test_v8_6_caption.py` reads its
+  expected version label from `current_snapshot` instead of a hard-coded V8.6.3
+  string. The `Direct-PE validation` workflow is green on this release — the
+  first successful run of that workflow since V8.6.3.
 
 ## Not covered by this build
 

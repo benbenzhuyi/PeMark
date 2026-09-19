@@ -55,6 +55,13 @@
   步骤在每次已发布的推送上都抛出 `SHA-256 mismatch`，而构建本身是正确的。
   该 workflow 现已改为从 `manifest.json` 读取生成器、二进制与期望摘要——而
   `manifest.json` 按定义就是每次发版必更的文件。
+- CI 里的 V8.6 行为套件此前跑在 `src/candidate/` 上，那是 V8.6 的旧快照，早于
+  `Ctrl+J` 右栏预留（1315），因此 `test_v8_6_keymap.py` 自 V8.6.4 起在每次推送
+  上都报 `accelerator 09/004A must map to 1315, got None`，而发布构建本身是正确
+  的。这些套件现已改为从 `manifest.json` 指定的 current 通道取
+  `PEMARK_GENERATOR` / `PEMARK_EXE` / `PEMARK_TREE_EXE`；`test_v8_6_caption.py`
+  的期望版本标签也改为读取 `current_snapshot`，不再硬编码 V8.6.3。本次发布的
+  `Direct-PE validation` workflow 已通过——这是该 workflow 自 V8.6.3 以来首次成功。
 
 ## 本次构建未覆盖的范围
 
